@@ -1,0 +1,33 @@
+{
+  "contracts":{
+     "Tweets":{
+        "fields":{
+           "timestamp":"uint",
+           "text":"string",
+           "image":"image",
+           "sender":"address"
+        },
+        "initRules":{
+           "passIn":[
+               "text",
+               "image"
+           ],
+           "auto":{
+              "sender":"tx.origin",
+              "timestamp":"block.timestamp"
+           }
+        },
+        "writeRules":{
+           
+        },
+        "readRules":{
+           "gets":[
+              "text",
+              "image",
+              "timestamp",
+              "sender"
+           ]
+        }
+     }
+  }
+}
