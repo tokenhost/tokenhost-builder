@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react'
 import { auth } from '../../lib/db'
+import ImageUpload from '../ImageUpload.js'
 
 import { contract, w3 } from '../../helpers/Web3Helper'
 
@@ -7,6 +8,14 @@ export default function Send() {
 
   {{#each contract_data.initRules.passIn}}
     const [{{this}}, set{{this}}] = useState() {{! loop over the pass in elements contract_data.initRules.passIn}}
+  
+    {{#if (checkImage @root.contract_data.fields this) }}
+      let register = "";
+      const setValue = (value) => {
+        console.log(value);
+        set{{this}}(value);
+      }
+    {{/if}}
   {{/each}}
 
   const [errorMessage, setErrorMessage] = useState()
@@ -52,11 +61,18 @@ export default function Send() {
     return (
       <form className="p-6" onSubmit={mySubmitHandler}>
 
-
-
         {{#if contract_data.initRules.passIn.[1]}}
 
         {{#each contract_data.initRules.passIn}}
+
+        {{#if (checkImage @root.contract_data.fields this) }}
+        <div className="field">
+          <label className="label">{{this}}</label>
+          <div className="control">
+            <ImageUpload setImage={ () => setValue() } />
+          </div>
+        </div>
+        {{else}}
 
         <div className="field">
           <label className="label">{{this}}</label>
@@ -68,6 +84,7 @@ export default function Send() {
             />
           </div>
         </div>
+        {{/if}}
 
         {{/each}}  
 

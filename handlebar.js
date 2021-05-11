@@ -6,7 +6,12 @@ let index_template = fs.readFileSync(
   'tokenhost-web-template/pages/index.hbs',
   'utf-8',
 )
-
+Handlebars.registerHelper('checkImage', function (fieldObj, key) {
+  console.log("start")
+  console.log(fieldObj[key] === "image")
+  console.log("end")
+  return fieldObj[key] === "image"
+})
 const template = Handlebars.compile(index_template)
 
 fs.writeFileSync('site/pages/index.js', template(contracts))
