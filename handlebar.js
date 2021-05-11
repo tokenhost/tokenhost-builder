@@ -12,6 +12,11 @@ Handlebars.registerHelper('checkImage', function (fieldObj, key) {
   console.log("end")
   return fieldObj[key] === "image"
 })
+
+Handlebars.registerHelper('checkFieldIsImage', function ( key) {
+   return key === "image"
+})
+
 const template = Handlebars.compile(index_template)
 
 fs.writeFileSync('site/pages/index.js', template(contracts))

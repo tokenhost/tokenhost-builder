@@ -9,17 +9,22 @@ export default (props) => {
     <div className='container'>
       <div className='columns'>
         <div className='column is-one-quarter'>
-          <User sender={data.sender} key={props.key} />
+          <User sender='{data.sender}' key='{props.key}' />
         </div>
         <div className='column'>
           {{#each contract_data.initRules.passIn}}
             <h1 className='title'>
               {{this}}
             </h1>
-
-            <h2 className='subtitle'>
-              {data.{{this}} }
-            </h2>
+            {{#if (checkFieldIsImage this)}}
+              <h2 className='subtitle'>
+                <img src={data.{{this}} } />
+              </h2>
+            {{else}}
+              <h2 className='subtitle'>
+                {data.{{this}} }
+              </h2>
+            {{/if}}
           {{/each}}
           <h2 className='subtitle'>
             <TimeAgo date={data.timestamp * 1000} />
