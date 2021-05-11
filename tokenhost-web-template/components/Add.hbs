@@ -69,7 +69,7 @@ export default function Send() {
         <div className="field">
           <label className="label">{{this}}</label>
           <div className="control">
-            <ImageUpload setImage={ () => setValue() } />
+            <ImageUpload setImage={ ({{this}}) => setValue({{this}}) } />
           </div>
         </div>
         {{else}}
