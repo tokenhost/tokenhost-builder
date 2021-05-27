@@ -13,9 +13,7 @@ Handlebars.registerHelper('checkImage', function (fieldObj, key) {
   return fieldObj[key] === "image"
 })
 
-Handlebars.registerHelper('checkFieldIsImage', function ( key) {
-   return key === "image"
-})
+
 
 const template = Handlebars.compile(index_template)
 
@@ -65,10 +63,19 @@ for (var contract in contracts.contracts) {
     `site/components/${contract}/Index.js`,
     IndexTemplate({contract, contract_data }),
   )
+
+
+  Handlebars.registerHelper('checkFieldIsImage', function ( key) {
+    console.log("checkFieldIsImage",contract_data.fields[key] === "image",contract_data.fields[key],key)
+     return contract_data.fields[key] == "image"
+  })
   fs.writeFileSync(
     `site/components/${contract}/View.js`,
     ViewTemplate({ contract, contract_data }),
   )
+
+  Handlebars.unregisterHelper('checkFieldIsImage')
+
   fs.writeFileSync(
     `site/components/${contract}/Pager.js`,
     PagerTemplate({ contract, contract_data }),
