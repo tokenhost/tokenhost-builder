@@ -136,6 +136,38 @@ function get_${ContractName}_list_length() returns (uint256){
   template += `}
     return (${get_all_fields_string});
     }`
+
+    //now do user stuff
+
+
+    template +=`
+      function get_${ContractName}_user_length(address user) returns (uint256){
+        return user_map[user].${ContractName}_list_length;
+      }
+      function get_${ContractName}_user_N(address user,uint256 index) returns (${get_all_types_string}){
+        return ${ContractName}(user_map[user].${ContractName}_list[index]).getall();
+    }
+
+
+     
+  function get_last_${ContractName}_user_N(address user,uint256 count, uint256 offset) returns (${get_all_types_array_string}){`
+  contract.readRules.gets.forEach((field) => {
+    const type = fields[field]
+    template += `${type}[] memory ${field} = new ${type}[](count);`
+  })
+  template += `for (uint i = offset; i < count; i++) {
+        ${ContractName}  my${ContractName} = ${ContractName}(user_map[user].${ContractName}_list[i+offset]);`
+  contract.readRules.gets.forEach((field) => {
+    template += `${field}[i+offset] = my${ContractName}.get_${field}();`
+  })
+  template += `}
+    return (${get_all_fields_string});
+    }
+    
+    `
+
+
+
 }
 
 //create the equivalent of the users tables
@@ -199,6 +231,9 @@ function new_${ContractName}(`
     user_map[tx.origin]=create_user_on_new_${ContractName}(mynew);
   }
   user_map[tx.origin].${ContractName}_list.push(mynew);
+
+  user_map[tx.origin].${ContractName}_list_length+=1;
+
 
 ${ContractName}_list.push(mynew);
 ${ContractName}_list_length+=1;

@@ -1,0 +1,111 @@
+import React, { Component, useEffect, useState } from 'react'
+import { useRouter } from 'next/router'
+
+import { setupAccounts, w3, contractws } from '../helpers/Web3Helper'
+
+
+function zip(arr1, arr2, out = {}) {
+  arr1.map((val, idx) => {
+    out[val] = arr2[idx]
+  })
+  return out
+}
+
+{{#each contracts}} 
+  import View{{@key}} from '../components/{{@key}}/View.js'
+{{/each}}
+
+export default (props) => {
+  const router = useRouter()
+
+  const [address, setAddress] = useState('')
+
+
+  {{#each contracts}} 
+
+    const [messages_{{@key}}_count, set_messages_{{@key}}_count] = useState(0)
+    const [messages_{{@key}}, set_messages_{{@key}}] = useState(null)
+
+  {{/each}}
+
+
+  useEffect(() => {
+      if(router.query.address){
+        setAddress(router.query.address)
+      }
+    console.log('hi',router.query)
+   } )
+
+
+  async function setUpListeners() {
+      contractws.events.allEvents(
+        'allEvents',
+        {
+          fromBlock: 'latest',
+        },
+        async function (err, data) {
+          await fetchMessages()
+        },
+      )
+    }
+
+    async function fetchMessages() {
+      if(address == ''){return}
+    {{#each contracts}}
+      var messages_{{@key}}_count = await contractws.methods.get_{{@key}}_user_length(address).call()
+      set_messages_{{@key}}_count ( messages_{{@key}}_count )
+
+      if(messages_{{@key}}_count > 0 ){
+        const offset_{{@key}} = messages_{{@key}}_count - 1
+        var messages = await contractws.methods.get_last_{{@key}}_user_N(address,1, offset_{{@key}}).call()
+        var value = []
+        var keys = []
+        {{#each this.readRules.gets}}
+          keys.push(`{{this}}`)
+          value.push(messages[{{@key}}][0])          
+        {{/each}}
+
+        var msg = zip(keys,value)
+
+        set_messages_{{@key}}( msg)
+      }
+    {{/each}}
+  }
+
+  useEffect(() => {
+     setUpListeners()
+  })
+
+  useEffect(() => {
+   
+
+  
+     fetchMessages()
+
+  },[address])
+
+  return( <div className="container">
+    
+  
+    {{#each contracts}} 
+      <div>{{@key}}</div>
+    {{/each}} 
+
+          {{#each contracts}} 
+        <nav className="panel is-primary">
+          <p className="panel-heading">
+              <span className="bd-snippet-tag bd-is-example"><a className="has-text-white" href="/{{@key}}">{{@key}}</a> </span>
+              <span className="tag">{messages_{{@key}}_count}</span>
+          </p>
+          <div className="panel-block">
+          {
+            messages_{{@key}} && (
+              <View{{@key}} data={ messages_{{@key}} } />
+            )
+          }
+          </div>
+        </nav>
+      {{/each}}
+    
+   </div>)
+}

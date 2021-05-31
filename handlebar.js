@@ -19,6 +19,15 @@ const template = Handlebars.compile(index_template)
 
 fs.writeFileSync('site/pages/index.js', template(contracts))
 
+
+
+
+let user_page_template = Handlebars.compile(
+  fs.readFileSync('tokenhost-web-template/pages/user.hbs', 'utf-8'),
+)
+
+fs.writeFileSync('site/pages/user.js', user_page_template(contracts))
+
 let nav_template = Handlebars.compile(
   fs.readFileSync('tokenhost-web-template/components/Nav.hbs', 'utf-8'),
 )
