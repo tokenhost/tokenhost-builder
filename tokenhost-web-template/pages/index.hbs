@@ -34,7 +34,7 @@ export default class Index extends React.Component {
         fromBlock: 'latest',
       },
       async function (err, data) {
-        await that.fetch()
+        await that.fetchMessages()
       },
     )
   }
