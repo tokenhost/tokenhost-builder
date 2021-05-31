@@ -9,7 +9,7 @@ export default (props) => {
     <div className='container'>
       <div className='columns'>
         <div className='column is-one-quarter'>
-          <User sender='{data.sender}' key='{props.key}' />
+          <User sender={data.sender} key={props.key} />
         </div>
         <div className='column'>
           {{#each contract_data.initRules.passIn}}
