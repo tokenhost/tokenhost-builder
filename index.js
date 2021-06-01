@@ -26,7 +26,7 @@ for (const ContractName in contracts) {
   const contract = contracts[ContractName]
   const fields = contract.fields
 
-  template += `contract ${ContractName}{\n\n`
+  template += `contract ${ContractName}_contract{\n\n`
   for (const field in contract.fields) {
     const field_type = fields[field]
     template += `\t${field_type} ${field};\n`
@@ -35,7 +35,7 @@ for (const ContractName in contracts) {
   //now create init method
 
   //define function name
-  template += `\n\tfunction ${ContractName}(`
+  template += `\n\tfunction ${ContractName}_contract(`
 
   //add all the pass-in methods
   contract['initRules']['passIn'].forEach((element, index) => {
@@ -118,7 +118,7 @@ function get_${ContractName}_list_length() returns (uint256){
 
   template += `
   function get_${ContractName}_N(uint256 index) returns (${get_all_types_string}){
-      return ${ContractName}(${ContractName}_list[index]).getall();
+      return ${ContractName}_contract(${ContractName}_list[index]).getall();
   }
 
 
@@ -129,7 +129,7 @@ function get_${ContractName}_list_length() returns (uint256){
     template += `${type}[] memory ${field} = new ${type}[](count);`
   })
   template += `for (uint i = offset; i < count; i++) {
-        ${ContractName}  my${ContractName} = ${ContractName}(${ContractName}_list[i+offset]);`
+        ${ContractName}_contract  my${ContractName} = ${ContractName}_contract(${ContractName}_list[i+offset]);`
   contract.readRules.gets.forEach((field) => {
     template += `${field}[i+offset] = my${ContractName}.get_${field}();`
   })
@@ -145,7 +145,7 @@ function get_${ContractName}_list_length() returns (uint256){
         return user_map[user].${ContractName}_list_length;
       }
       function get_${ContractName}_user_N(address user,uint256 index) returns (${get_all_types_string}){
-        return ${ContractName}(user_map[user].${ContractName}_list[index]).getall();
+        return ${ContractName}_contract(user_map[user].${ContractName}_list[index]).getall();
     }
 
 
@@ -155,10 +155,9 @@ function get_${ContractName}_list_length() returns (uint256){
     const type = fields[field]
     template += `${type}[] memory ${field} = new ${type}[](count);`
   })
-  template += `for (uint i = offset; i < count; i++) {
-        ${ContractName}  my${ContractName} = ${ContractName}(user_map[user].${ContractName}_list[i+offset]);`
-  contract.readRules.gets.forEach((field) => {
-    template += `${field}[i+offset] = my${ContractName}.get_${field}();`
+  template += `for (uint i = offset; i < count; i++) {`
+    contract.readRules.gets.forEach((field) => {
+    template += `${field}[i+offset] = ${ContractName}_contract(user_map[user].${ContractName}_list[i+offset]).get_${field}();`
   })
   template += `}
     return (${get_all_fields_string});
@@ -214,7 +213,7 @@ function new_${ContractName}(`
   
   
         
-  address mynew = address(new ${ContractName}({`
+  address mynew = address(new ${ContractName}_contract({`
 
   //add all the pass-in methods
   contract['initRules']['passIn'].forEach((element, index) => {
