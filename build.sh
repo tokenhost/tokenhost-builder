@@ -21,5 +21,5 @@ cd site/contracts/
 node deploy.js
 )
 
-cd site;
-yarn run dev
+#cd site;
+#yarn run dev
