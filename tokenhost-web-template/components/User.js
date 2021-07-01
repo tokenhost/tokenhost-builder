@@ -1,4 +1,4 @@
-import { fetchDocumentFromCollectionByFieldName } from '../lib/utility'
+import { fetchUserByAddress } from '../lib/utility'
 import React, { Component, useEffect, useState } from 'react'
 
 export default (props) => {
@@ -7,11 +7,7 @@ export default (props) => {
   const [user, setUser] = useState({})
   useEffect(
     function () {
-      fetchDocumentFromCollectionByFieldName({
-        collectionName: 'users',
-        fieldName: 'address',
-        value: address,
-      }).then((result) => {
+      fetchUserByAddress(address).then((result) => {
         setUser(result)
       })
     },

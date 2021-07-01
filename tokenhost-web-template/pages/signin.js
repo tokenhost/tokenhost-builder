@@ -1,93 +1,163 @@
-import React, { Component, Fragment } from 'react'
-import Head from 'next/head'
-import getConfig from 'next/config'
-import Router from 'next/router'
-import { auth, firebase, firestore } from '../lib/db'
-import { fetchDocumentFromCollectionByFieldName, isEmpty } from '../lib/utility'
-import { fetchUserItems } from '../lib/utility'
-import { base } from '../lib/db'
+import React, { Component, Fragment } from 'react';
+import Head from 'next/head';
+import getConfig from 'next/config';
+import Router from 'next/router';
+import { ToastContainer, toast } from 'react-toastify';
+import 'react-toastify/dist/ReactToastify.css';
 
 import { generateKeys } from '../helpers/Web3Helper'
 
 const { publicRuntimeConfig } = getConfig()
+const toastOption = {
+  position: "top-center",
+  autoClose: 2001,
+  hideProgressBar: false,
+  closeOnClick: true,
+  pauseOnHover: true,
+  draggable: true,
+  progress: undefined,
+}
 
 export default class signin extends Component {
   _isMounted = false
 
   constructor(props) {
     super(props)
-    this.state = { hideContent: true }
+    this.state = {
+      hideContent: true,
+      register: false,
+      loading: false,
+      authData: {
+        username: "",
+        email: "",
+        password: ""
+      }
+    }
   }
 
   componentDidMount() {
     this._isMounted = true
-    auth.onAuthStateChanged((user) => {
-      if (user) {
-        Router.push('/')
-      } else if (this._isMounted) {
-        this.setState({ hideContent: false })
-      }
-    })
   }
 
   componentWillUnmount() {
     this._isMounted = false
   }
   createKey = (eth_account) => {
-    const x = fetchUserItems('keys').then((keys) => {
-      if (!keys.length) {
-        eth_account['userId'] = localStorage.getItem('USER')
-        eth_account[
-          'createdAt'
-        ] = firebase.firestore.FieldValue.serverTimestamp()
-        base.addToCollection('keys', eth_account).then(function () {
-          Router.push('/')
-        })
-      }
+    
+    fetch(`${process.env.REACT_APP_GOOGLE_AUTH_DOMAIN}/fetch-user-key`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      credentials: 'include',
+      withCredentials: true,
+      body: JSON.stringify(eth_account),
     })
+      .then(response => {
+        return response.text();
+      })
+      .then(async data => {
+        const result = JSON.parse(data);
+        this.setState({ loading: false });
+        if (result.status) return true;
+        else toast.error(result.message, toastOption);
+      });
   }
-  authenticate = (provider) => {
-    const authProvider = new firebase.auth[`${provider}AuthProvider`]()
-    auth.signInWithPopup(authProvider).then((result) => {
-      const authUser = {
-        uid: result.user.uid,
-        email: result.user.email,
-        name: result.user.displayName,
-
-        photo: result.user.photoURL,
-      }
-      this.authHandler(authUser)
+  addAddressToUser = (eth_account) => {
+    
+    fetch(`${process.env.REACT_APP_GOOGLE_AUTH_DOMAIN}/add-user-address`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      credentials: 'include',
+      withCredentials: true,
+      body: JSON.stringify(eth_account),
     })
+      .then(response => {
+        return response.text();
+      })
+      .then(async data => {
+        const result = JSON.parse(data);
+        this.setState({ loading: false });
+        if (result.status) return true;
+        else toast.error(result.message, toastOption);
+      });
+  }
+  
+  signIn() {
+    const email = this.state.authData.email;
+    const password = this.state.authData.password;
+
+    if (!email.length || !password.length) {
+      toast.warn("Please fill all fields", toastOption);
+      return false;
+    }
+    this.setState({ loading: true });
+
+    fetch(`${process.env.REACT_APP_GOOGLE_AUTH_DOMAIN}/signin`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      credentials: 'include',
+      withCredentials: true,
+      body: JSON.stringify({ email: email, password: password }),
+    })
+      .then(response => {
+        return response.text();
+      })
+      .then(async data => {
+        const result = JSON.parse(data);
+        this.setState({ loading: false });
+        if (result.status) {
+          const eth_account = await generateKeys()
+          await this.createKey(eth_account);
+          await this.addAddressToUser(eth_account);
+          Router.push('/');
+        }
+        else toast.error(result.message, toastOption);
+      });
   }
 
-  authHandler = (authUser) => {
-    localStorage.setItem('USER', authUser.uid)
+  signUp() {
+    const username = this.state.authData.username;
+    const email = this.state.authData.email;
+    const password = this.state.authData.password;
 
-    // check if user exists in users collection
-    fetchDocumentFromCollectionByFieldName({
-      collectionName: 'users',
-      fieldName: 'uid',
-      value: authUser.uid,
-    }).then((foundUser) => {
-      const eth_account = generateKeys()
+    if (!username.length || !email.length || !password.length) {
+      toast.warn("Please fill all fields", toastOption);
+      return false;
+    }
 
-      if (isEmpty(foundUser)) {
-        // it is an empty object
-        // add the user to users collection and go to home page
-        authUser['address'] = eth_account['address']
-        firestore
-          .collection('users')
-          .add(authUser)
-          .then((createdUser) => {
-            this.createKey(eth_account)
-          })
-      } else {
-        //this.createKey(eth_account)
-        // TODO there's a chance that someone gets their account creating but then aborts before creating a key, in that case we'd need to update the 'address' field in their user id
-        //since this is a proof of concept leave this for the future where we may refactor all this anyway
-        Router.push('/')
-      }
+    this.setState({ loading: true });
+
+    fetch(`${process.env.REACT_APP_GOOGLE_AUTH_DOMAIN}/signup`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({ username: username, email: email, password: password }),
     })
+      .then(response => {
+        return response.text();
+      })
+      .then(data => {
+        const result = JSON.parse(data);
+        this.setState({ loading: false });
+        if (result.status) {
+          toast.success("Registration was successful.", toastOption);
+          this.setState({ register: false });
+        }
+        else
+          toast.error(result.message, toastOption);
+      });
+  }
+
+  handleInput(e) {
+    let userAuthData = this.state.authData;
+    userAuthData[e.target.name] = e.target.value;
+    this.setState({ authData: userAuthData });
   }
 
   render() {
@@ -104,19 +174,119 @@ export default class signin extends Component {
             href="https://use.fontawesome.com/releases/v5.6.3/css/all.css"
           />
         </Head>
-        <div className="columns">
-          <div className="column is-one-third is-offset-one-third has-text-centered button-container">
-            <button
-              className="button google is-fullwidth is-rounded p-5 is-inverted"
-              onClick={() => this.authenticate('Google')}
-            >
-              <span className="icon">
-                <i className="fab fa-google" />
-              </span>
-              <span>Login with Google</span>
-            </button>
-          </div>
-        </div>
+        {
+          this.state.loading ?
+            <div className="loader-wrapper">
+              <span className="loader"></span>
+            </div>
+            :
+            <>
+              <div className="columns">
+                <div className="column is-one-third is-offset-one-third">
+                  {
+                    !this.state.register ?
+                      <form action="" className="box" onSubmit={() => this.signIn()}>
+                        <h3 className="title is-3 has-text-centered">Login</h3>
+                        <div className="field">
+                          <div className="buttons is-flex is-justify-content-space-around">
+                            <a
+                              className="button google is-rounded px-4 py-2 is-inverted is-small"
+                              href={`${process.env.REACT_APP_GOOGLE_AUTH_DOMAIN}/auth/google`}
+                            >
+                              <span className="icon">
+                                <i className="fab fa-google" />
+                              </span>
+                              <span>Login with Google</span>
+                            </a>
+                            <a
+                              className="button google is-rounded px-4 py-2 is-inverted is-small"
+                              href={`${process.env.REACT_APP_GOOGLE_AUTH_DOMAIN}/auth/facebook`}
+                            >
+                              <span className="icon">
+                                <i className="fab fa-facebook" />
+                              </span>
+                              <span>Login with Facebook</span>
+                            </a>
+                          </div>
+                        </div>
+                        <div className="field">
+                          <label htmlFor="email" className="label">Email</label>
+                          <div className="control has-icons-left">
+                            <input type="email" name="email" id="email" placeholder="e.g. bobsmith@gmail.com" className="input" onChange={(e) => this.handleInput(e)} required />
+                            <span className="icon is-small is-left">
+                              <i className="fa fa-envelope"></i>
+                            </span>
+                          </div>
+                        </div>
+                        <div className="field">
+                          <label htmlFor="password" className="label">Password</label>
+                          <div className="control has-icons-left">
+                            <input type="password" name="password" id="password" placeholder="*******" className="input" onChange={(e) => this.handleInput(e)} required />
+                            <span className="icon is-small is-left">
+                              <i className="fa fa-lock"></i>
+                            </span>
+                          </div>
+                        </div>
+                        <div className="field">
+                          <div className="buttons is-justify-content-space-between">
+                            <button type="button" className="button is-rounded is-success" onClick={() => this.setState({ register: true })}>
+                              Sign Up
+                            </button>
+                            <button type="submit" className="button is-rounded is-success" onClick={() => this.signIn()}>
+                              Login
+                            </button>
+                          </div>
+                        </div>
+                      </form>
+                      :
+                      <form action="" className="box" onSubmit={() => this.signIn()}>
+                        <h3 className="title is-3 has-text-centered">Register</h3>
+                        <div className="field">
+                          <label htmlFor="username" className="label">Name</label>
+                          <div className="control has-icons-left">
+                            <input type="text" name="username" id="username" placeholder="roseman" className="input" onChange={(e) => this.handleInput(e)} required />
+                            <span className="icon is-small is-left">
+                              <i className="fa fa-account"></i>
+                            </span>
+                          </div>
+                        </div>
+                        <div className="field">
+                          <label htmlFor="email" className="label">Email</label>
+                          <div className="control has-icons-left">
+                            <input type="email" name="email" id="email" placeholder="e.g. bobsmith@gmail.com" className="input" onChange={(e) => this.handleInput(e)} required />
+                            <span className="icon is-small is-left">
+                              <i className="fa fa-envelope"></i>
+                            </span>
+                          </div>
+                        </div>
+                        <div className="field">
+                          <label htmlFor="password" className="label">Password</label>
+                          <div className="control has-icons-left">
+                            <input type="password" name="password" id="password" placeholder="*******" className="input" onChange={(e) => this.handleInput(e)} required />
+                            <span className="icon is-small is-left">
+                              <i className="fa fa-lock"></i>
+                            </span>
+                          </div>
+                        </div>
+                        <div className="field">
+                          <div className="buttons is-justify-content-space-between">
+                            <button type="button" className="button is-rounded is-success" onClick={() => this.setState({ register: false })}>
+                              Sign In
+                            </button>
+                            <button type="submit" className="button is-rounded is-success" onClick={() => this.signUp()}>
+                              Register
+                            </button>
+                          </div>
+                        </div>
+                      </form>
+                  }
+                </div>
+              </div>
+
+              <ToastContainer />
+            </>
+        }
+
         <style jsx>{`
           .button-container {
             margin-top: 2rem;
