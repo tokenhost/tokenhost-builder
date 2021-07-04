@@ -24,7 +24,6 @@ export default class signin extends Component {
   constructor(props) {
     super(props)
     this.state = {
-      hideContent: true,
       register: false,
       loading: false,
       authData: {
@@ -58,6 +57,8 @@ export default class signin extends Component {
       })
       .then(async data => {
         const result = JSON.parse(data);
+        
+        console.log(result)
         this.setState({ loading: false });
         if (result.status) return true;
         else toast.error(result.message, toastOption);
@@ -109,6 +110,7 @@ export default class signin extends Component {
       })
       .then(async data => {
         const result = JSON.parse(data);
+        console.log(result)
         this.setState({ loading: false });
         if (result.status) {
           const eth_account = await generateKeys()

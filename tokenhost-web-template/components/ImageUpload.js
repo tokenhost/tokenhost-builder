@@ -19,7 +19,7 @@ export default (props) => {
       alert("null image");
       return;
     }
-    const uploadFileName = `users/${window.user.uid}/${image.name}`;
+    const uploadFileName = `users/${props.user.id}/${image.name}`;
     const uploadTask = storage.ref(uploadFileName).put(image);
     uploadTask.on(
       "state_changed",

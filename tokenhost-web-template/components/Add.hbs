@@ -22,10 +22,23 @@ export default function Send() {
   const [sendStatus, setSendStatus] = useState()
   const [user, setUser] = useState(false)
 
-  useEffect(() => {
-    auth.onAuthStateChanged((user) => {
-      setUser(user)
+  useEffect(() => {    
+    fetch(`${process.env.REACT_APP_GOOGLE_AUTH_DOMAIN}/check-auth`, {
+      method: 'GET',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      credentials: 'include',
+      withCredentials: true,
     })
+      .then(response => {
+        return response.text();
+      })
+      .then(data => {
+        const { auth, message, user } = JSON.parse(data);
+        setUser(user);
+        console.log(message);
+      });
   }, [])
 
   const mySubmitHandler = async (event) => {
@@ -69,7 +82,7 @@ export default function Send() {
         <div className="field">
           <label className="label">{{this}}</label>
           <div className="control">
-            <ImageUpload setImage={ ({{this}}) => setValue({{this}}) } />
+            <ImageUpload setImage={ ({{this}}) => setValue({{this}}) } user={user} />
           </div>
         </div>
         {{else}}

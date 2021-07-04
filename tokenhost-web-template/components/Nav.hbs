@@ -24,22 +24,49 @@ export default class TheNav extends Component {
         signedIn: false,
       })
     }
-    Router.push('/')
+    await this.handleSignOut()
+  }
+
+  handleSignOut = () => {
+    fetch(`${process.env.REACT_APP_GOOGLE_AUTH_DOMAIN}/logout`, {
+      method: 'GET',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      credentials: 'include',
+      withCredentials: true,
+    })
+      .then(response => {
+        return response.text();
+      })
+      .then(data => {
+        this.setState({ signedIn: false });
+        Router.push('/');
+      });
   }
 
   componentDidMount() {
     this._isMounted = true
-    auth.onAuthStateChanged((user) => {
-      if (user) {
-        window.user = user
-        // signed in
-        if (this._isMounted) {
-          this.setState({
-            signedIn: true,
-          })
-        }
-      }
+    fetch(`${process.env.REACT_APP_GOOGLE_AUTH_DOMAIN}/check-auth`, {
+      method: 'GET',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      credentials: 'include',
+      withCredentials: true,
     })
+      .then(response => {
+        return response.text();
+      })
+      .then(data => {
+        const { auth, message } = JSON.parse(data);
+        this.setState({ signedIn: auth });
+        console.log(message);
+      });
+  }
+
+  componentWillMount() {
+    Router.events.on('routeChangeStart', this.handleRouteChange)
   }
 
   componentWillUnmount() {
