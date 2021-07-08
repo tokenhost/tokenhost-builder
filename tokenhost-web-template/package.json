@@ -5,7 +5,7 @@
   "scripts": {
     "deploy": "node contracts/deploy.js",
     "dev": "next dev",
-    "build": "next build",
+    "build": "next build && next export",
     "start": "next start",
     "prettier": "find -type f -name   '*.{js,json,css,md}' -exec find prettier --single-quote --write",
     "hbs": "hbs --data ./contracts.json --stdout  ./template_file.hbs  "

@@ -8,9 +8,45 @@ let contracts = program.contracts
 let template = `
 pragma solidity ^0.4.26;
 pragma experimental ABIEncoderV2;
+
 `
 
+function strip_special_characters(mystring){
+		return mystring.replace(/[^\w\s]/gi, '').split(" ").join("_")
+}
+
+
+
+//strip special characters and replace spaces with _
+for (const ContractName in contracts) {
+	const clean_contract_name = strip_special_characters(ContractName);
+	console.error("clean name", clean_contract_name);
+	if(clean_contract_name != ContractName){
+		contracts[clean_contract_name] = contracts[ContractName]
+		delete contracts[ContractName]
+	}
+}
+
+for (const ContractName in contracts) {
+  const contract = contracts[ContractName]
+  let fields = contract.fields
+  for(var field in fields){
+		const clean_field_name = strip_special_characters(field);
+		if(clean_field_name != field){
+						fields[clean_field_name] = fields[field]
+						delete fields[field];
+		}
+  }
+	contract['initRules']['passIn'] = contract['initRules']['passIn'].map(strip_special_characters)
+	contract['readRules']['gets'] = contract['readRules']['gets'].map(strip_special_characters)
+
+console.error('pass in stuff', contract);
+
+}
+
+console.error(contracts);
 //convert image to string:
+
 for (const ContractName in contracts) {
   const contract = contracts[ContractName]
   let fields = contract.fields
@@ -25,6 +61,7 @@ for (const ContractName in contracts) {
 for (const ContractName in contracts) {
   const contract = contracts[ContractName]
   const fields = contract.fields
+  console.error(contract)
 
   template += `contract ${ContractName}_contract{\n\n`
   for (const field in contract.fields) {
@@ -110,28 +147,37 @@ function get_${ContractName}_list_length() returns (uint256){
     const type = fields[field]
     get_all_types.push(type)
     get_all_types_array.push(type + '[]')
-    get_all_fields.push(field)
+    get_all_fields.push("getter."+field)
   })
   const get_all_fields_string = get_all_fields.join(', ')
   const get_all_types_string = get_all_types.join(', ')
   const get_all_types_array_string = get_all_types_array.join(', ')
 
-  template += `
+	//getter
+
+	template += `struct ${ContractName}_getter{`
+  contract.readRules.gets.forEach((field) => {
+    const type = fields[field]
+    template += `${type}[] ${field};`
+  })
+
+
+
+  template += `}
   function get_${ContractName}_N(uint256 index) returns (${get_all_types_string}){
       return ${ContractName}_contract(${ContractName}_list[index]).getall();
   }
 
 
   
-  function get_last_${ContractName}_N(uint256 count, uint256 offset) returns (${get_all_types_array_string}){`
-  contract.readRules.gets.forEach((field) => {
-    const type = fields[field]
-    template += `${type}[] memory ${field} = new ${type}[](count);`
-  })
+  function get_last_${ContractName}_N(uint256 count, uint256 offset) returns (${get_all_types_array_string}){
+
+        ${ContractName}_getter getter;
+	`
   template += `for (uint i = offset; i < count; i++) {
         ${ContractName}_contract  my${ContractName} = ${ContractName}_contract(${ContractName}_list[i+offset]);`
   contract.readRules.gets.forEach((field) => {
-    template += `${field}[i+offset] = my${ContractName}.get_${field}();`
+    template += `getter.${field}[i+offset] = my${ContractName}.get_${field}();`
   })
   template += `}
     return (${get_all_fields_string});
@@ -150,14 +196,12 @@ function get_${ContractName}_list_length() returns (uint256){
 
 
      
-  function get_last_${ContractName}_user_N(address user,uint256 count, uint256 offset) returns (${get_all_types_array_string}){`
-  contract.readRules.gets.forEach((field) => {
-    const type = fields[field]
-    template += `${type}[] memory ${field} = new ${type}[](count);`
-  })
+  function get_last_${ContractName}_user_N(address user,uint256 count, uint256 offset) returns (${get_all_types_array_string}){
+        ${ContractName}_getter getter;
+	`
   template += `for (uint i = offset; i < count; i++) {`
     contract.readRules.gets.forEach((field) => {
-    template += `${field}[i+offset] = ${ContractName}_contract(user_map[user].${ContractName}_list[i+offset]).get_${field}();`
+    template += `getter.${field}[i+offset] = ${ContractName}_contract(user_map[user].${ContractName}_list[i+offset]).get_${field}();`
   })
   template += `}
     return (${get_all_fields_string});
