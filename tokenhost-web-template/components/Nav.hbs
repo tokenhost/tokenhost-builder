@@ -1,10 +1,12 @@
-import React, { Component, Fragment } from 'react'
+import React, { Component } from 'react'
 import Link from 'next/link'
 import Router from 'next/router'
-import getConfig from 'next/config'
-import { auth } from '../lib/db'
 
-const { publicRuntimeConfig } = getConfig()
+
+import { generateKeys } from '../helpers/Web3Helper'
+
+
+
 
 export default class TheNav extends Component {
   _isMounted = false
@@ -13,18 +15,12 @@ export default class TheNav extends Component {
     super(props)
     this.state = {
       signedIn: false,
+      token: null
     }
   }
 
   signOut = async () => {
-    await auth.signOut()
-    localStorage.removeItem('USER')
-    if (this._isMounted) {
-      this.setState({
-        signedIn: false,
-      })
-    }
-    await this.handleSignOut()
+    this.handleSignOut()
   }
 
   handleSignOut = () => {
@@ -45,8 +41,53 @@ export default class TheNav extends Component {
       });
   }
 
-  componentDidMount() {
-    this._isMounted = true
+
+  createKey = (eth_account) => {
+    fetch(`${process.env.REACT_APP_GOOGLE_AUTH_DOMAIN}/fetch-user-key`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      credentials: 'include',
+      withCredentials: true,
+      body: JSON.stringify(eth_account),
+    })
+      .then(response => {
+        return response.text();
+      })
+      .then(data => {
+        const result = JSON.parse(data);
+
+        if (result.status) {
+          this.addAddressToUser(result.keyData);
+        }
+        this.setState({ loading: false });
+        if (result.status) return true;
+        return false;
+      });
+  }
+  addAddressToUser = (eth_account) => {
+    fetch(`${process.env.REACT_APP_GOOGLE_AUTH_DOMAIN}/add-user-address`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      credentials: 'include',
+      withCredentials: true,
+      body: JSON.stringify(eth_account),
+    })
+      .then(response => {
+        return response.text();
+      })
+      .then(data => {
+        const result = JSON.parse(data);
+        this.setState({ loading: false });
+        if (result.status) return true;
+        return false;
+      });
+  }
+
+  handleRouteChange = () => {
     fetch(`${process.env.REACT_APP_GOOGLE_AUTH_DOMAIN}/check-auth`, {
       method: 'GET',
       headers: {
@@ -65,8 +106,31 @@ export default class TheNav extends Component {
       });
   }
 
-  componentWillMount() {
+  componentDidMount() {
+    this._isMounted = true
+    
     Router.events.on('routeChangeStart', this.handleRouteChange)
+
+    fetch(`${process.env.REACT_APP_GOOGLE_AUTH_DOMAIN}/check-auth`, {
+      method: 'GET',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      credentials: 'include',
+      withCredentials: true,
+    })
+      .then(response => {
+        return response.text();
+      })
+      .then(async data => {
+        const { auth, message } = JSON.parse(data);
+        if (auth) {
+          const eth_account = await generateKeys()
+          this.createKey(eth_account);
+        }
+        this.setState({ signedIn: auth });
+        console.log(message);
+      });
   }
 
   componentWillUnmount() {
