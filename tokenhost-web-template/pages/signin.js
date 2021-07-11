@@ -170,7 +170,7 @@ export default class signin extends Component {
     return (
       <Fragment>
         <Head>
-          <title>Sign in | {publicRuntimeConfig.pageTitle}</title>
+          <title>Sign in</title>
           <link
             rel="stylesheet"
             href="https://use.fontawesome.com/releases/v5.6.3/css/all.css"
