@@ -2,40 +2,6 @@ const Handlebars = require('handlebars')
 const fs = require('fs')
 let contracts = JSON.parse(fs.readFileSync('contracts.json'))
 
-
-function strip_special_characters(mystring){
-    return mystring.replace(/[^\w\s]/gi, '').split(" ").join("_")
-}
-
-
-//strip special characters and replace spaces with _
-for (const ContractName in contracts.contracts) {
-  const clean_contract_name = strip_special_characters(ContractName);
-  console.error("clean name", clean_contract_name);
-  if(clean_contract_name != ContractName){
-    contracts.contracts[clean_contract_name] = contracts.contracts[ContractName]
-    delete contracts.contracts[ContractName]
-  }
-}
-
-for (const ContractName in contracts.contracts) {
-  const contract = contracts.contracts[ContractName]
-  let fields = contract.fields
-  for(var field in fields){
-    const clean_field_name = strip_special_characters(field);
-    if(clean_field_name != field){
-            fields[clean_field_name] = fields[field]
-            delete fields[field];
-    }
-  }
-  contract['initRules']['passIn'] = contract['initRules']['passIn'].map(strip_special_characters)
-  contract['readRules']['gets'] = contract['readRules']['gets'].map(strip_special_characters)
-
-console.error('pass in stuff', contract);
-
-}
-
-
 let index_template = fs.readFileSync(
   'tokenhost-web-template/pages/index.hbs',
   'utf-8',
