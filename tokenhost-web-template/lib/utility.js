@@ -23,7 +23,7 @@ function fetchUserItems(collectionName) {
 function fetchUserByAddress(address) {
   return new Promise((resolve, reject) => {
     fetch(`${process.env.REACT_APP_GOOGLE_AUTH_DOMAIN}/fetch-user-by-address`, {
-      method: 'GET',
+      method: 'POST',
       headers: {
         'Content-Type': 'application/json',
       },
