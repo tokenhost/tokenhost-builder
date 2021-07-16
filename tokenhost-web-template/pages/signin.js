@@ -1,11 +1,12 @@
-import React, { Component, Fragment } from 'react';
-import Head from 'next/head';
-import getConfig from 'next/config';
-import Router from 'next/router';
+import React, { Component, Fragment } from 'react'
+import Head from 'next/head'
+import getConfig from 'next/config'
+import Router from 'next/router'
+import Web3 from 'web3';
 import { ToastContainer, toast } from 'react-toastify';
 import 'react-toastify/dist/ReactToastify.css';
 
-import { generateKeys } from '../helpers/Web3Helper'
+let web3 = undefined; // Will hold the web3 instance
 
 const { publicRuntimeConfig } = getConfig()
 const toastOption = {
@@ -19,13 +20,15 @@ const toastOption = {
 }
 
 export default class signin extends Component {
-  _isMounted = false
 
   constructor(props) {
     super(props)
     this.state = {
       register: false,
+      loginWithEmail: false,
+      emailInput: false,
       loading: false,
+      publicAddress: "",
       authData: {
         username: "",
         email: "",
@@ -34,58 +37,6 @@ export default class signin extends Component {
     }
   }
 
-  componentDidMount() {
-    this._isMounted = true
-  }
-
-  componentWillUnmount() {
-    this._isMounted = false
-  }
-  createKey = (eth_account) => {
-    
-    fetch(`${process.env.REACT_APP_GOOGLE_AUTH_DOMAIN}/fetch-user-key`, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-      },
-      credentials: 'include',
-      withCredentials: true,
-      body: JSON.stringify(eth_account),
-    })
-      .then(response => {
-        return response.text();
-      })
-      .then(async data => {
-        const result = JSON.parse(data);
-        
-        console.log(result)
-        this.setState({ loading: false });
-        if (result.status) return true;
-        else toast.error(result.message, toastOption);
-      });
-  }
-  addAddressToUser = (eth_account) => {
-    
-    fetch(`${process.env.REACT_APP_GOOGLE_AUTH_DOMAIN}/add-user-address`, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-      },
-      credentials: 'include',
-      withCredentials: true,
-      body: JSON.stringify(eth_account),
-    })
-      .then(response => {
-        return response.text();
-      })
-      .then(async data => {
-        const result = JSON.parse(data);
-        this.setState({ loading: false });
-        if (result.status) return true;
-        else toast.error(result.message, toastOption);
-      });
-  }
-  
   signIn() {
     const email = this.state.authData.email;
     const password = this.state.authData.password;
@@ -96,7 +47,7 @@ export default class signin extends Component {
     }
     this.setState({ loading: true });
 
-    fetch(`${process.env.REACT_APP_GOOGLE_AUTH_DOMAIN}/signin`, {
+    fetch(`${process.env.REACT_APP_BACKEND_URL}/auth/email`, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
@@ -108,16 +59,10 @@ export default class signin extends Component {
       .then(response => {
         return response.text();
       })
-      .then(async data => {
+      .then(data => {
         const result = JSON.parse(data);
-        console.log(result)
         this.setState({ loading: false });
-        if (result.status) {
-          const eth_account = await generateKeys()
-          await this.createKey(eth_account);
-          await this.addAddressToUser(eth_account);
-          Router.push('/');
-        }
+        if (result.status) Router.push('/');
         else toast.error(result.message, toastOption);
       });
   }
@@ -134,7 +79,7 @@ export default class signin extends Component {
 
     this.setState({ loading: true });
 
-    fetch(`${process.env.REACT_APP_GOOGLE_AUTH_DOMAIN}/signup`, {
+    fetch(`${process.env.REACT_APP_BACKEND_URL}/signup`, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
@@ -156,6 +101,113 @@ export default class signin extends Component {
       });
   }
 
+
+  handleAuthenticate = ({ publicAddress, signature }) =>
+    fetch(`${process.env.REACT_APP_BACKEND_URL}/auth/metamask`, {
+      body: JSON.stringify({ publicAddress, signature }),
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      credentials: 'include',
+      withCredentials: true,
+      method: 'POST',
+    })
+    .then((response) => response.json())
+    .then(result => {
+      this.setState({ loading: false });
+      if (result.status) Router.push('/');
+      else toast.error(result.message, toastOption);
+      return true;
+    });
+
+  async handleSignMessage({ metamask, nonce }) {
+    try {
+      const signature = await web3?.eth.personal.sign(
+        `I am signing my one-time nonce: ${nonce}`,
+        web3.utils.toChecksumAddress(metamask),
+        '' // MetaMask will ignore the password argument here
+      );
+
+      return { publicAddress: metamask, signature };
+    } catch (err) {
+      console.log(err);
+      this.setState({ loading: false });
+      return false;
+    }
+  }
+
+  handleMetamaskSignup() {
+    if (!this.state.emailInput) {
+      this.setState({ loading: false });
+      this.setState({ emailInput: true });
+      return false;
+    }
+
+    this.setState({ loading: true });
+    this.setState({ emailInput: false });
+    const publicAddress = this.state.publicAddress;
+    fetch(`${process.env.REACT_APP_BACKEND_URL}/metamask/users`, {
+      body: JSON.stringify({ email: this.state.authData.email, publicAddress: publicAddress }),
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      method: 'POST',
+    }).then((response) => response.json());
+  }
+
+  async handleLoginWithMetamask() {
+    // Check if MetaMask is installed
+    if (!(window).ethereum) {
+      window.alert('Please install MetaMask first.');
+      return;
+    }
+
+    if (!web3) {
+      try {
+        // Request account access if needed
+        await (window).ethereum.enable();
+
+        // We don't know window.web3 version, so we use our own instance of Web3
+        // with the injected provider given by MetaMask
+        web3 = new Web3((window).ethereum);
+      } catch (error) {
+        window.alert('You need to allow MetaMask.');
+        return;
+      }
+    }
+
+    const coinbase = await web3.eth.getCoinbase();
+    if (!coinbase) {
+      window.alert('Please activate MetaMask first.');
+      return;
+    }
+
+    const publicAddress = coinbase.toLowerCase();
+
+    this.setState({ publicAddress: publicAddress })
+    this.setState({ loading: true });
+
+    // Look if user with current publicAddress is already present on backend
+    fetch(
+      `${process.env.REACT_APP_BACKEND_URL}/metamask/users?publicAddress=${publicAddress}`
+    )
+      .then((response) => response.json())
+      // If yes, retrieve it. If no, create it.
+      .then((result) =>
+        result.user ? result.user : this.handleMetamaskSignup()
+      )
+      // Popup MetaMask confirmation modal to sign message
+      .then((result) => this.handleSignMessage(result))
+      // Send signature to backend on the /auth route
+      .then(this.handleAuthenticate)
+    // Pass accessToken back to parent component (to save it in localStorage)
+    // .then()
+    // .catch((err) => {
+    //   window.alert(err);
+    //   setLoading(false);
+    // });
+  }
+
   handleInput(e) {
     let userAuthData = this.state.authData;
     userAuthData[e.target.name] = e.target.value;
@@ -163,14 +215,11 @@ export default class signin extends Component {
   }
 
   render() {
-    if (this.state.hideContent) {
-      return null
-    }
 
     return (
       <Fragment>
         <Head>
-          <title>Sign in</title>
+          <title>Sign in | {publicRuntimeConfig.pageTitle}</title>
           <link
             rel="stylesheet"
             href="https://use.fontawesome.com/releases/v5.6.3/css/all.css"
@@ -186,31 +235,50 @@ export default class signin extends Component {
               <div className="columns">
                 <div className="column is-one-third is-offset-one-third">
                   {
-                    !this.state.register ?
-                      <form action="" className="box" onSubmit={() => this.signIn()}>
-                        <h3 className="title is-3 has-text-centered">Login</h3>
-                        <div className="field">
-                          <div className="buttons is-flex is-justify-content-space-around">
-                            <a
-                              className="button google is-rounded px-4 py-2 is-inverted is-small"
-                              href={`${process.env.REACT_APP_GOOGLE_AUTH_DOMAIN}/auth/google`}
-                            >
-                              <span className="icon">
-                                <i className="fab fa-google" />
-                              </span>
-                              <span>Login with Google</span>
-                            </a>
-                            <a
-                              className="button google is-rounded px-4 py-2 is-inverted is-small"
-                              href={`${process.env.REACT_APP_GOOGLE_AUTH_DOMAIN}/auth/facebook`}
-                            >
-                              <span className="icon">
-                                <i className="fab fa-facebook" />
-                              </span>
-                              <span>Login with Facebook</span>
-                            </a>
-                          </div>
+                    !this.state.loginWithEmail &&
+                    <div className="box">
+                      <h3 className="title is-3 has-text-centered">Login</h3>
+                      <div className="field">
+                        <div className="buttons">
+                          <a
+                            target="_blank"
+                            className="button is-link is-fullwidth google px-4 py-2 mb-4"
+                            href={`${process.env.REACT_APP_BACKEND_URL}/auth/google`}
+                          >
+                            <span className="icon">
+                              <i className="fab fa-google" />
+                            </span>
+                            <span>Login with Google</span>
+                          </a>
+                          <a
+                            target="_blank"
+                            className="button is-link is-fullwidth facebook px-4 py-2 mb-4"
+                            href={`${process.env.REACT_APP_BACKEND_URL}/auth/facebook`}
+                          >
+                            <span className="icon">
+                              <i className="fab fa-facebook" />
+                            </span>
+                            <span>Login with Facebook</span>
+                          </a>
+                          <button
+                            className="button is-primary is-fullwidth metamask px-4 py-2 mb-4"
+                            onClick={() => this.setState({ loginWithEmail: true })}
+                          >
+                            <span className="icon">
+                              <i className="fas fa-envelope" />
+                            </span>
+                            <span>Login with Email</span>
+                          </button>
+                          <button
+                            className="button is-primary is-fullwidth metamask px-4 py-2 mb-4"
+                            onClick={() => this.handleLoginWithMetamask()}
+                          >
+                            <span>Login with Metamask</span>
+                          </button>
                         </div>
+                      </div>
+                      {
+                        this.state.emailInput &&
                         <div className="field">
                           <label htmlFor="email" className="label">Email</label>
                           <div className="control has-icons-left">
@@ -219,68 +287,99 @@ export default class signin extends Component {
                               <i className="fa fa-envelope"></i>
                             </span>
                           </div>
+
+                          <button
+                            className="button is-primary is-fullwidth metamask px-4 py-2 mt-4"
+                            onClick={() => this.handleMetamaskSignup()}
+                          >
+                            <span>Continue</span>
+                          </button>
                         </div>
-                        <div className="field">
-                          <label htmlFor="password" className="label">Password</label>
-                          <div className="control has-icons-left">
-                            <input type="password" name="password" id="password" placeholder="*******" className="input" onChange={(e) => this.handleInput(e)} required />
-                            <span className="icon is-small is-left">
-                              <i className="fa fa-lock"></i>
-                            </span>
-                          </div>
+                      }
+                    </div>
+                  }
+                  {
+                    this.state.loginWithEmail && !this.state.register &&
+                    <form action="" className="box" onSubmit={() => this.signIn()}>
+                      <h3 className="title is-3 has-text-centered">Login</h3>
+                      <div className="field">
+                        <label htmlFor="email" className="label">Email</label>
+                        <div className="control has-icons-left">
+                          <input type="email" name="email" id="email" placeholder="e.g. bobsmith@gmail.com" className="input" onChange={(e) => this.handleInput(e)} required />
+                          <span className="icon is-small is-left">
+                            <i className="fa fa-envelope"></i>
+                          </span>
                         </div>
-                        <div className="field">
-                          <div className="buttons is-justify-content-space-between">
-                            <button type="button" className="button is-rounded is-success" onClick={() => this.setState({ register: true })}>
-                              Sign Up
-                            </button>
-                            <button type="submit" className="button is-rounded is-success" onClick={() => this.signIn()}>
-                              Login
-                            </button>
-                          </div>
+                      </div>
+                      <div className="field">
+                        <label htmlFor="password" className="label">Password</label>
+                        <div className="control has-icons-left">
+                          <input type="password" name="password" id="password" placeholder="*******" className="input" onChange={(e) => this.handleInput(e)} required />
+                          <span className="icon is-small is-left">
+                            <i className="fa fa-lock"></i>
+                          </span>
                         </div>
-                      </form>
-                      :
-                      <form action="" className="box" onSubmit={() => this.signIn()}>
-                        <h3 className="title is-3 has-text-centered">Register</h3>
-                        <div className="field">
-                          <label htmlFor="username" className="label">Name</label>
-                          <div className="control has-icons-left">
-                            <input type="text" name="username" id="username" placeholder="roseman" className="input" onChange={(e) => this.handleInput(e)} required />
-                            <span className="icon is-small is-left">
-                              <i className="fa fa-account"></i>
-                            </span>
-                          </div>
+                      </div>
+                      <div className="field">
+                        <div className="buttons is-justify-content-space-between">
+                          <button type="button" className="button is-rounded is-success" onClick={() => this.setState({ register: true })}>
+                            Sign Up
+                          </button>
+                          <button type="submit" className="button is-rounded is-success" onClick={() => this.signIn()}>
+                            Login
+                          </button>
+                          <button type="submit" className="button is-rounded is-success" onClick={() => this.setState({ loginWithEmail: false })}>
+                            Back
+                          </button>
                         </div>
-                        <div className="field">
-                          <label htmlFor="email" className="label">Email</label>
-                          <div className="control has-icons-left">
-                            <input type="email" name="email" id="email" placeholder="e.g. bobsmith@gmail.com" className="input" onChange={(e) => this.handleInput(e)} required />
-                            <span className="icon is-small is-left">
-                              <i className="fa fa-envelope"></i>
-                            </span>
-                          </div>
+                      </div>
+                    </form>
+                  }
+                  {
+                    this.state.loginWithEmail && this.state.register &&
+                    <form action="" className="box" onSubmit={() => this.signIn()}>
+                      <h3 className="title is-3 has-text-centered">Register</h3>
+                      <div className="field">
+                        <label htmlFor="username" className="label">Name</label>
+                        <div className="control has-icons-left">
+                          <input type="text" name="username" id="username" placeholder="roseman" className="input" onChange={(e) => this.handleInput(e)} required />
+                          <span className="icon is-small is-left">
+                            <i className="fa fa-account"></i>
+                          </span>
                         </div>
-                        <div className="field">
-                          <label htmlFor="password" className="label">Password</label>
-                          <div className="control has-icons-left">
-                            <input type="password" name="password" id="password" placeholder="*******" className="input" onChange={(e) => this.handleInput(e)} required />
-                            <span className="icon is-small is-left">
-                              <i className="fa fa-lock"></i>
-                            </span>
-                          </div>
+                      </div>
+                      <div className="field">
+                        <label htmlFor="email" className="label">Email</label>
+                        <div className="control has-icons-left">
+                          <input type="email" name="email" id="email" placeholder="e.g. bobsmith@gmail.com" className="input" onChange={(e) => this.handleInput(e)} required />
+                          <span className="icon is-small is-left">
+                            <i className="fa fa-envelope"></i>
+                          </span>
                         </div>
-                        <div className="field">
-                          <div className="buttons is-justify-content-space-between">
-                            <button type="button" className="button is-rounded is-success" onClick={() => this.setState({ register: false })}>
-                              Sign In
-                            </button>
-                            <button type="submit" className="button is-rounded is-success" onClick={() => this.signUp()}>
-                              Register
-                            </button>
-                          </div>
+                      </div>
+                      <div className="field">
+                        <label htmlFor="password" className="label">Password</label>
+                        <div className="control has-icons-left">
+                          <input type="password" name="password" id="password" placeholder="*******" className="input" onChange={(e) => this.handleInput(e)} required />
+                          <span className="icon is-small is-left">
+                            <i className="fa fa-lock"></i>
+                          </span>
                         </div>
-                      </form>
+                      </div>
+                      <div className="field">
+                        <div className="buttons is-justify-content-space-between">
+                          <button type="button" className="button is-rounded is-success" onClick={() => this.setState({ register: false })}>
+                            Sign In
+                          </button>
+                          <button type="submit" className="button is-rounded is-success" onClick={() => this.signUp()}>
+                            Register
+                          </button>
+                          <button type="submit" className="button is-rounded is-success" onClick={() => this.setState({ loginWithEmail: false })}>
+                            Back
+                          </button>
+                        </div>
+                      </div>
+                    </form>
                   }
                 </div>
               </div>
@@ -288,34 +387,6 @@ export default class signin extends Component {
               <ToastContainer />
             </>
         }
-
-        <style jsx>{`
-          .button-container {
-            margin-top: 2rem;
-            margin-bottom: 2rem;
-          }
-          .button {
-            margin-top: 1rem;
-          }
-          .button:hover {
-            opacity: 1;
-          }
-          .github {
-            border-color: #444;
-          }
-          .facebook {
-            border-color: #3b5998;
-            color: #3b5998;
-          }
-          .twitter {
-            border-color: #1583d7;
-            color: #1583d7;
-          }
-          .google {
-            border-color: rgb(26, 115, 232);
-            color: rgb(26, 115, 232);
-          }
-        `}</style>
       </Fragment>
     )
   }
