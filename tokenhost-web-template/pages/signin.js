@@ -121,6 +121,9 @@ export default class signin extends Component {
     });
 
   async handleSignMessage({ metamask, nonce }) {
+    if (metamask === undefined) {
+      return false;
+    }
     try {
       const signature = await web3?.eth.personal.sign(
         `I am signing my one-time nonce: ${nonce}`,
@@ -152,7 +155,12 @@ export default class signin extends Component {
         'Content-Type': 'application/json',
       },
       method: 'POST',
-    }).then((response) => response.json());
+    }).then((response) => response.json())
+    .then(result => {
+      if (result.status) this.handleLoginWithMetamask();
+      toast.error(result.message, toastOption);
+      return false;
+    });
   }
 
   async handleLoginWithMetamask() {
@@ -193,7 +201,7 @@ export default class signin extends Component {
     )
       .then((response) => response.json())
       // If yes, retrieve it. If no, create it.
-      .then((result) =>
+      .then(async (result) =>
         result.user ? result.user : this.handleMetamaskSignup()
       )
       // Popup MetaMask confirmation modal to sign message
