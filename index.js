@@ -93,13 +93,13 @@ for (const ContractName in contracts) {
   get_all_types_string = get_all_types.join(', ')
 
   template += `
-    function getall() public returns (${get_all_types_string}){
+    function getall() public view returns (${get_all_types_string}){
         return (${get_all_fields_string});
     }`
 
   contract.readRules.gets.forEach((field) => {
     const type = contract.fields_types[field]
-    template += `\tfunction get_${field}() public returns (${type}){return ${field};}\n`
+    template += `\tfunction get_${field}() public view returns (${type}){return ${field};}\n`
   })
   template += `\n}`
 }
@@ -114,7 +114,7 @@ for (const ContractName in contracts) {
   address[] ${ContractName}_list; 
   uint256 ${ContractName}_list_length;
 
-function get_${ContractName}_list_length() public returns (uint256){
+function get_${ContractName}_list_length() public view returns (uint256){
     return ${ContractName}_list_length;
 }`
 
@@ -138,13 +138,13 @@ function get_${ContractName}_list_length() public returns (uint256){
   const get_all_types_array_string = get_all_types_array.join(', ')
 
   template += `
-  function get_${ContractName}_N(uint256 index) public returns (${get_all_types_string}){
+  function get_${ContractName}_N(uint256 index) public view returns (${get_all_types_string}){
       return ${ContractName}_contract(${ContractName}_list[index]).getall();
   }
 
 
   
-  function get_last_${ContractName}_N(uint256 count, uint256 offset) public returns (${get_all_types_array_string}){`
+  function get_last_${ContractName}_N(uint256 count, uint256 offset) public view returns (${get_all_types_array_string}){`
   contract.readRules.gets.forEach((field) => {
     const type = fields[field]
     template += `${type}[] memory ${field} = new ${type}[](count);`
@@ -162,16 +162,16 @@ function get_${ContractName}_list_length() public returns (uint256){
 
 
     template +=`
-      function get_${ContractName}_user_length(address user) public returns (uint256){
+      function get_${ContractName}_user_length(address user) public view returns (uint256){
         return user_map[user].${ContractName}_list_length;
       }
-      function get_${ContractName}_user_N(address user,uint256 index) public returns (${get_all_types_string}){
+      function get_${ContractName}_user_N(address user,uint256 index) public view returns (${get_all_types_string}){
         return ${ContractName}_contract(user_map[user].${ContractName}_list[index]).getall();
     }
 
 
      
-  function get_last_${ContractName}_user_N(address user,uint256 count, uint256 offset) public returns (${get_all_types_array_string}){`
+  function get_last_${ContractName}_user_N(address user,uint256 count, uint256 offset) public view returns (${get_all_types_array_string}){`
   contract.readRules.gets.forEach((field) => {
     const type = fields[field]
     template += `${type}[] memory ${field} = new ${type}[](count);`
