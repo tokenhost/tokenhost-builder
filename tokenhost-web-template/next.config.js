@@ -8,5 +8,6 @@ module.exports = {
         REACT_APP_APP_ID: process.env.REACT_APP_APP_ID,
         REACT_APP_MEASUREMENT_ID: process.env.REACT_APP_MEASUREMENT_ID,
         REACT_APP_GOOGLE_AUTH_DOMAIN: process.env.REACT_APP_GOOGLE_AUTH_DOMAIN,
+        REACT_APP_BACKEND_URL: process.env.REACT_APP_BACKEND_URL,
     },
 };
