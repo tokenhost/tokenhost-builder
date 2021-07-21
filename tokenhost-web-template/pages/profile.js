@@ -22,7 +22,7 @@ export default function ProfilePage() {
     }, [])
     return (
         <Fragment>
-            <div className="hero is-success is-fullheight">
+            <div className="hero is-fullheight">
                 {
                     signedUser ?
                         <div className="hero-body">
