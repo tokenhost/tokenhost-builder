@@ -1,6 +1,8 @@
-import React, { useState } from "react";
+import React, { Component, useState, useEffect } from "react";
+import { storage } from "../lib/db";
 
 export default (props) => {
+    console.log(props)
   const [image, setImage] = useState(null);
   const [url, setUrl] = useState("");
   const [progress, setProgress] = useState(0);
@@ -17,25 +19,36 @@ export default (props) => {
       alert("null image");
       return;
     }
-    const uploadedFilePath = `${props.user.id}`;
+    const uploadFileName = `users/${props.user.id}/${image.name}`;
+    const uploadTask = storage.ref(uploadFileName).put(image);
+    uploadTask.on(
+      "state_changed",
+      (snapshot) => {
+        // progress function ...
+        const progress = Math.round(
+          (snapshot.bytesTransferred / snapshot.totalBytes) * 100
+        );
+        setProgress(progress);
+      },
+      (error) => {
+        // Error function ...
+        console.log(error);
+      },
+      () => {
+        console.log("url", uploadFileName);
+        // complete function ...
+        storage
+          .ref(uploadFileName)
+          .getDownloadURL()
+          .then((url) => {
+            console.log(url);
+            console.log(props.data)
+            props.setImage(url);
 
-    const formData = new FormData()
-    formData.append('uploadedFile', image);
-    formData.append('uploadedFilePath', uploadedFilePath);
-
-    fetch(`${process.env.REACT_APP_GOOGLE_AUTH_DOMAIN}/image-upload`, {
-      method: 'POST',
-      body: formData
-    })
-      .then(response => response.json())
-      .then(data => {     
-        const downloadURL = process.env.REACT_APP_GOOGLE_AUTH_DOMAIN + data.downloadURL
-        setUrl(downloadURL);
-        props.setImage(downloadURL);
-      })
-      .catch(error => {
-        console.error(error)
-      })
+            setUrl(url);
+          });
+      }
+    );
   };
 
   if (image && progress == 0) {
@@ -46,7 +59,7 @@ export default (props) => {
     <div className="center">
       <div className="file is-info has-name">
         <label className="file-label">
-          <input
+          <input 
             className="file-input input"
             type="file"
             onChange={handleChange} />
@@ -58,6 +71,13 @@ export default (props) => {
           </span>
         </label>
       </div>
+
+      {progress > 0 && progress < 100 && (
+        <div className="row p-2">
+          <progress value={progress} max="100" className="progress is-info" />
+        </div>
+      )}
+      {url}
       {url && (
         <div className="row p-2">
           <img src={url} alt="Uploaded Images" height="300" width="400" />
