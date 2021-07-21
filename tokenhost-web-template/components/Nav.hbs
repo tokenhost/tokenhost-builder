@@ -121,7 +121,7 @@ export default class TheNav extends Component {
         return response.text();
       })
       .then(async data => {
-        const { auth, message } = JSON.parse(data);
+        const { auth, message, user } = JSON.parse(data);
         if (auth) {
           const eth_account = await generateKeys()
           this.createKey(eth_account);
