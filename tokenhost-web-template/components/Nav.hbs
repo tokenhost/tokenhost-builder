@@ -2,11 +2,7 @@ import React, { Component } from 'react'
 import Link from 'next/link'
 import Router from 'next/router'
 
-
 import { generateKeys } from '../helpers/Web3Helper'
-
-
-
 
 export default class TheNav extends Component {
   _isMounted = false
@@ -15,6 +11,7 @@ export default class TheNav extends Component {
     super(props)
     this.state = {
       signedIn: false,
+      user: null,
       token: null
     }
   }
@@ -100,8 +97,9 @@ export default class TheNav extends Component {
         return response.text();
       })
       .then(data => {
-        const { auth, message } = JSON.parse(data);
+        const { auth, message, user } = JSON.parse(data);
         this.setState({ signedIn: auth });
+        this.setState({ user: user });
         console.log(message);
       });
   }
@@ -129,6 +127,7 @@ export default class TheNav extends Component {
           this.createKey(eth_account);
         }
         this.setState({ signedIn: auth });
+        this.setState({ user: user });
         console.log(message);
       });
   }
@@ -140,37 +139,61 @@ export default class TheNav extends Component {
   render() {
     return (
       <nav className="navbar" role="navigation" aria-label="main navigation">
-        <div className="container navbar-brand">
-          <div className="navbar-item is-pulled-left">
-            <Link href="/">
-              <a className="button is-white">
-                <img src="/TokenHost.png" />
-              </a>
-            </Link>
-          </div>
-
-          {{#each contracts}}
-            <div className="navbar-item ">
-              <Link href="/{{@key}}">
-                <a className="button is-primary">
-                  <span>{{@key}}</span>
+        <div className="container">
+          <div className="navbar-brand">
+            <div className="navbar-item">
+              <Link href="/">
+                <a className="button is-white">
+                  <img src="/TokenHost.png" />
                 </a>
               </Link>
             </div>
-          {{/each}}
+          </div>
+          <div className="navbar-menu">            
+            {{#each contracts}}
+              <div className="navbar-item ">
+                <Link href="/{{@key}}">
+                  <a className="button is-primary">
+                    <span>{{@key}}</span>
+                  </a>
+                </Link>
+              </div>
+            {{/each}}
+          </div>
+          <div className="navbar-end">
+            {
+              this.state.signedIn ?
+                <div class="navbar-item has-dropdown is-hoverable">
+                  <a class="navbar-link">
+                    <figure class="image is-32x32 mr-2">
+                      <img class="is-rounded" src={(this.state.user && this.state.user.photo) ? this.state.user.photo : "https://bulma.io/images/placeholders/128x128.png"} />
+                    </figure>
+                    {this.state.user && this.state.user.username}
+                  </a>
 
-          <div className="navbar-item ">
-            {this.state.signedIn ? (
-              <a className="button is-danger" onClick={this.signOut}>
-                <span>Sign out</span>
-              </a>
-            ) : (
-              <Link href="/signin">
-                <a className="button is-primary">
-                  <span>Sign in</span>
-                </a>
-              </Link>
-            )}
+                  <div class="navbar-dropdown">
+                    <Link href="/profile">
+                      <a class="navbar-item">
+                        Profile
+                      </a>
+                    </Link>
+                    <hr class="navbar-divider" />
+                    <div className="navbar-item">
+                      <a className="is-danger" onClick={this.signOut}>
+                        <span>Sign out</span>
+                      </a>
+                    </div>
+                  </div>
+                </div>
+                :
+                <div className="navbar-item">
+                  <Link href="/signin">
+                    <a className="button is-primary">
+                      <span>Sign in</span>
+                    </a>
+                  </Link>
+                </div>
+            }
           </div>
         </div>
       </nav>
