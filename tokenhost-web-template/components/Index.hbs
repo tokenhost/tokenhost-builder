@@ -52,10 +52,8 @@ export default class PublicMessages extends React.Component {
 
   async getPublicMessages() {
     var messages_count = await contractws.methods
-      .get_{{contract
-}}_list_length()
+      .get_{{contract}}_list_length()
       .call()
-console.log(messages_count)
     this.setState({ total: messages_count })
 
       if(messages_count == 0 ){
@@ -67,9 +65,7 @@ console.log(messages_count)
       
       let ret = []
    
-      var messages = await contractws.methods.get_last_{{contract
-}}_N(count, offset).call()
-console.log(messages);
+      var messages = await contractws.methods.get_last_{{contract}}_N(count, offset).call()
       for(var i = messages[0].length-1; i>-1 ; i--){
         var value = []
         for(var key in messages){
@@ -77,15 +73,14 @@ console.log(messages);
         }
         value.push(i)
         var keys = []
-{{#each contract_data.readRules.gets}}
-  keys.push(`{{this}}`)
-{{/each}}
-keys.push(`id`)
+        {{#each contract_data.readRules.gets}}
+          keys.push(`{{this}}`)
+        {{/each}}
+        keys.push(`id`)
         var msg = zip(keys,value)
 
         ret.push(msg)
       }
-     
     return ret
   }
 
@@ -118,14 +113,16 @@ keys.push(`id`)
 
     return (
 <div>
-  {this.state.publicMessages.data.map((data, index) => (
-  <View key={index} data={data} />
-  ))}
+  {
+    this.state.publicMessages.data.map((data, index) => (
+      <View key={index} data={data} />
+    ))
+  }
 
   <Pagination
-  pages={Math.ceil(this.state.total / 2)}
-  currentPage={this.state.currentPage}
-  onChange={page => this.changePage(page)}
+    pages={Math.ceil(this.state.total / 2)}
+    currentPage={this.state.currentPage}
+    onChange={page => this.changePage(page)}
   />
 </div>
 )

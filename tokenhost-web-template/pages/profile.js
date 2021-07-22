@@ -82,11 +82,6 @@ export default function ProfilePage() {
                                             </div>
                                         </form>
                                     </div>
-                                    <p className="has-text-grey">
-                                        <a href="../">Sign Up</a>
-                                        <a href="../">Forgot Password</a>
-                                        <a href="../">Need Help?</a>
-                                    </p>
                                 </div>
                             </div>
                         </div>

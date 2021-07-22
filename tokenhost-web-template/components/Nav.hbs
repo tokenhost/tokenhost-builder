@@ -163,21 +163,21 @@ export default class TheNav extends Component {
           <div className="navbar-end">
             {
               this.state.signedIn ?
-                <div class="navbar-item has-dropdown is-hoverable">
-                  <a class="navbar-link">
-                    <figure class="image is-32x32 mr-2">
-                      <img class="is-rounded" src={(this.state.user && this.state.user.photo) ? this.state.user.photo : "https://bulma.io/images/placeholders/128x128.png"} />
+                <div className="navbar-item has-dropdown is-hoverable">
+                  <a className="navbar-link">
+                    <figure className="image is-32x32 mr-2">
+                      <img className="is-rounded" src={(this.state.user && this.state.user.photo) ? this.state.user.photo : "https://bulma.io/images/placeholders/128x128.png"} />
                     </figure>
                     {this.state.user && this.state.user.username}
                   </a>
 
-                  <div class="navbar-dropdown">
+                  <div className="navbar-dropdown">
                     <Link href="/profile">
-                      <a class="navbar-item">
+                      <a className="navbar-item">
                         Profile
                       </a>
                     </Link>
-                    <hr class="navbar-divider" />
+                    <hr className="navbar-divider" />
                     <div className="navbar-item">
                       <a className="is-danger" onClick={this.signOut}>
                         <span>Sign out</span>
