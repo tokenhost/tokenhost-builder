@@ -92,6 +92,10 @@ for (const ContractName in contracts) {
   get_all_fields_string = get_all_fields.join(', ')
   get_all_types_string = get_all_types.join(', ')
 
+	//getter
+
+
+
   template += `
     function getall() public view returns (${get_all_types_string}){
         return (${get_all_fields_string});
@@ -117,6 +121,13 @@ for (const ContractName in contracts) {
 function get_${ContractName}_list_length() public view returns (uint256){
     return ${ContractName}_list_length;
 }`
+  template += `struct ${ContractName}_getter{`
+        contract.readRules.gets.forEach((field) => {
+        const type = fields[field]
+        template += `${type} ${field};`
+  })
+  template += `}`
+
 
   //get all
 
@@ -144,18 +155,16 @@ function get_${ContractName}_list_length() public view returns (uint256){
 
 
   
-  function get_last_${ContractName}_N(uint256 count, uint256 offset) public view returns (${get_all_types_array_string}){`
-  contract.readRules.gets.forEach((field) => {
-    const type = fields[field]
-    template += `${type}[] memory ${field} = new ${type}[](count);`
-  })
+  function get_last_${ContractName}_N(uint256 count, uint256 offset) public view returns ( ${ContractName}_getter[] memory){
+  ${ContractName}_getter[] memory getters = new ${ContractName}_getter[](count);
+    `
   template += `for (uint i = offset; i < count; i++) {
         ${ContractName}_contract  my${ContractName} = ${ContractName}_contract(${ContractName}_list[i+offset]);`
   contract.readRules.gets.forEach((field) => {
-    template += `${field}[i+offset] = my${ContractName}.get_${field}();`
+    template += `getters[i-offset].${field} = my${ContractName}.get_${field}();`
   })
   template += `}
-    return (${get_all_fields_string});
+    return getters;
     }`
 
     //now do user stuff
@@ -171,23 +180,16 @@ function get_${ContractName}_list_length() public view returns (uint256){
 
 
      
-  function get_last_${ContractName}_user_N(address user,uint256 count, uint256 offset) public view returns (${get_all_types_array_string}){`
-  contract.readRules.gets.forEach((field) => {
-    const type = fields[field]
-    template += `${type}[] memory ${field} = new ${type}[](count);`
-  })
+  function get_last_${ContractName}_user_N(address user,uint256 count, uint256 offset) public view returns ( ${ContractName}_getter[]  memory){
+  ${ContractName}_getter[] memory getters = new ${ContractName}_getter[](count);
+    `
   template += `for (uint i = offset; i < count; i++) {`
     contract.readRules.gets.forEach((field) => {
-    template += `${field}[i+offset] = ${ContractName}_contract(user_map[user].${ContractName}_list[i+offset]).get_${field}();`
+    template += `getters[i-offset].${field} = ${ContractName}_contract(user_map[user].${ContractName}_list[i+offset]).get_${field}();`
   })
   template += `}
-    return (${get_all_fields_string});
-    }
-    
-    `
-
-
-
+    return getters;
+    }`
 }
 
 //create the equivalent of the users tables
