@@ -53,17 +53,7 @@ export default class Index extends React.Component {
       if(messages_{{@key}}_count > 0 ){
         const offset_{{@key}} = messages_{{@key}}_count - 1
         var messages = await contractws.methods.get_last_{{@key}}_N(1, offset_{{@key}}).call()
-
-        var value = []
-        var keys = []
-        {{#each this.readRules.gets}}
-          keys.push(`{{this}}`)
-          value.push(messages[{{@key}}][0])          
-        {{/each}}
-
-        var msg = zip(keys,value)
-
-        this.setState({ messages_{{@key}}: msg })
+        this.setState({ messages_{{@key}}: messages[0] })
       }
     {{/each}}
   }

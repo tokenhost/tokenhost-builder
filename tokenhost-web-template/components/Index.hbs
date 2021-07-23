@@ -66,6 +66,7 @@ export default class PublicMessages extends React.Component {
       let ret = []
    
       var messages = await contractws.methods.get_last_{{contract}}_N(count, offset).call()
+      return messages;
       for(var i = messages[0].length-1; i>-1 ; i--){
         var value = []
         for(var key in messages){
@@ -120,7 +121,7 @@ export default class PublicMessages extends React.Component {
   }
 
   <Pagination
-    pages={Math.ceil(this.state.total / 2)}
+    pages={Math.ceil(this.state.total / 8)}
     currentPage={this.state.currentPage}
     onChange={page => this.changePage(page)}
   />
