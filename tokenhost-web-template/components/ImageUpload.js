@@ -2,7 +2,6 @@ import React, { Component, useState, useEffect } from "react";
 import { storage } from "../lib/db";
 
 export default (props) => {
-    console.log(props)
   const [image, setImage] = useState(null);
   const [url, setUrl] = useState("");
   const [progress, setProgress] = useState(0);
@@ -35,14 +34,11 @@ export default (props) => {
         console.log(error);
       },
       () => {
-        console.log("url", uploadFileName);
         // complete function ...
         storage
           .ref(uploadFileName)
           .getDownloadURL()
           .then((url) => {
-            console.log(url);
-            console.log(props.data)
             props.setImage(url);
 
             setUrl(url);
