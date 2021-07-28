@@ -12,7 +12,6 @@ export default function Send() {
     {{#if (checkImage @root.contract_data.fields this) }}
       let register = "";
       const setValue = (value) => {
-        console.log(value);
         set{{this}}(value);
       }
     {{/if}}
