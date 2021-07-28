@@ -208,12 +208,6 @@ export default class signin extends Component {
       .then((result) => this.handleSignMessage(result))
       // Send signature to backend on the /auth route
       .then(this.handleAuthenticate)
-    // Pass accessToken back to parent component (to save it in localStorage)
-    // .then()
-    // .catch((err) => {
-    //   window.alert(err);
-    //   setLoading(false);
-    // });
   }
 
   handleInput(e) {
@@ -249,7 +243,6 @@ export default class signin extends Component {
                       <div className="field">
                         <div className="buttons">
                           <a
-                            target="_blank"
                             className="button is-link is-fullwidth google px-4 py-2 mb-4"
                             href={`${process.env.REACT_APP_BACKEND_URL}/auth/google`}
                           >
@@ -259,7 +252,6 @@ export default class signin extends Component {
                             <span>Login with Google</span>
                           </a>
                           <a
-                            target="_blank"
                             className="button is-link is-fullwidth facebook px-4 py-2 mb-4"
                             href={`${process.env.REACT_APP_BACKEND_URL}/auth/facebook`}
                           >
