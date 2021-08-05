@@ -1,15 +1,7 @@
 Making A BlockChain Application Without Breaking a Sweat Using Token Host
 =========================================================================
 
-[![tokenhost](https://miro.medium.com/fit/c/56/56/0*PZDwl1p20RzHKGxW.jpg)](https://medium.com/@tokenhost?source=post_page-----7921a9bbc3fc--------------------------------)[
-
-tokenhost
-
-](https://medium.com/@tokenhost?source=post_page-----7921a9bbc3fc--------------------------------)[
-
-Jul 22·4 min read
-
-](https://medium.com/@tokenhost/making-blockchain-application-without-breaking-a-sweat-with-token-host-7921a9bbc3fc?source=post_page-----7921a9bbc3fc--------------------------------)
+[![tokenhost](https://miro.medium.com/fit/c/56/56/0*PZDwl1p20RzHKGxW.jpg)](https://medium.com/@tokenhost?source=post_page-----7921a9bbc3fc--------------------------------)[ tokenhost ](https://medium.com/@tokenhost?source=post_page-----7921a9bbc3fc--------------------------------)[ Jul 22·4 min read ](https://medium.com/@tokenhost/making-blockchain-application-without-breaking-a-sweat-with-token-host-7921a9bbc3fc?source=post_page-----7921a9bbc3fc--------------------------------)
 
 Why Use a BlockChain
 ====================
