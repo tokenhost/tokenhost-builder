@@ -75,4 +75,3 @@ Develop applications on the Token Host blockchain, join our developer community 
 Follow [Token Host Twitter](https://twitter.com/tokenhost)
 
 Join [Token Host Discord](https://discord.gg/q6fj5ZSv)
-Done in 1.10s.
