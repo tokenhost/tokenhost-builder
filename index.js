@@ -154,14 +154,26 @@ function get_${ContractName}_list_length() public view returns (uint256){
   }
 
 
-  
-  function get_last_${ContractName}_N(uint256 count, uint256 offset) public view returns ( ${ContractName}_getter[] memory){
+  function get_first_${ContractName}_N(uint256 count, uint256 offset) public view returns ( ${ContractName}_getter[] memory){
   ${ContractName}_getter[] memory getters = new ${ContractName}_getter[](count);
     `
   template += `for (uint i = offset; i < count; i++) {
         ${ContractName}_contract  my${ContractName} = ${ContractName}_contract(${ContractName}_list[i+offset]);`
   contract.readRules.gets.forEach((field) => {
     template += `getters[i-offset].${field} = my${ContractName}.get_${field}();`
+  })
+  template += `}
+    return getters;
+    }
+
+  
+  function get_last_${ContractName}_N(uint256 count, uint256 offset) public view returns ( ${ContractName}_getter[] memory){
+  ${ContractName}_getter[] memory getters = new ${ContractName}_getter[](count);
+    `
+  template += `for (uint i = 0; i < count; i++ ){ 
+        ${ContractName}_contract  my${ContractName} = ${ContractName}_contract(${ContractName}_list[${ContractName}_list_length-i-offset-1]);`
+  contract.readRules.gets.forEach((field) => {
+    template += `getters[i].${field} = my${ContractName}.get_${field}();`
   })
   template += `}
     return getters;

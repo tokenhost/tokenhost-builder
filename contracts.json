@@ -4,13 +4,11 @@
         "fields":{
            "timestamp":"uint",
            "text":"string",
-           "image":"image",
            "sender":"address"
         },
         "initRules":{
            "passIn":[
-               "text",
-               "image"
+               "text"
            ],
            "auto":{
               "sender":"tx.origin",
@@ -23,7 +21,6 @@
         "readRules":{
            "gets":[
               "text",
-              "image",
               "timestamp",
               "sender"
            ]
