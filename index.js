@@ -1,5 +1,7 @@
 const fs = require('fs')
 
+
+
 let rawdata = fs.readFileSync('contracts.json')
 let program = JSON.parse(rawdata)
 //console.log(JSON.stringify(program,null,4));
@@ -10,6 +12,7 @@ pragma solidity ^0.8.2;
 pragma experimental ABIEncoderV2;
 `
 
+var contract_references = {}
 //convert image to string:
 for (const ContractName in contracts) {
   const contract = contracts[ContractName]
@@ -19,6 +22,14 @@ for (const ContractName in contracts) {
     if (type == 'image') {
         fields[field] = 'string'
     }
+    if(Object.keys(fields).includes(type)){
+      fields[field] = 'address';
+      if(!contract_references[ContractName]){
+        contract_references[ContractName] = []
+      }
+      contract_references[ContractName].push(type)
+    }
+
   }
 }
 //
@@ -179,8 +190,10 @@ function get_${ContractName}_list_length() public view returns (uint256){
     return getters;
     }`
 
-    //now do user stuff
 
+
+
+    //now do user stuff
 
     template +=`
       function get_${ContractName}_user_length(address user) public view returns (uint256){
@@ -203,6 +216,26 @@ function get_${ContractName}_list_length() public view returns (uint256){
     return getters;
     }`
 }
+
+//need to loop over each key to get index for now we just hardcode it as Txt/Hashtag
+
+    //do all the references 
+
+    for (parent_contract in contract_references) {
+        const reference_contract = contract_references[parent_contract];
+
+      template += `
+    struct ${parent_contract}_${reference_contract}{
+      bool exists;
+      address[] ${parent_contract}_list;
+  }
+  mapping(address => ${parent_contract}_${reference_contract}) public ${parent_contract}_${reference_contract}_map;
+  address[] ${parent_contract}_${reference_contract}_list;
+
+  `
+
+    }
+
 
 //create the equivalent of the users tables
 // but include references to the contracts they've created for easy access
@@ -235,6 +268,9 @@ for (const ContractName in contracts) {
 
 function new_${ContractName}(`
 
+
+
+
   //add all the pass-in methods
   contract['initRules']['passIn'].forEach((element, index) => {
     const type = contract.fields_types[element]
@@ -250,6 +286,10 @@ function new_${ContractName}(`
         
   address mynew = address(new ${ContractName}_contract({`
 
+
+
+
+
   //add all the pass-in methods
   contract['initRules']['passIn'].forEach((element, index) => {
     const type = fields[element]
@@ -260,7 +300,46 @@ function new_${ContractName}(`
   })
 
   template += `
-}));
+}));`
+
+//do the index stuff
+
+contract_references[ContractName].forEach((reference_contract,index) => {
+
+  template += `
+
+
+ 
+
+  if(!${parent_contract}_${reference_contract}_map[{${reference_contract}}].exists){
+    ${parent_contract}_${reference_contract}_map[{${reference_contract}}]=create_index_on_new_${parent_contract}_${reference_contract}(mynew);  
+  }
+  ${parent_contract}_${reference_contract}_map[{${reference_contract}}].${ContractName}_list.push(mynew);
+
+  `
+
+})
+
+contract_references[ContractName].forEach((reference_contract,index) => {
+
+  template += `
+
+function create_index_on_new_${parent_contract}_${reference_contract}(address addr) private returns (${parent_contract}_${reference_contract} memory){
+  address[] memory tmp;
+  ${parent_contract}_${reference_contract}_list.push(addr);
+  return ${parent_contract}_${reference_contract}({exists:true, ${parent_contract}_list:tmp})
+} 
+`
+
+})
+
+
+
+//do the user stuff
+template +=` 
+
+
+
   if(!user_map[tx.origin].exists){
     user_map[tx.origin]=create_user_on_new_${ContractName}(mynew);
   }
