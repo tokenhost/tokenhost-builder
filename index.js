@@ -303,7 +303,7 @@ function new_${ContractName}(`
 }));`
 
 //do the index stuff
-
+if(contract_references[ContractName]){
 contract_references[ContractName].forEach((reference_contract,index) => {
 
   template += `
@@ -332,7 +332,7 @@ function create_index_on_new_${parent_contract}_${reference_contract}(address ad
 `
 
 })
-
+}
 
 
 //do the user stuff

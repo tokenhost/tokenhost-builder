@@ -1,30 +1,27 @@
 {
-  "contracts":{
-     "Tweets":{
-        "fields":{
-           "timestamp":"uint",
-           "text":"string",
-           "sender":"address"
-        },
-        "initRules":{
-           "passIn":[
-               "text"
-           ],
-           "auto":{
-              "sender":"tx.origin",
-              "timestamp":"block.timestamp"
-           }
-        },
-        "writeRules":{
-           
-        },
-        "readRules":{
-           "gets":[
-              "text",
-              "timestamp",
-              "sender"
-           ]
-        }
-     }
+  "contracts": {
+    "Txt": {
+      "fields": {
+        "timestamp": "uint",
+        "sender": "address",
+        "message": "string",
+        "Hashtag": "Hashtag"
+      },
+      "initRules": {
+        "passIn": ["message", "Hashtag"],
+        "auto": { "sender": "tx.origin", "timestamp": "block.timestamp" }
+      },
+      "writeRules": {},
+      "readRules": { "gets": ["timestamp", "sender", "message", "Hashtag"] }
+    },
+    "Hashtag": {
+      "fields": { "timestamp": "uint", "sender": "address", "tag": "string" },
+      "initRules": {
+        "passIn": ["tag"],
+        "auto": { "sender": "tx.origin", "timestamp": "block.timestamp" }
+      },
+      "writeRules": {},
+      "readRules": { "gets": ["timestamp", "sender", "tag"] }
+    }
   }
 }
