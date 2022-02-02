@@ -311,28 +311,17 @@ contract_references[ContractName].forEach((reference_contract,index) => {
 
  
 
-  if(!${parent_contract}_${reference_contract}_map[{${reference_contract}}].exists){
-    ${parent_contract}_${reference_contract}_map[{${reference_contract}}]=create_index_on_new_${parent_contract}_${reference_contract}(mynew);  
+  if(!${parent_contract}_${reference_contract}_map[${reference_contract}].exists){
+    ${parent_contract}_${reference_contract}_map[${reference_contract}]=create_index_on_new_${parent_contract}_${reference_contract}(mynew);  
   }
-  ${parent_contract}_${reference_contract}_map[{${reference_contract}}].${ContractName}_list.push(mynew);
+  ${parent_contract}_${reference_contract}_map[${reference_contract}].${ContractName}_list.push(mynew);
 
-  `
-
-})
-
-contract_references[ContractName].forEach((reference_contract,index) => {
-
-  template += `
-
-function create_index_on_new_${parent_contract}_${reference_contract}(address addr) private returns (${parent_contract}_${reference_contract} memory){
-  address[] memory tmp;
-  ${parent_contract}_${reference_contract}_list.push(addr);
-  return ${parent_contract}_${reference_contract}({exists:true, ${parent_contract}_list:tmp})
-} 
-`
+    `
 
 })
+
 }
+
 
 
 //do the user stuff
@@ -379,6 +368,23 @@ function  create_user_on_new_${ContractName}(address addr) private returns (User
 
 
 `
+
+if(contract_references[ContractName]){
+
+  contract_references[ContractName].forEach((reference_contract,index) => {
+  
+    template += `
+  
+  function create_index_on_new_${parent_contract}_${reference_contract}(address addr) private returns (${parent_contract}_${reference_contract} memory){
+    address[] memory tmp;
+    ${parent_contract}_${reference_contract}_list.push(addr);
+    return ${parent_contract}_${reference_contract}({exists:true, ${parent_contract}_list:tmp});
+  } 
+  `
+  
+  })
+  }
+
 }
 
 template += '}'
