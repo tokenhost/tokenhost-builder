@@ -20,7 +20,7 @@
         "passIn": ["tag"],
         "auto": { "sender": "tx.origin", "timestamp": "block.timestamp" }
       },
-      "writeRules": {},
+      "writeRules": {"unique":["tag"]},
       "readRules": { "gets": ["timestamp", "sender", "tag"] }
     }
   }

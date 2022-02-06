@@ -265,6 +265,19 @@ for (const ContractName in contracts) {
   template += `
 
     event New${ContractName}(address sender); 
+  `
+
+  //unique map
+  //    
+
+    if(contract.writeRules.unique){
+      contract.writeRules.unique.forEach((indexField,index) =>{
+        template += `
+              mapping(bytes32 => address) unique_map_${indexField};  
+        `
+      });
+    }
+  template += `
 
 function new_${ContractName}(`
 
@@ -281,8 +294,23 @@ function new_${ContractName}(`
   })
 
   template += `) public returns (address){\n
+    `
   
-  
+    //check if unique index and then revert if already exists
+    // do the index stuff
+    // for now assume each index is just a string, but over time we may want a tuple or any type, if there's other types we can likely optimize better too
+    //
+    if(contract.writeRules.unique){
+      contract.writeRules.unique.forEach((indexField,index) =>{
+        template += `
+          bytes32 hash = keccak256(abi.encodePacked(${indexField}));
+          require(unique_map_${indexField}[hash] != address(0));
+        `
+      });
+    }
+
+
+    template += `
         
   address mynew = address(new ${ContractName}_contract({`
 
@@ -300,9 +328,21 @@ function new_${ContractName}(`
   })
 
   template += `
+
 }));`
 
-//do the index stuff
+
+    //add to the unique index
+    if(contract.writeRules.unique){
+      contract.writeRules.unique.forEach((indexField,index) =>{
+        template += `
+          bytes32 hash = keccak256(abi.encodePacked(${indexField}));
+          unique_map_${indexField}[hash]  = mynew;
+        `
+      });
+    }
+
+//do the has one mapping stuff
 if(contract_references[ContractName]){
 contract_references[ContractName].forEach((reference_contract,index) => {
 
@@ -321,6 +361,7 @@ contract_references[ContractName].forEach((reference_contract,index) => {
 })
 
 }
+
 
 
 
