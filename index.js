@@ -303,8 +303,8 @@ function new_${ContractName}(`
     if(contract.writeRules.unique){
       contract.writeRules.unique.forEach((indexField,index) =>{
         template += `
-          bytes32 hash = keccak256(abi.encodePacked(${indexField}));
-          require(unique_map_${indexField}[hash] != address(0));
+          bytes32 hash_${indexField} = keccak256(abi.encodePacked(${indexField}));
+          require(unique_map_${indexField}[hash_${indexField}] != address(0));
         `
       });
     }
@@ -336,8 +336,7 @@ function new_${ContractName}(`
     if(contract.writeRules.unique){
       contract.writeRules.unique.forEach((indexField,index) =>{
         template += `
-          bytes32 hash = keccak256(abi.encodePacked(${indexField}));
-          unique_map_${indexField}[hash]  = mynew;
+          unique_map_${indexField}[hash_${indexField}]  = mynew;
         `
       });
     }
@@ -390,14 +389,22 @@ ${ContractName}_list_length+=1;
 
 
 function  create_user_on_new_${ContractName}(address addr) private returns (UserInfo memory){
-    address[] memory ${ContractName}_list;
+  `
+
+  for (const ContractName in contracts) {
+    template += `
+      address[] memory ${ContractName}_list_;
+    `
+  }
+
+  template += `
     UserInfoList.push(addr);
     return UserInfo({exists:true, owner:addr,  
         
       
     `
   for (const ContractName in contracts) {
-    template += `${ContractName}_list : ${ContractName}_list, 
+    template += `${ContractName}_list : ${ContractName}_list_, 
        ${ContractName}_list_length : 0,
     `
   }
