@@ -15,7 +15,7 @@ function fetchUserItems(collectionName) {
       .then(async data => {
         const result = JSON.parse(data);
         if (result.status) resolve(result)
-        resolve();
+        resolve({});
       });
   })
 }
@@ -37,7 +37,7 @@ function fetchUserByAddress(address) {
       .then(async data => {
         const result = JSON.parse(data);
         if (result.status) resolve(result);
-        resolve();
+        resolve({});
       });
   })
 }
