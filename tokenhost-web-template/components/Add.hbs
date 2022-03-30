@@ -53,6 +53,8 @@ export default function Send() {
     }
     else {
       setSendStatus('Sending')
+
+
       contract.methods
         .new_{{contract}}({{contract_data.initRules.passIn}}) {{! loop over the pass in elements contract_data.initRules.passIn}}
         .estimateGas()
