@@ -274,9 +274,19 @@ for (const ContractName in contracts) {
       contract.writeRules.unique.forEach((indexField,index) =>{
         template += `
               mapping(bytes32 => address) unique_map_${indexField};  
+
+              function get_unique_map_${indexField} ( contract.fields_types[indexField] ${indexField}) returns (address) {
+                bytes32 hash_${indexField} = keccak256(abi.encodePacked(${indexField}));
+                return unique_map_${indexField}[hash_${indexField}];
+              }
         `
       });
     }
+  //
+    //
+    //
+  // get object from unique map 
+
   template += `
 
 function new_${ContractName}(`
@@ -304,7 +314,7 @@ function new_${ContractName}(`
       contract.writeRules.unique.forEach((indexField,index) =>{
         template += `
           bytes32 hash_${indexField} = keccak256(abi.encodePacked(${indexField}));
-          require(unique_map_${indexField}[hash_${indexField}] != address(0));
+          require(unique_map_${indexField}[hash_${indexField}] == address(0));
         `
       });
     }
