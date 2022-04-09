@@ -7,13 +7,32 @@ let index_template = fs.readFileSync(
   'utf-8',
 )
 Handlebars.registerHelper('checkImage', function (fieldObj, key) {
-  console.log("start")
-  console.log(fieldObj[key] === "image")
-  console.log("end")
   return fieldObj[key] === "image"
 })
 
 
+Handlebars.registerHelper('unique_getters', function (contract, all_contracts) {
+  var template = '';
+  for(var field in contract.fields){
+    if(field in all_contracts){
+      template += `
+            ${field}_value = await contract.methods.get_unique_map_${field}( ${field}).call();
+            set${field}(${field}_value);
+
+      `
+    }
+  }
+  return template
+})
+
+Handlebars.registerHelper('add_value', function (values) {
+  var ret = []
+  values.forEach((value) =>{
+    ret.push( value + "_value");
+
+  })
+  return ret;
+})
 
 const template = Handlebars.compile(index_template)
 
@@ -55,9 +74,7 @@ let PagerTemplate = Handlebars.compile(
 )
 
 for (var contract in contracts.contracts) {
-  console.log('c', contract)
   const contract_data = contracts.contracts[contract]
-  console.log(contract_data)
   fs.writeFileSync(`site/pages/${contract}.js`, page_template({ contract }))
 
   try {
@@ -66,7 +83,7 @@ for (var contract in contracts.contracts) {
 
   fs.writeFileSync(
     `site/components/${contract}/Add.js`,
-    AddTemplate({ contract, contract_data }),
+    AddTemplate({ contract, contract_data, all_contracts:contracts.contracts }),
   )
   fs.writeFileSync(
     `site/components/${contract}/Index.js`,
@@ -75,7 +92,6 @@ for (var contract in contracts.contracts) {
 
 
   Handlebars.registerHelper('checkFieldIsImage', function ( key) {
-    console.log("checkFieldIsImage",contract_data.fields[key] === "image",contract_data.fields[key],key)
      return contract_data.fields[key] == "image"
   })
   fs.writeFileSync(

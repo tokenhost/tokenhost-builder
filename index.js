@@ -271,29 +271,34 @@ for (const ContractName in contracts) {
   //    
 
     if(contract.writeRules.unique){
-      contract.writeRules.unique.forEach((indexField,index) =>{
         template += `
-              mapping(bytes32 => address) unique_map_${indexField};  
+              mapping(bytes32 => address) unique_map_${ContractName};  
 
-              function get_unique_map_${indexField} ( ${contract.fields_types[indexField]} ${indexField}) public returns (address) {
-                bytes32 hash_${indexField} = keccak256(abi.encodePacked(${indexField}));
-                return unique_map_${indexField}[hash_${indexField}];
+              function get_unique_map_${ContractName} ( `
+
+      contract.writeRules.unique.forEach((indexField,index) =>{
+                if(index +=0){
+                  template += ','
+                }
+                template += ` ${contract.fields_types[indexField]} ${indexField} `
+      });
+                template +=`
+              ) public returns (address) {
+                bytes32 hash_${ContractName} = keccak256(abi.encodePacked( `
+      contract.writeRules.unique.forEach((indexField,index) =>{
+                if(index +=0){
+                  template += ','
+                }
+                template += `  ${indexField} `
+      });
+                  template +=`));
+                return unique_map_${ContractName}[hash_${ContractName}];
               }
         `
-      });
     }
-  //
-    //
-    //
-  // get object from unique map 
-
   template += `
 
 function new_${ContractName}(`
-
-
-
-
   //add all the pass-in methods
   contract['initRules']['passIn'].forEach((element, index) => {
     const type = contract.fields_types[element]
@@ -305,18 +310,23 @@ function new_${ContractName}(`
 
   template += `) public returns (address){\n
     `
-  
     //check if unique index and then revert if already exists
     // do the index stuff
     // for now assume each index is just a string, but over time we may want a tuple or any type, if there's other types we can likely optimize better too
     //
     if(contract.writeRules.unique){
-      contract.writeRules.unique.forEach((indexField,index) =>{
         template += `
-          bytes32 hash_${indexField} = keccak256(abi.encodePacked(${indexField}));
-          require(unique_map_${indexField}[hash_${indexField}] == address(0));
-        `
+          bytes32 hash_${ContractName} = keccak256(abi.encodePacked(`
+      contract.writeRules.unique.forEach((indexField,index) =>{
+                if(index +=0){
+                  template += ','
+                }
+                template += `  ${indexField} `
       });
+                  template +=`));
+
+          require(unique_map_${ContractName}[hash_${ContractName}] == address(0));
+        `
     }
 
 
@@ -344,11 +354,9 @@ function new_${ContractName}(`
 
     //add to the unique index
     if(contract.writeRules.unique){
-      contract.writeRules.unique.forEach((indexField,index) =>{
         template += `
-          unique_map_${indexField}[hash_${indexField}]  = mynew;
+          unique_map_${ContractName}[hash_${ContractName}]  = mynew;
         `
-      });
     }
 
 //do the has one mapping stuff

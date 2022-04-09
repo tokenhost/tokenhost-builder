@@ -42,6 +42,16 @@ export default function Send() {
 
   const mySubmitHandler = async (event) => {
     event.preventDefault()
+
+    {{#each contract_data.initRules.passIn}}
+      var {{this}}_value = {{this}}
+    {{/each}}
+
+    {{{ unique_getters contract_data all_contracts}}}
+
+
+
+
     {{! loop over the pass in elements contract_data.initRules.passIn}}
     let fail = false;
     if ({{contract_data.initRules.passIn.[0]}} === '') {
@@ -56,11 +66,11 @@ export default function Send() {
 
 
       contract.methods
-        .new_{{contract}}({{contract_data.initRules.passIn}}) {{! loop over the pass in elements contract_data.initRules.passIn}}
+        .new_{{contract}}({{add_value contract_data.initRules.passIn}}) {{! loop over the pass in elements contract_data.initRules.passIn}}
         .estimateGas()
         .then((gasEstimate) => {
           contract.methods
-            .new_{{contract}}({{contract_data.initRules.passIn}}) {{! loop over the pass in elements contract_data.initRules.passIn}}
+            .new_{{contract}}({{add_value contract_data.initRules.passIn}}) {{! loop over the pass in elements contract_data.initRules.passIn}}
             .send({ gas: gasEstimate  })
             .then(() => {
               setSendStatus('')
