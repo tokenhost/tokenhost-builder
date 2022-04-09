@@ -275,7 +275,7 @@ for (const ContractName in contracts) {
         template += `
               mapping(bytes32 => address) unique_map_${indexField};  
 
-              function get_unique_map_${indexField} ( contract.fields_types[indexField] ${indexField}) returns (address) {
+              function get_unique_map_${indexField} ( ${contract.fields_types[indexField]} ${indexField}) public returns (address) {
                 bytes32 hash_${indexField} = keccak256(abi.encodePacked(${indexField}));
                 return unique_map_${indexField}[hash_${indexField}];
               }
