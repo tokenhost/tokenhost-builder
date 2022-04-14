@@ -8,6 +8,7 @@ let program = JSON.parse(rawdata)
 
 let contracts = program.contracts
 let template = `
+//SPDX-License-Identifier: UNLICENSED
 pragma solidity ^0.8.2;
 pragma experimental ABIEncoderV2;
 `
@@ -234,7 +235,6 @@ function get_${ContractName}_list_length() public view returns (uint256){
 
 
 
-  address[] ${parent_contract}_${reference_contract}_list;
 
   `
 
@@ -306,7 +306,7 @@ for (const ContractName in contracts) {
                 template += ` ${contract.fields_types[indexField]} ${indexField} `
       });
                 template +=`
-              ) public returns (address) {
+              ) public view returns (address) {
                 bytes32 hash_${ContractName} = keccak256(abi.encodePacked( `
       contract.writeRules.unique.forEach((indexField,index) =>{
                 if(index +=0){
@@ -392,7 +392,7 @@ contract_references[ContractName].forEach((reference_contract,index) => {
  
 
   if(!${parent_contract}_${reference_contract}_map[${reference_contract}].exists){
-    ${parent_contract}_${reference_contract}_map[${reference_contract}]=create_index_on_new_${parent_contract}_${reference_contract}(mynew);  
+    ${parent_contract}_${reference_contract}_map[${reference_contract}]=create_index_on_new_${parent_contract}_${reference_contract}();  
   }
   ${parent_contract}_${reference_contract}_map[${reference_contract}].${ContractName}_list.push(mynew);
 
@@ -464,9 +464,8 @@ if(contract_references[ContractName]){
   
     template += `
   
-  function create_index_on_new_${parent_contract}_${reference_contract}(address addr) private returns (${parent_contract}_${reference_contract} memory){
+  function create_index_on_new_${parent_contract}_${reference_contract}() private pure returns (${parent_contract}_${reference_contract} memory){
     address[] memory tmp;
-    ${parent_contract}_${reference_contract}_list.push(addr);
     return ${parent_contract}_${reference_contract}({exists:true, ${parent_contract}_list:tmp});
   } 
   `
