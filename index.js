@@ -230,9 +230,32 @@ function get_${ContractName}_list_length() public view returns (uint256){
       address[] ${parent_contract}_list;
   }
   mapping(address => ${parent_contract}_${reference_contract}) public ${parent_contract}_${reference_contract}_map;
+
+
+
+
   address[] ${parent_contract}_${reference_contract}_list;
 
   `
+
+  template += `
+  function get_last_${parent_contract}_${reference_contract}_map_N(address hash, uint256 count, uint256 offset) public view returns ( ${parent_contract}_getter[] memory){
+  ${parent_contract}_getter[] memory getters = new ${parent_contract}_getter[](count);
+    `
+  template += `for (uint i = 0; i < count; i++ ){ 
+        ${parent_contract}_contract  my${parent_contract} = ${parent_contract}_contract(${parent_contract}_${reference_contract}_map[hash].${parent_contract}_list[${parent_contract}_${reference_contract}_map[hash].${parent_contract}_list.length -i-offset-1]);`
+  contracts[parent_contract].readRules.gets.forEach((field) => {
+    template += `getters[i].${field} = my${parent_contract}.get_${field}();`
+  })
+  template += `}
+    return getters;
+    }`
+
+
+
+
+
+
 
     }
 
