@@ -33,8 +33,7 @@ export default (props) => {
       if(router.query.address){
         setAddress(router.query.address)
       }
-    console.log('hi',router.query)
-   } )
+   }, [])
 
 
   async function setUpListeners() {
@@ -68,8 +67,6 @@ export default (props) => {
   })
 
   useEffect(() => {
-   
-
   
      fetchMessages()
 
