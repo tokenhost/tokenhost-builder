@@ -238,6 +238,14 @@ function get_${ContractName}_list_length() public view returns (uint256){
 
   `
 
+  //get lenght of list
+  template +=`
+    function get_length_${parent_contract}_${reference_contract}_map(address hash) public view returns (uint256){
+        return ${parent_contract}_${reference_contract}_map[hash].${parent_contract}_list.length;
+    }
+
+  `
+
   template += `
   function get_last_${parent_contract}_${reference_contract}_map_N(address hash, uint256 count, uint256 offset) public view returns ( ${parent_contract}_getter[] memory){
   ${parent_contract}_getter[] memory getters = new ${parent_contract}_getter[](count);
