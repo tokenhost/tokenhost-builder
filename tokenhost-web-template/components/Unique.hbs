@@ -54,7 +54,7 @@ export default function Index(props) {
   useEffect(async () => {    
     await fetch()
     await setUpListeners()
-  },[address])
+  },[address]) // do i need [address] here?
 
     if(data === false){
       return (
