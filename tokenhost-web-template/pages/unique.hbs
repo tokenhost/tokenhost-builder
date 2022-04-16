@@ -1,0 +1,32 @@
+import React, { Component, useEffect, useState } from 'react'
+import Index from '../components/{{parent_contract}}/Index{{reference_contract}}'
+import { useRouter } from 'next/router'
+
+import { setupAccounts } from '../helpers/Web3Helper'
+
+export default (props) => {
+  const router = useRouter()
+  const [address, setAddress] = useState('')
+  useEffect(() => {
+      if(router.query.address){
+        setAddress(router.query.address)
+      }
+    console.log('address',router.query.address)
+   })
+
+  useEffect(() => {
+    setupAccounts()
+  }, [])
+
+  if(address == ''){
+
+    return '';
+  }
+  return (
+    <div className="container">
+      <Index address={address}/>
+    </div>
+  )
+}
+
+

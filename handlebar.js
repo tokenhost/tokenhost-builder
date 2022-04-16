@@ -1,6 +1,35 @@
+//duplicated in index.js
+function make_contract_references(contracts){
+  var contract_references = {}
+  //convert image to string:
+  for (const ContractName in contracts) {
+    const contract = contracts[ContractName]
+    let fields = contract.fields
+    for(var field in fields){
+      let type = fields[field]
+      if (type == 'image') {
+          fields[field] = 'string'
+      }
+      if(Object.keys(fields).includes(type)){
+        fields[field] = 'address';
+        if(!contract_references[ContractName]){
+          contract_references[ContractName] = []
+        }
+        contract_references[ContractName].push(type)
+      }
+
+    }
+  }
+  return contract_references
+}
+
+
+
 const Handlebars = require('handlebars')
 const fs = require('fs')
 let contracts = JSON.parse(fs.readFileSync('contracts.json'))
+
+var contract_references = make_contract_references(contracts.contracts);
 
 let index_template = fs.readFileSync(
   'tokenhost-web-template/pages/index.hbs',
@@ -65,6 +94,14 @@ let IndexTemplate = Handlebars.compile(
   fs.readFileSync('tokenhost-web-template/components/Index.hbs', 'utf-8'),
 )
 
+let UniqueTemplate = Handlebars.compile(
+  fs.readFileSync('tokenhost-web-template/pages/unique.hbs', 'utf-8'),
+)
+
+let UniqueTemplateIndex = Handlebars.compile(
+  fs.readFileSync('tokenhost-web-template/component/Unique.hbs', 'utf-8'),
+)
+
 let ViewTemplate = Handlebars.compile(
   fs.readFileSync('tokenhost-web-template/components/View.hbs', 'utf-8'),
 )
@@ -72,6 +109,29 @@ let ViewTemplate = Handlebars.compile(
 let PagerTemplate = Handlebars.compile(
   fs.readFileSync('tokenhost-web-template/components/Pager.hbs', 'utf-8'),
 )
+
+//contracts that reference other contracts
+for (parent_contract in contract_references) {
+    const reference_contract = contract_references[parent_contract];
+    const filename = `Unique${parent_contract}_${reference_contract}`
+    fs.writeFileSync(
+      `site/pages/${filename}.js`,
+      UniqueTemplate({parent_contract, reference_contract }),
+    )
+
+    const componentfilename = `${parent_contract}/Index${reference_contract}`
+
+    fs.writeFileSync(
+      `site/component/${componentfilename}.js`,
+      UniqueTemplateIndex({parent_contract, reference_contract }),
+    )
+
+  components/{{parent_contract}}/Index{{reference_contract}}'
+
+}
+
+
+
 
 for (var contract in contracts.contracts) {
   const contract_data = contracts.contracts[contract]
