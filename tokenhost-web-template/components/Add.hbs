@@ -4,10 +4,20 @@ import ImageUpload from '../ImageUpload.js'
 
 import { contract, w3 } from '../../helpers/Web3Helper'
 
-export default function Send() {
+export default function Send(props) {
+
+    {{#if reference_contract}}
+      const {{reference_contract}}_address = props.{{reference_contract}}_address
+    {{/if}}
 
   {{#each contract_data.initRules.passIn}}
-    const [{{this}}, set{{this}}] = useState() {{! loop over the pass in elements contract_data.initRules.passIn}}
+
+
+    {{#if (eq this ../reference_contract)}}
+      const [{{this}}, set{{this}}] = useState({{../reference_contract}}_address) {{! loop over the pass in elements contract_data.initRules.passIn}}
+    {{else}}
+      const [{{this}}, set{{this}}] = useState() {{! loop over the pass in elements contract_data.initRules.passIn}}
+    {{/if}}
   
     {{#if (checkImage @root.contract_data.fields this) }}
       let register = "";
@@ -47,7 +57,7 @@ export default function Send() {
       var {{this}}_value = {{this}}
     {{/each}}
 
-    {{{ unique_getters contract_data all_contracts}}}
+    {{{ unique_getters contract_data all_contracts reference_contract}}}
 
 
 
@@ -89,27 +99,37 @@ export default function Send() {
 
         {{#each contract_data.initRules.passIn}}
 
-        {{#if (checkImage @root.contract_data.fields this) }}
-        <div className="field">
-          <label className="label">{{this}}</label>
-          <div className="control">
-            <ImageUpload setImage={ ({{this}}) => setValue({{this}}) } user={user} />
-          </div>
-        </div>
+
+        {{#if (eq this ../reference_contract)}}
+
+            <input type="hidden"
+              name="{{this}}"
+              value={ {{../reference_contract}}_address    }
+            />
         {{else}}
 
-        <div className="field">
-          <label className="label">{{this}}</label>
-          <div className="control">
-            <input className="input" type="text" placeholder="Type your {{this}} here..."
-              name="{{this}}"
-              value={ {{this}}    }
-              onChange={(event) => set{{this}}(event.target.value)}
-            />
-          </div>
-        </div>
-        {{/if}}
+              {{#if (checkImage @root.contract_data.fields this) }}
+              <div className="field">
+                <label className="label">{{this}}</label>
+                <div className="control">
+                  <ImageUpload setImage={ ({{this}}) => setValue({{this}}) } user={user} />
+                </div>
+              </div>
+              {{else}}
 
+              <div className="field">
+                <label className="label">{{this}}</label>
+                <div className="control">
+                  <input className="input" type="text" placeholder="Type your {{this}} here..."
+                    name="{{this}}"
+                    value={ {{this}}    }
+                    onChange={(event) => set{{this}}(event.target.value)}
+                  />
+                </div>
+              </div>
+              {{/if}}
+
+         {{/if}} 
         {{/each}}  
 
 <div className="field is-grouped">
@@ -127,9 +147,6 @@ export default function Send() {
 
 
         {{else}}
-
-
-
 
         {{#if (checkImage @root.contract_data.fields contract_data.initRules.passIn.[0]) }}
             {{#each contract_data.initRules.passIn}}

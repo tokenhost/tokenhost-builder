@@ -39,11 +39,13 @@ Handlebars.registerHelper('checkImage', function (fieldObj, key) {
   return fieldObj[key] === "image"
 })
 
+Handlebars.registerHelper('eq', (a, b) =>{ return a == b})
 
-Handlebars.registerHelper('unique_getters', function (contract, all_contracts) {
+
+Handlebars.registerHelper('unique_getters', function (contract, all_contracts, reference_contract) {
   var template = '';
   for(var field in contract.fields){
-    if(field in all_contracts){
+    if(field in all_contracts && field != reference_contract){
       template += `
             ${field}_value = await contract.methods.get_unique_map_${field}( ${field}).call();
             set${field}(${field}_value);
@@ -134,6 +136,11 @@ for (parent_contract in contract_references) {
 
 for (var contract in contracts.contracts) {
   const contract_data = contracts.contracts[contract]
+  var reference_contract = contract_references[contract];
+  if(reference_contract){
+    reference_contract = reference_contract.toString();
+  }
+
   fs.writeFileSync(`site/pages/${contract}.js`, page_template({ contract }))
 
   try {
@@ -142,7 +149,7 @@ for (var contract in contracts.contracts) {
 
   fs.writeFileSync(
     `site/components/${contract}/Add.js`,
-    AddTemplate({ contract, contract_data, all_contracts:contracts.contracts }),
+    AddTemplate({ contract, reference_contract:reference_contract, contract_data, all_contracts:contracts.contracts }),
   )
   fs.writeFileSync(
     `site/components/${contract}/Index.js`,
