@@ -112,26 +112,6 @@ let PagerTemplate = Handlebars.compile(
   fs.readFileSync('tokenhost-web-template/components/Pager.hbs', 'utf-8'),
 )
 
-//contracts that reference other contracts
-for (parent_contract in contract_references) {
-    const reference_contract = contract_references[parent_contract];
-    const filename = `${parent_contract}${reference_contract}`
-    fs.writeFileSync(
-      `site/pages/${filename}.js`,
-      UniqueTemplate({parent_contract, reference_contract }),
-    )
-
-    const componentfilename = `${parent_contract}/Index${reference_contract}`
-
-    fs.writeFileSync(
-      `site/components/${componentfilename}.js`,
-      UniqueTemplateIndex({parent_contract, reference_contract }),
-    )
-
-
-}
-
-
 
 
 for (var contract in contracts.contracts) {
@@ -172,3 +152,23 @@ for (var contract in contracts.contracts) {
     PagerTemplate({ contract, contract_data }),
   )
 }
+
+//contracts that reference other contracts
+for (parent_contract in contract_references) {
+    const reference_contract = contract_references[parent_contract];
+    const filename = `${parent_contract}${reference_contract}`
+    fs.writeFileSync(
+      `site/pages/${filename}.js`,
+      UniqueTemplate({parent_contract, reference_contract }),
+    )
+
+    const componentfilename = `${parent_contract}/Index${reference_contract}`
+
+    fs.writeFileSync(
+      `site/components/${componentfilename}.js`,
+      UniqueTemplateIndex({parent_contract, reference_contract }),
+    )
+
+
+}
+
