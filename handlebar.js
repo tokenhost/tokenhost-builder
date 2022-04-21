@@ -39,7 +39,10 @@ Handlebars.registerHelper('checkImage', function (fieldObj, key) {
   return fieldObj[key] === "image"
 })
 
-Handlebars.registerHelper('eq', (a, b) =>{ return a == b})
+Handlebars.registerHelper('eq', (a, b) =>{ 
+  console.log("eq",a,b, a==b);
+  return a == b;
+})
 
 
 Handlebars.registerHelper('unique_getters', function (contract, all_contracts, reference_contract) {
@@ -129,11 +132,11 @@ for (var contract in contracts.contracts) {
 
   fs.writeFileSync(
     `site/components/${contract}/Add.js`,
-    AddTemplate({ contract, reference_contract:reference_contract, contract_data, all_contracts:contracts.contracts }),
+    AddTemplate({ contract,  contract_data, all_contracts:contracts.contracts }),
   )
   fs.writeFileSync(
     `site/components/${contract}/Index.js`,
-    IndexTemplate({contract, contract_data }),
+    IndexTemplate({contract, contract_data, reference_contract }),
   )
 
 
@@ -142,7 +145,7 @@ for (var contract in contracts.contracts) {
   })
   fs.writeFileSync(
     `site/components/${contract}/View.js`,
-    ViewTemplate({ contract, contract_data }),
+    ViewTemplate({ contract, contract_data, reference_contract }),
   )
 
   Handlebars.unregisterHelper('checkFieldIsImage')
@@ -157,6 +160,7 @@ for (var contract in contracts.contracts) {
 for (parent_contract in contract_references) {
     const reference_contract = contract_references[parent_contract];
     const filename = `${parent_contract}${reference_contract}`
+    const contract_data = contracts.contracts[parent_contract]
     fs.writeFileSync(
       `site/pages/${filename}.js`,
       UniqueTemplate({parent_contract, reference_contract }),
@@ -167,7 +171,14 @@ for (parent_contract in contract_references) {
     fs.writeFileSync(
       `site/components/${componentfilename}.js`,
       UniqueTemplateIndex({parent_contract, reference_contract }),
-    )
+   )
+
+  console.log(reference_contract, filename)
+
+  fs.writeFileSync(
+    `site/components/${parent_contract}/AddIndex.js`,
+    AddTemplate({ contract:parent_contract, reference_contract:reference_contract, contract_data, all_contracts:contracts.contracts }),
+  )
 
 
 }

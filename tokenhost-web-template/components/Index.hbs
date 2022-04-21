@@ -79,7 +79,12 @@ console.log("pageNumber", pageNumber)
       <div>
         {
           data.map((data, index) => (
-            <View key={index} data={data} />
+            
+            {{#if reference_contract}}
+              <View key={index} data={data} reference_contract={ "{{reference_contract}}" }/>
+            {{else}}
+              <View key={index} data={data} />
+            {{/if}}
           ))
         }
 

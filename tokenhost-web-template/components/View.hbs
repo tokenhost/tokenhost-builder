@@ -1,8 +1,29 @@
+import React, {Fragment} from 'react'
+
 import TimeAgo from 'react-timeago'
+import Link from 'next/link'
 import User from '../User.js'
 
 export default (props) => {
   const data = props.data
+console.log('data',data)
+
+  function reference_contract_link(){
+    if(props.reference_contract){
+      return (
+                    <Link href={"/{{contract}}{{reference_contract}}?address="+data[props.reference_contract]}>
+                      <a className="button is-warning has-text-white is-bold">
+                        <span>View all {{contract}} with same {{reference_contract}}</span>
+                      </a>
+                    </Link>
+      ) 
+    }else{
+      return (<></>);
+    }
+  }
+
+//shouldnt need to use dangerouslySetInnerHTML
+
   return (
 <section className='hero is-primary mb-6'>
   <div className='hero-body'>
@@ -29,6 +50,7 @@ export default (props) => {
           <h2 className='subtitle'>
             <TimeAgo date={data.timestamp * 1000} />
           </h2>
+                   {reference_contract_link()}
         </div>
       </div>
     </div>
