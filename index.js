@@ -301,7 +301,9 @@ for (const ContractName in contracts) {
   //unique map
   //    
 
-    if(contract.writeRules.index){
+    if(contract.writeRules.index.length > 0){
+
+
         template += `
               mapping(bytes32 => address) unique_map_${ContractName};  
 
@@ -345,7 +347,7 @@ function new_${ContractName}(`
     // do the index stuff
     // for now assume each index is just a string, but over time we may want a tuple or any type, if there's other types we can likely optimize better too
     //
-    if(contract.writeRules.index){
+    if(contract.writeRules.index.length > 0){
         template += `
           bytes32 hash_${ContractName} = keccak256(abi.encodePacked(`
       contract.writeRules.index.forEach((indexField,index) =>{
@@ -384,7 +386,7 @@ function new_${ContractName}(`
 
 
     //add to the unique index
-    if(contract.writeRules.index){
+    if(contract.writeRules.index.length > 0){
         template += `
           unique_map_${ContractName}[hash_${ContractName}]  = mynew;
         `
