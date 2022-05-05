@@ -109,8 +109,8 @@ for (const ContractName in contracts) {
 
 
   template += `
-    function getall() public view returns (${get_all_types_string}){
-        return (${get_all_fields_string});
+    function getall() public view returns (address, ${get_all_types_string}){
+        return (address(this), ${get_all_fields_string});
     }`
 
   contract.readRules.gets.forEach((field) => {
@@ -133,7 +133,9 @@ for (const ContractName in contracts) {
 function get_${ContractName}_list_length() public view returns (uint256){
     return ${ContractName}_list_length;
 }`
-  template += `struct ${ContractName}_getter{`
+  template += `struct ${ContractName}_getter{
+        address _address;
+        `
         contract.readRules.gets.forEach((field) => {
         const type = fields[field]
         template += `${type} ${field};`
@@ -161,7 +163,7 @@ function get_${ContractName}_list_length() public view returns (uint256){
   const get_all_types_array_string = get_all_types_array.join(', ')
 
   template += `
-  function get_${ContractName}_N(uint256 index) public view returns (${get_all_types_string}){
+  function get_${ContractName}_N(uint256 index) public view returns (address, ${get_all_types_string}){
       return ${ContractName}_contract(${ContractName}_list[index]).getall();
   }
 
@@ -170,7 +172,9 @@ function get_${ContractName}_list_length() public view returns (uint256){
   ${ContractName}_getter[] memory getters = new ${ContractName}_getter[](count);
     `
   template += `for (uint i = offset; i < count; i++) {
-        ${ContractName}_contract  my${ContractName} = ${ContractName}_contract(${ContractName}_list[i+offset]);`
+        ${ContractName}_contract  my${ContractName} = ${ContractName}_contract(${ContractName}_list[i+offset]);
+        getters[i-offset]._address = address(my${ContractName});
+        `
   contract.readRules.gets.forEach((field) => {
     template += `getters[i-offset].${field} = my${ContractName}.get_${field}();`
   })
@@ -183,7 +187,10 @@ function get_${ContractName}_list_length() public view returns (uint256){
   ${ContractName}_getter[] memory getters = new ${ContractName}_getter[](count);
     `
   template += `for (uint i = 0; i < count; i++ ){ 
-        ${ContractName}_contract  my${ContractName} = ${ContractName}_contract(${ContractName}_list[${ContractName}_list_length-i-offset-1]);`
+        ${ContractName}_contract  my${ContractName} = ${ContractName}_contract(${ContractName}_list[${ContractName}_list_length-i-offset-1]);
+        getters[i]._address = address(my${ContractName});
+
+    `
   contract.readRules.gets.forEach((field) => {
     template += `getters[i].${field} = my${ContractName}.get_${field}();`
   })
@@ -200,7 +207,7 @@ function get_${ContractName}_list_length() public view returns (uint256){
       function get_${ContractName}_user_length(address user) public view returns (uint256){
         return user_map[user].${ContractName}_list_length;
       }
-      function get_${ContractName}_user_N(address user,uint256 index) public view returns (${get_all_types_string}){
+      function get_${ContractName}_user_N(address user,uint256 index) public view returns (address, ${get_all_types_string}){
         return ${ContractName}_contract(user_map[user].${ContractName}_list[index]).getall();
     }
 
@@ -208,8 +215,11 @@ function get_${ContractName}_list_length() public view returns (uint256){
      
   function get_last_${ContractName}_user_N(address user,uint256 count, uint256 offset) public view returns ( ${ContractName}_getter[]  memory){
   ${ContractName}_getter[] memory getters = new ${ContractName}_getter[](count);
+
     `
-  template += `for (uint i = offset; i < count; i++) {`
+  template += `for (uint i = offset; i < count; i++) {
+getters[i-offset]._address = user_map[user].${ContractName}_list[i+offset];
+    `
     contract.readRules.gets.forEach((field) => {
     template += `getters[i-offset].${field} = ${ContractName}_contract(user_map[user].${ContractName}_list[i+offset]).get_${field}();`
   })
@@ -251,7 +261,11 @@ function get_${ContractName}_list_length() public view returns (uint256){
   ${parent_contract}_getter[] memory getters = new ${parent_contract}_getter[](count);
     `
   template += `for (uint i = 0; i < count; i++ ){ 
-        ${parent_contract}_contract  my${parent_contract} = ${parent_contract}_contract(${parent_contract}_${reference_contract}_map[hash].${parent_contract}_list[${parent_contract}_${reference_contract}_map[hash].${parent_contract}_list.length -i-offset-1]);`
+        ${parent_contract}_contract  my${parent_contract} = ${parent_contract}_contract(${parent_contract}_${reference_contract}_map[hash].${parent_contract}_list[${parent_contract}_${reference_contract}_map[hash].${parent_contract}_list.length -i-offset-1]);
+
+      getters[i]._address = address(my${parent_contract});
+
+    `
   contracts[parent_contract].readRules.gets.forEach((field) => {
     template += `getters[i].${field} = my${parent_contract}.get_${field}();`
   })

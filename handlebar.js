@@ -1,6 +1,7 @@
 //duplicated in index.js
 function make_contract_references(contracts){
   var contract_references = {}
+  var reverse_contract_references = {}
   //convert image to string:
   for (const ContractName in contracts) {
     const contract = contracts[ContractName]
@@ -15,12 +16,16 @@ function make_contract_references(contracts){
         if(!contract_references[ContractName]){
           contract_references[ContractName] = []
         }
+        if(!reverse_contract_references[type]){
+          reverse_contract_references[type] = []
+        }
         contract_references[ContractName].push(type)
+        reverse_contract_references[type].push(ContractName)
       }
 
     }
   }
-  return contract_references
+  return [contract_references, reverse_contract_references]
 }
 
 
@@ -29,7 +34,8 @@ const Handlebars = require('handlebars')
 const fs = require('fs')
 let contracts = JSON.parse(fs.readFileSync('contracts.json'))
 
-var contract_references = make_contract_references(contracts.contracts);
+const [contract_references, reverse_contract_references] = make_contract_references(contracts.contracts);
+console.log(contract_references)
 
 let index_template = fs.readFileSync(
   'tokenhost-web-template/pages/index.hbs',
@@ -143,9 +149,13 @@ for (var contract in contracts.contracts) {
   Handlebars.registerHelper('checkFieldIsImage', function ( key) {
      return contract_data.fields[key] == "image"
   })
+  var this_reverse_references = reverse_contract_references[contract];
+  if(!this_reverse_references){
+    this_reverse_references = []
+  }
   fs.writeFileSync(
     `site/components/${contract}/View.js`,
-    ViewTemplate({ contract, contract_data, reference_contract }),
+    ViewTemplate({ contract, contract_data, reference_contract, this_reverse_references }),
   )
 
   Handlebars.unregisterHelper('checkFieldIsImage')

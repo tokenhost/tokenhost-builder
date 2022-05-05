@@ -85,7 +85,10 @@ export default function Send(props) {
             .then(() => {
               setSendStatus('')
                 {{#each contract_data.initRules.passIn}}
-                  set{{this}}("")
+                  {{#if (eq this ../reference_contract)}}
+                  {{else}}
+                      set{{this}}("")
+                  {{/if}}
                 {{/each}}
             })
         })

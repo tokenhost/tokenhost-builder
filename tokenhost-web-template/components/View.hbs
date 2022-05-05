@@ -6,7 +6,6 @@ import User from '../User.js'
 
 export default (props) => {
   const data = props.data
-console.log('data',data)
 
   function reference_contract_link(){
     if(props.reference_contract){
@@ -21,8 +20,24 @@ console.log('data',data)
       return (<></>);
     }
   }
+  function reverse_reference_contract_link(){
+console.log('data',data)
+      return (
+              <>
+  {{#each this_reverse_references }}
 
-//shouldnt need to use dangerouslySetInnerHTML
+                    <Link href={"/{{this}}{{../contract}}?address="+data['_address']}>
+                      <a className="button is-warning has-text-white is-bold">
+                        <span>View all {{this}} with same {{../contract}}</span>
+                      </a>
+                    </Link>
+
+  {{/each}}
+
+            </>
+      ) 
+  }
+
 
   return (
 <section className='hero is-primary mb-6'>
@@ -51,6 +66,7 @@ console.log('data',data)
             <TimeAgo date={data.timestamp * 1000} />
           </h2>
                    {reference_contract_link()}
+                   {reverse_reference_contract_link()}
         </div>
       </div>
     </div>
