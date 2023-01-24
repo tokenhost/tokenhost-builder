@@ -1,6 +1,6 @@
 const fs = require('fs');
 const Web3 = require('web3');
-const web3 = new Web3('https://chain.token.ax:443')
+const web3 = new Web3('https://chain.txt.rs:443')
 const Handlebars = require('handlebars')
 
 

@@ -5,8 +5,8 @@ const SignerProvider = require('ethjs-provider-signer')
 const EC = require('elliptic').ec
 const ec = new EC('secp256k1')
 
-export var w3 = new Web3('https://chain.token.ax:443')
-export var w3ws = new Web3('wss://chain.token.ax:443')
+export var w3 = new Web3('https://chain.txt.rs:443')
+export var w3ws = new Web3('wss://chain.txt.rs:443')
 const contract_address = '{{contract_address}}'
 
 import abi from '../contracts/App_sol_App.json'
@@ -27,7 +27,7 @@ function setupAccounts() {
 
     const account = w3.eth.accounts.privateKeyToAccount(privateKey)
 
-    var localprovider = new SignerProvider('https://chain.token.ax:443', {
+    var localprovider = new SignerProvider('https://chain.txt.rs:443', {
       signTransaction: (rawTx, cb) => cb(null, sign(rawTx, privateKey)),
       accounts: (cb) => cb(null, [address]),
     })
