@@ -9,7 +9,7 @@ function make_contract_references(contracts){
     for(var field in fields){
       let type = fields[field]
       if (type == 'image') {
-          fields[field] = 'string'
+          //fields[field] = 'string'
       }
       if(Object.keys(fields).includes(type)){
         fields[field] = 'address';
