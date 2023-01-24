@@ -150,7 +150,7 @@ export default class signin extends Component {
     this.setState({ emailInput: false });
     const publicAddress = this.state.publicAddress;
     fetch(`${process.env.REACT_APP_BACKEND_URL}/metamask/users`, {
-      body: JSON.stringify({ email: this.state.authData.email, publicAddress: publicAddress }),
+      body: JSON.stringify({ username: this.state.authData.email, email: this.state.authData.email, publicAddress: publicAddress }),
       headers: {
         'Content-Type': 'application/json',
       },
