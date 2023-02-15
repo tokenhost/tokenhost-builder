@@ -142,20 +142,16 @@ export default class TheNav extends Component {
         <div className="container">
           <div className="navbar-brand">
             <div className="navbar-item">
-              <Link href="/">
-                <a className="button is-white">
-                  <img src="/TokenHost.png" />
-                </a>
+              <Link href="/" className="button is-white">
+                <img src="/TokenHost.png" />
               </Link>
             </div>
           </div>
           <div className="navbar-menu">            
             {{#each contracts}}
               <div className="navbar-item ">
-                <Link href="/{{@key}}">
-                  <a className="button is-primary">
-                    <span>{{@key}}</span>
-                  </a>
+                <Link href="/{{@key}}" className="button is-primary">
+                  <span>{{@key}}</span>
                 </Link>
               </div>
             {{/each}}
@@ -172,10 +168,8 @@ export default class TheNav extends Component {
                   </a>
 
                   <div className="navbar-dropdown">
-                    <Link href="/profile">
-                      <a className="navbar-item">
-                        Profile
-                      </a>
+                    <Link href="/profile" className="navbar-item">
+                      Profile
                     </Link>
                     <hr className="navbar-divider" />
                     <div className="navbar-item">
@@ -187,10 +181,8 @@ export default class TheNav extends Component {
                 </div>
                 :
                 <div className="navbar-item">
-                  <Link href="/signin">
-                    <a className="button is-primary">
-                      <span>Sign in</span>
-                    </a>
+                  <Link href="/signin" className="button is-primary">
+                    <span>Sign in</span>
                   </Link>
                 </div>
             }
