@@ -1,8 +1,10 @@
 set -eux
 
+cp  -r config tokenhost-web-template/
+
 node index.js > tokenhost-web-template/contracts/App.sol
 npx prettier --write 'tokenhost-web-template/contracts/App.sol'
-(cd tokenhost-web-template/contracts; solcjs --optimize --bin --abi -o . App.sol; cp App_sol_App.abi App_sol_App.json)
+(cd tokenhost-web-template/contracts; solcjs --optimize --overwrite --bin --abi -o . App.sol; cp App_sol_App.abi App_sol_App.json)
 
 #build site
 
@@ -17,8 +19,8 @@ node handlebar.js
 
 
 (
-cd site/contracts/
-node deploy.js
+cd site/
+node contracts/deploy.js tokenhost
 )
 
 #cd site;
