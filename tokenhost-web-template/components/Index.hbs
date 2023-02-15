@@ -50,9 +50,15 @@ console.log("pageNumber", pageNumber)
   }
 
 
-  useEffect(async () => {    
-    await fetch()
-    await setUpListeners()
+  useEffect(() => {    
+   async function fetchData() {
+      await fetch()
+      await setUpListeners()
+    }
+    fetchData();
+    return () => {
+      console.log('This will be logged on unmount');
+    };
   },[])
 
     if(data === false){

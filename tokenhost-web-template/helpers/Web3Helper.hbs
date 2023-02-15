@@ -8,8 +8,41 @@ const ec = new EC('secp256k1')
 export var w3 = new Web3('https://chain.txt.rs:443')
 export var w3ws = new Web3('wss://chain.txt.rs:443')
 const contract_address = '{{contract_address}}'
+let web3 = undefined; // Will hold the web3 instance
 
 import abi from '../contracts/App_sol_App.json'
+
+
+async function getMetamaskAddress(){
+    // Check if MetaMask is installed
+    if (!(window).ethereum) {
+      window.alert('Please install MetaMask first.');
+      return;
+    }
+
+    if (!web3) {
+      try {
+        // Request account access if needed
+        await (window).ethereum.enable();
+
+        // We don't know window.web3 version, so we use our own instance of Web3
+        // with the injected provider given by MetaMask
+        web3 = new Web3((window).ethereum);
+      } catch (error) {
+        window.alert('You need to allow MetaMask.');
+        return;
+      }
+    }
+
+    const coinbase = await web3.eth.getCoinbase();
+    if (!coinbase) {
+      window.alert('Please activate MetaMask first.');
+      return;
+    }
+    const publicAddress = coinbase.toLowerCase();
+    return publicAddress
+
+}
 
 function setupAccounts() {
   fetchUserItems('keys').then((key) => {
@@ -53,4 +86,4 @@ function generateKeys() {
   return { pub, key, address }
 }
 
-export { generateKeys, contract, contractws, setupAccounts }
+export { generateKeys, contract, contractws, setupAccounts, getMetamaskAddress }

@@ -1,8 +1,12 @@
 import React, { Component } from 'react'
+import Web3 from 'web3';
 import Link from 'next/link'
 import Router from 'next/router'
+import Jazzicon, { jsNumberForAddress } from 'react-jazzicon'
 
-import { generateKeys } from '../helpers/Web3Helper'
+
+import { getMetamaskAddress } from '../helpers/Web3Helper'
+let web3 = undefined; // Will hold the web3 instance
 
 export default class TheNav extends Component {
   _isMounted = false
@@ -21,115 +25,21 @@ export default class TheNav extends Component {
   }
 
   handleSignOut = () => {
-    fetch(`${process.env.REACT_APP_GOOGLE_AUTH_DOMAIN}/logout`, {
-      method: 'GET',
-      headers: {
-        'Content-Type': 'application/json',
-      },
-      credentials: 'include',
-      withCredentials: true,
-    })
-      .then(response => {
-        return response.text();
-      })
-      .then(data => {
-        this.setState({ signedIn: false });
-        Router.push('/');
-      });
+    this.setState({ signedIn: false, user:null, token:null });
+    Router.push('/');
   }
 
-
-  createKey = (eth_account) => {
-    fetch(`${process.env.REACT_APP_GOOGLE_AUTH_DOMAIN}/fetch-user-key`, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-      },
-      credentials: 'include',
-      withCredentials: true,
-      body: JSON.stringify(eth_account),
-    })
-      .then(response => {
-        return response.text();
-      })
-      .then(data => {
-        const result = JSON.parse(data);
-
-        if (result.status) {
-          this.addAddressToUser(result.keyData);
-        }
-        this.setState({ loading: false });
-        if (result.status) return true;
-        return false;
-      });
-  }
-  addAddressToUser = (eth_account) => {
-    fetch(`${process.env.REACT_APP_GOOGLE_AUTH_DOMAIN}/add-user-address`, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-      },
-      credentials: 'include',
-      withCredentials: true,
-      body: JSON.stringify(eth_account),
-    })
-      .then(response => {
-        return response.text();
-      })
-      .then(data => {
-        const result = JSON.parse(data);
-        this.setState({ loading: false });
-        if (result.status) return true;
-        return false;
-      });
-  }
-
-  handleRouteChange = () => {
-    fetch(`${process.env.REACT_APP_GOOGLE_AUTH_DOMAIN}/check-auth`, {
-      method: 'GET',
-      headers: {
-        'Content-Type': 'application/json',
-      },
-      credentials: 'include',
-      withCredentials: true,
-    })
-      .then(response => {
-        return response.text();
-      })
-      .then(data => {
-        const { auth, message, user } = JSON.parse(data);
-        this.setState({ signedIn: auth });
-        this.setState({ user: user });
-        console.log(message);
-      });
+  handleRouteChange = async () => {
+    const publicAddress = await getMetamaskAddress()
+    this.setState({signedIn:true, user: {username:publicAddress}, token: publicAddress})
   }
 
   componentDidMount() {
     this._isMounted = true
     
     Router.events.on('routeChangeStart', this.handleRouteChange)
+    this.handleRouteChange()
 
-    fetch(`${process.env.REACT_APP_GOOGLE_AUTH_DOMAIN}/check-auth`, {
-      method: 'GET',
-      headers: {
-        'Content-Type': 'application/json',
-      },
-      credentials: 'include',
-      withCredentials: true,
-    })
-      .then(response => {
-        return response.text();
-      })
-      .then(async data => {
-        const { auth, message, user } = JSON.parse(data);
-        if (auth) {
-          const eth_account = await generateKeys()
-          this.createKey(eth_account);
-        }
-        this.setState({ signedIn: auth });
-        this.setState({ user: user });
-        console.log(message);
-      });
   }
 
   componentWillUnmount() {
@@ -158,13 +68,13 @@ export default class TheNav extends Component {
           </div>
           <div className="navbar-end">
             {
-              this.state.signedIn ?
+              this.state.token ?
                 <div className="navbar-item has-dropdown is-hoverable">
                   <a className="navbar-link">
                     <figure className="image is-32x32 mr-2">
-                      <img className="is-rounded" src={(this.state.user && this.state.user.photo) ? this.state.user.photo : "https://bulma.io/images/placeholders/128x128.png"} />
+                        <Jazzicon diameter={32} seed={jsNumberForAddress(this.state.token)} />
                     </figure>
-                    {this.state.user && this.state.user.username}
+                    {this.state.token}
                   </a>
 
                   <div className="navbar-dropdown">

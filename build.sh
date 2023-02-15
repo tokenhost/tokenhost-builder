@@ -15,7 +15,10 @@ rm -rf site
 cp -r tokenhost-web-template site
 (
 cd site
-yarn)
+yarn
+yarn add sass #todo automate this
+
+)
 
 
 node handlebar.js
