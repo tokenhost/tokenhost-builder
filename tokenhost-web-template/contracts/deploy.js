@@ -8,6 +8,11 @@ if(process.argv.length > 1){
 const fs = require('fs');
 const Web3 = require('web3');
 const config = require('config');
+
+const rpcUrl =  config.get(network+".rpcUrl")
+const rpcWS =  config.get(network+".rpcWS")
+const chainName  =  config.get(network+".chainName")
+
 const web3 = new Web3( config.get(network+".rpcUrl"))
 const Handlebars = require('handlebars')
 const Tx = require('ethereumjs-tx')
@@ -36,6 +41,9 @@ async function main(){
 
     web3.eth.accounts.wallet.add(account)
     web3.eth.defaultAccount = account.address
+
+  const chainId = web3.eth.getChainId();
+
 
   const ganacheAccounts = await web3.eth.getAccounts();
   console.log('ganace',ganacheAccounts)
@@ -76,7 +84,7 @@ async function main(){
 
   fs.writeFileSync(
     `./helpers/Web3Helper.js`,
-    web3helper_template({ contract_address:deployment.options.address }),
+    web3helper_template({ contract_address:deployment.options.address, rpcUrl: rpcUrl, rpcWS: rpcWS, chainName: chainName, chainId: chainId}),
   )
 
 

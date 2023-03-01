@@ -1,52 +1,27 @@
-import React, { Component } from 'react'
+import React, { Component, useState, useEffect } from 'react'
 import Web3 from 'web3';
 import Link from 'next/link'
 import Router from 'next/router'
 import Jazzicon, { jsNumberForAddress } from 'react-jazzicon'
-
+import { useDispatch, useSelector } from 'react-redux';
+import { setNetworkId, setMetamaskConnected, setEthAddress, setUser, initialState } from '../features/users/userSlice';
 
 import { getMetamaskAddress } from '../helpers/Web3Helper'
 let web3 = undefined; // Will hold the web3 instance
 
-export default class TheNav extends Component {
-  _isMounted = false
+export default function TheNav() {
 
-  constructor(props) {
-    super(props)
-    this.state = {
-      signedIn: false,
-      user: null,
-      token: null
-    }
+  const dispatch = useDispatch();
+  const { networkId, metamaskConnected, ethAddress } = useSelector(state => state.user);
+
+  const signOut = async () => {
+    handleSignOut()
   }
 
-  signOut = async () => {
-    this.handleSignOut()
-  }
-
-  handleSignOut = () => {
-    this.setState({ signedIn: false, user:null, token:null });
+  const handleSignOut = () => {
+    dispatch(setUser(initialState));
     Router.push('/');
   }
-
-  handleRouteChange = async () => {
-    const publicAddress = await getMetamaskAddress()
-    this.setState({signedIn:true, user: {username:publicAddress}, token: publicAddress})
-  }
-
-  componentDidMount() {
-    this._isMounted = true
-    
-    Router.events.on('routeChangeStart', this.handleRouteChange)
-    this.handleRouteChange()
-
-  }
-
-  componentWillUnmount() {
-    this._isMounted = false
-  }
-
-  render() {
     return (
       <nav className="navbar" role="navigation" aria-label="main navigation">
         <div className="container">
@@ -68,13 +43,13 @@ export default class TheNav extends Component {
           </div>
           <div className="navbar-end">
             {
-              this.state.token ?
+              ethAddress ?
                 <div className="navbar-item has-dropdown is-hoverable">
                   <a className="navbar-link">
                     <figure className="image is-32x32 mr-2">
-                        <Jazzicon diameter={32} seed={jsNumberForAddress(this.state.token)} />
+                        <Jazzicon diameter={32} seed={jsNumberForAddress(ethAddress)} />
                     </figure>
-                    {this.state.token}
+                    {ethAddress}
                   </a>
 
                   <div className="navbar-dropdown">
@@ -83,7 +58,7 @@ export default class TheNav extends Component {
                     </Link>
                     <hr className="navbar-divider" />
                     <div className="navbar-item">
-                      <a className="is-danger" onClick={this.signOut}>
+                      <a className="is-danger" onClick={signOut}>
                         <span>Sign out</span>
                       </a>
                     </div>
@@ -101,4 +76,3 @@ export default class TheNav extends Component {
       </nav>
     )
   }
-}

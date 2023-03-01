@@ -1,12 +1,17 @@
 {
   "tokenhost": {
-    "rpcUrl": "https://chain.txt.rs"
+    "chainName": "Token Host",
+    "rpcUrl": "https://chain.txt.rs",
+    "rpcWS": "wss://chain.txt.rs"
   },
   "hyperspace": {
+    "chainName": "Hyperspace",
     "rpcUrl": "https://api.hyperspace.node.glif.io/rpc/v1",
+    "rpcWS": "wss://wss.hyperspace.node.glif.io/apigw/lotus/rpc/v1",
     "privateKey": "0xa2bf6bcb85a5475a1a3dab1a0cede1b5bfee6263a63ed560795698d0447d7ba3"
   },
   "sepolia": {
+    "chainName": "Sepolia",
     "rpcUrl": "https://endpoints.omniatech.io/v1/eth/sepolia/public",
     "privateKey": "0xa2bf6bcb85a5475a1a3dab1a0cede1b5bfee6263a63ed560795698d0447d7ba3"
   }

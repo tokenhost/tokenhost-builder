@@ -5,13 +5,84 @@ const SignerProvider = require('ethjs-provider-signer')
 const EC = require('elliptic').ec
 const ec = new EC('secp256k1')
 
-export var w3 = new Web3('https://chain.txt.rs:443')
-export var w3ws = new Web3('wss://chain.txt.rs:443')
+export var w3 = new Web3('{{rpcUrl}}')
+export var w3ws = new Web3('{{rpcWS}}')
 const contract_address = '{{contract_address}}'
 let web3 = undefined; // Will hold the web3 instance
+let contract = undefined // hold instance
 
 import abi from '../contracts/App_sol_App.json'
+const contractws = new w3ws.eth.Contract(abi, contract_address)
 
+
+async function isCorrectChain(){
+  const mm_chainid = await w3.eth.getChainId()
+  const rpc_chainid = await web3.eth.getChainId()
+  return mm_chainid == rpc_chainid;
+}
+
+async function addChain(){
+  const chainId = w3.utils.numberToHex( await w3.eth.getChainId())
+  try {
+    await window.ethereum.request({
+      method: 'wallet_switchEthereumChain',
+      params: [{ chainId: chainId }]
+    });
+  }catch(err){
+    // This error code indicates that the chain has not been added to MetaMask
+    if (err.code === 4902) {
+      await window.ethereum.request({
+      method: "wallet_addEthereumChain",
+      params: [{
+        rpcUrls: ['{{rpcUrl}}'],
+        chainName: '{{chainName}}',
+        chainId: chainId
+      }]
+      });
+    }
+  }
+}
+
+
+
+
+async function metaMaskLogin(){
+
+    // Check if MetaMask is installed
+    if (!(window).ethereum) {
+      window.alert('Please install MetaMask first.');
+      return;
+    }
+
+    if (!web3) {
+      try {
+        // Request account access if needed
+        await (window).ethereum.enable();
+
+        // We don't know window.web3 version, so we use our own instance of Web3
+        // with the injected provider given by MetaMask
+        web3 = new Web3((window).ethereum);
+      } catch (error) {
+        window.alert('You need to allow MetaMask.');
+        return;
+      }
+    }
+
+    const chain_correct = await isCorrectChain();
+    console.log("chain_correct", chain_correct)
+    if(!chain_correct){
+      await addChain()
+    }
+
+    const coinbase = await web3.eth.getCoinbase();
+    if (!coinbase) {
+      window.alert('Please activate MetaMask first.');
+      return;
+    }
+    const publicAddress = coinbase.toLowerCase();
+    contract = new web3.eth.Contract(abi, contract_address) //xxx sneaky place to put this need better set up
+    return publicAddress
+}
 
 async function getMetamaskAddress(){
     // Check if MetaMask is installed
@@ -40,6 +111,7 @@ async function getMetamaskAddress(){
       return;
     }
     const publicAddress = coinbase.toLowerCase();
+    contract = new web3.eth.Contract(abi, contract_address) //xxx sneaky place to put this need better set up
     return publicAddress
 
 }
@@ -72,9 +144,6 @@ function setupAccounts() {
     localStorage.setItem('ACCOUNT', account.address)
   })
 }
-import abi_tweets from '../contracts/App_sol_Tweets.abi'
-const contract = new w3.eth.Contract(abi, contract_address)
-const contractws = new w3ws.eth.Contract(abi, contract_address)
 
 function generateKeys() {
   var privateKey = w3.utils.randomHex(32)
@@ -86,4 +155,4 @@ function generateKeys() {
   return { pub, key, address }
 }
 
-export { generateKeys, contract, contractws, setupAccounts, getMetamaskAddress }
+export { generateKeys, contract, contractws, setupAccounts, getMetamaskAddress, isCorrectChain, addChain, metaMaskLogin }

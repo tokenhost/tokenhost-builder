@@ -2,52 +2,31 @@ import React, { Component, Fragment } from 'react'
 import Head from 'next/head'
 import getConfig from 'next/config'
 import Router from 'next/router'
+import { useDispatch, useSelector } from 'react-redux';
+
 import Web3 from 'web3';
 import { ToastContainer, toast } from 'react-toastify';
 import 'react-toastify/dist/ReactToastify.css';
-import { getMetamaskAddress } from '../helpers/Web3Helper'
+import { getMetamaskAddress, metaMaskLogin } from '../helpers/Web3Helper'
+import { setNetworkId, setMetamaskConnected, setEthAddress, setUser, initialState } from '../features/users/userSlice';
 
 let web3 = undefined; // Will hold the web3 instance
 
-const { publicRuntimeConfig } = getConfig()
-const toastOption = {
-  position: "top-center",
-  autoClose: 2001,
-  hideProgressBar: false,
-  closeOnClick: true,
-  pauseOnHover: true,
-  draggable: true,
-  progress: undefined,
-}
+export default function Signin() {
+  const dispatch = useDispatch();
 
-export default class signin extends Component {
 
-  constructor(props) {
-    super(props)
-    this.state = {
-      register: false,
-      loginWithEmail: false,
-      emailInput: false,
-      loading: false,
-      publicAddress: "",
-      authData: {
-        username: "",
-        email: "",
-        password: ""
-      }
-    }
-  }
-
-  
-  async handleLoginWithMetamask() {
+  const handleLoginWithMetamask = async () => {
+    await metaMaskLogin();
     const publicAddress = await getMetamaskAddress()
+    console.log('pub',publicAddress)
+    console.log("set eth")
+    dispatch(setEthAddress(publicAddress))
+    console.log("/set eth")
 
-    this.setState({ publicAddress: publicAddress })
-    this.setState({ loading: true });
     Router.push('/');
   }
 
-  render() {
 
     return (
       <Fragment>
@@ -58,12 +37,8 @@ export default class signin extends Component {
             href="https://use.fontawesome.com/releases/v5.6.3/css/all.css"
           />
         </Head>
-        {
-          this.state.loading ?
-            <div className="loader-wrapper">
-              <span className="loader"></span>
-            </div>
-            :
+        
+         
             <>
               <div className="columns">
                 <div className="column is-one-third is-offset-one-third">
@@ -73,7 +48,7 @@ export default class signin extends Component {
                         <div className="buttons">
                           <button
                             className="button is-primary is-fullwidth metamask px-4 py-2 mb-4"
-                            onClick={() => this.handleLoginWithMetamask()}
+                            onClick={() => handleLoginWithMetamask()}
                           >
                             <span>Login with Metamask</span>
                           </button>
@@ -86,8 +61,7 @@ export default class signin extends Component {
 
               <ToastContainer />
             </>
-        }
+        
       </Fragment>
     )
   }
-}

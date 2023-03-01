@@ -26,7 +26,8 @@ node handlebar.js
 
 (
 cd site/
-node contracts/deploy.js tokenhost
+node contracts/deploy.js hyperspace
+#node contracts/deploy.js tokenhost
 )
 
 #cd site;

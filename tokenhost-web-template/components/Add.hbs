@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react'
 import { auth } from '../../lib/db'
 import ImageUpload from '../ImageUpload.js'
 
-import { contract, w3 } from '../../helpers/Web3Helper'
+import { contract, w3 , getMetamaskAddress} from '../../helpers/Web3Helper'
 
 export default function Send(props) {
 
@@ -32,22 +32,11 @@ export default function Send(props) {
   const [user, setUser] = useState(false)
 
   useEffect(() => {    
-    fetch(`${process.env.REACT_APP_GOOGLE_AUTH_DOMAIN}/check-auth`, {
-      method: 'GET',
-      headers: {
-        'Content-Type': 'application/json',
-      },
-      credentials: 'include',
-      withCredentials: true,
-    })
-      .then(response => {
-        return response.text();
-      })
-      .then(data => {
-        const { auth, message, user } = JSON.parse(data);
-        setUser(user);
-        console.log(message);
-      });
+        async function fetch(){
+          const address = await getMetamaskAddress()
+          setUser(address);
+        }
+        fetch()
   }, [])
 
   const mySubmitHandler = async (event) => {
@@ -81,7 +70,7 @@ export default function Send(props) {
         .then((gasEstimate) => {
           contract.methods
             .new_{{contract}}({{add_value contract_data.initRules.passIn}}) {{! loop over the pass in elements contract_data.initRules.passIn}}
-            .send({ gas: gasEstimate  })
+            .send({ gas: gasEstimate, from: user,gasPrice: 0})
             .then(() => {
               setSendStatus('')
                 {{#each contract_data.initRules.passIn}}
