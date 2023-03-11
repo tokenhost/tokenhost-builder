@@ -20,7 +20,7 @@ const SignerProvider = require('ethjs-provider-signer')
 
 
 const bytecode = fs.readFileSync('contracts/App_sol_App.bin','utf8');
-var abi = JSON.parse(fs.readFileSync('contracts/App_sol_App.json', 'utf8'));
+var abi = JSON.parse(fs.readFileSync('contracts/App_sol_App.abi', 'utf8'));
 
 async function main(){
 
