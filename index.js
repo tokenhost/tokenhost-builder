@@ -14,6 +14,7 @@ pragma experimental ABIEncoderV2;
 `
 
 var contract_references = {}
+var field_lookup = {}
 //convert image to string:
 for (const ContractName in contracts) {
   const contract = contracts[ContractName]
@@ -23,12 +24,18 @@ for (const ContractName in contracts) {
     if (type == 'image') {
         fields[field] = 'string'
     }
-    if(Object.keys(fields).includes(type)){
+    if(Object.keys(contracts).includes(type)){
       fields[field] = 'address';
       if(!contract_references[ContractName]){
         contract_references[ContractName] = []
       }
       contract_references[ContractName].push(type)
+
+	    //for finding the field name later
+      if(!field_lookup[ContractName]){
+        field_lookup[ContractName] = {}
+      }
+	    field_lookup[ContractName][type] = field;
     }
 
   }
@@ -410,15 +417,17 @@ function new_${ContractName}(`
 if(contract_references[ContractName]){
 contract_references[ContractName].forEach((reference_contract,index) => {
 
+	const field_name = field_lookup[ContractName][reference_contract]
+
   template += `
 
 
  
 
-  if(!${parent_contract}_${reference_contract}_map[${reference_contract}].exists){
-    ${parent_contract}_${reference_contract}_map[${reference_contract}]=create_index_on_new_${parent_contract}_${reference_contract}();  
+  if(!${parent_contract}_${reference_contract}_map[${field_name}].exists){
+    ${parent_contract}_${reference_contract}_map[${field_name}]=create_index_on_new_${parent_contract}_${reference_contract}();  
   }
-  ${parent_contract}_${reference_contract}_map[${reference_contract}].${ContractName}_list.push(mynew);
+  ${parent_contract}_${reference_contract}_map[${field_name}].${ContractName}_list.push(mynew);
 
     `
 

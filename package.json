@@ -5,7 +5,8 @@
   "repository": "https://github.com/Token-ax/contracts-orm.git",
   "license": "MIT",
   "scripts": {
-    "build": "sh build.sh;  "
+    "build": "sh build.sh;",
+    "build-run": "sh build.sh && cd site && yarn run dev"
   },
   "dependencies": {
     "config": "^3.3.9",

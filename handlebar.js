@@ -11,7 +11,7 @@ function make_contract_references(contracts){
       if (type == 'image') {
           //fields[field] = 'string'
       }
-      if(Object.keys(fields).includes(type)){
+      if(Object.keys(contracts).includes(type)){
         fields[field] = 'address';
         if(!contract_references[ContractName]){
           contract_references[ContractName] = []
@@ -35,7 +35,6 @@ const fs = require('fs')
 let contracts = JSON.parse(fs.readFileSync('contracts.json'))
 
 const [contract_references, reverse_contract_references] = make_contract_references(contracts.contracts);
-console.log(contract_references)
 
 let index_template = fs.readFileSync(
   'tokenhost-web-template/pages/index.hbs',
@@ -46,7 +45,6 @@ Handlebars.registerHelper('checkImage', function (fieldObj, key) {
 })
 
 Handlebars.registerHelper('eq', (a, b) =>{ 
-  console.log("eq",a,b, a==b);
   return a == b;
 })
 
@@ -183,7 +181,6 @@ for (parent_contract in contract_references) {
       UniqueTemplateIndex({parent_contract, reference_contract }),
    )
 
-  console.log(reference_contract, filename)
 
   fs.writeFileSync(
     `site/components/${parent_contract}/AddIndex.js`,

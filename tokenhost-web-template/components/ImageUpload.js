@@ -1,5 +1,6 @@
 import React, { Component, useState, useEffect } from "react";
-import { storage } from "../lib/db";
+import { put } from "../lib/db";
+import { Puff } from  'react-loader-spinner'
 
 export default (props) => {
   const [image, setImage] = useState(null);
@@ -13,38 +14,12 @@ export default (props) => {
     }
   };
 
-  const handleUpload = () => {
-    if (!image) {
-      alert("null image");
-      return;
-    }
-    const uploadFileName = `users/${props.user.id}/${image.name}`;
-    const uploadTask = storage.ref(uploadFileName).put(image);
-    uploadTask.on(
-      "state_changed",
-      (snapshot) => {
-        // progress function ...
-        const progress = Math.round(
-          (snapshot.bytesTransferred / snapshot.totalBytes) * 100
-        );
-        setProgress(progress);
-      },
-      (error) => {
-        // Error function ...
-        console.log(error);
-      },
-      () => {
-        // complete function ...
-        storage
-          .ref(uploadFileName)
-          .getDownloadURL()
-          .then((url) => {
+  const handleUpload = async () => {
+        setProgress(1);
+	  const url =  await put(image)
             props.setImage(url);
-
             setUrl(url);
-          });
-      }
-    );
+	  setProgress(100);
   };
 
   if (image && progress == 0) {
@@ -70,7 +45,16 @@ export default (props) => {
 
       {progress > 0 && progress < 100 && (
         <div className="row p-2">
-          <progress value={progress} max="100" className="progress is-info" />
+          <Puff
+		  height="80"
+		  width="80"
+		  radius={1}
+		  color="#e6b300"
+		  ariaLabel="puff-loading"
+		  wrapperStyle={{}}
+		  wrapperClass=""
+		  visible={true}
+		/>
         </div>
       )}
       {url}
