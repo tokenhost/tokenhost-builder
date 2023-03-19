@@ -16,11 +16,10 @@ export default function Send(props) {
     {{#if (eq this ../reference_contract)}}
       const [{{this}}, set{{this}}] = useState({{../reference_contract}}_address) {{! loop over the pass in elements contract_data.initRules.passIn}}
     {{else}}
-      const [{{this}}, set{{this}}] = useState() {{! loop over the pass in elements contract_data.initRules.passIn}}
+      const [{{this}}, set{{this}}] = useState("") {{! loop over the pass in elements contract_data.initRules.passIn}}
     {{/if}}
   
     {{#if (checkImage @root.contract_data.fields this) }}
-      let register = "";
       const setValue = (value) => {
         set{{this}}(value);
       }
