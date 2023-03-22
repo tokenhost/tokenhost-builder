@@ -46,10 +46,10 @@ async function main(){
 
 
   const ganacheAccounts = await web3.eth.getAccounts();
-  console.log('ganace',ganacheAccounts)
   const helloWorld = new web3.eth.Contract(abi);
     helloWorld.options.from = account.address
 
+	console.log("bytecode: ", bytecode)
   const gas = await helloWorld.deploy({ data: bytecode }).estimateGas()
   console.log(gas)
   const gasPrice = await web3.eth.getGasPrice()

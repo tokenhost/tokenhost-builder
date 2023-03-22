@@ -1,100 +1,39 @@
 //SPDX-License-Identifier: UNLICENSED
 pragma solidity ^0.8.2;
 pragma experimental ABIEncoderV2;
+import "@openzeppelin/contracts/token/ERC721/ERC721.sol";
+import "FilComments.sol";
+import "Topics.sol";
 
-contract FilComments_contract {
-    uint256 timestamp;
-    address sender;
-    string comment;
-    string photo;
-    address topic;
+contract App is ERC721 {
+    constructor() ERC721("MyToken", "MTK") {}
 
-    constructor(
-        string memory _comment,
-        string memory _photo,
-        address _topic
-    ) {
-        sender = tx.origin;
-        timestamp = block.timestamp;
-        comment = _comment;
-        photo = _photo;
-        topic = _topic;
+    enum Contracts {FilComments, Topics}
+
+    Contracts[] public nft_contracts;
+    address[] public nft_addresses;
+
+    function getTokenURI(uint256 tokenId) public view returns (string memory) {
+        Contracts nft_contract = nft_contracts[tokenId];
+        address nft_address = nft_addresses[tokenId];
+
+        bytes memory dataURI;
+
+        if (nft_contract == Contracts.FilComments) {
+            dataURI = FilComments_contract(nft_address).getTokenData();
+        }
+        if (nft_contract == Contracts.Topics) {
+            dataURI = Topics_contract(nft_address).getTokenData();
+        }
+        return
+            string(
+                abi.encodePacked(
+                    "data:application/json;base64,",
+                    Base64.encode(dataURI)
+                )
+            );
     }
 
-    function getall()
-        public
-        view
-        returns (
-            address,
-            uint256,
-            address,
-            string memory,
-            string memory,
-            address
-        )
-    {
-        return (address(this), timestamp, sender, comment, photo, topic);
-    }
-
-    function get_timestamp() public view returns (uint256) {
-        return timestamp;
-    }
-
-    function get_sender() public view returns (address) {
-        return sender;
-    }
-
-    function get_comment() public view returns (string memory) {
-        return comment;
-    }
-
-    function get_photo() public view returns (string memory) {
-        return photo;
-    }
-
-    function get_topic() public view returns (address) {
-        return topic;
-    }
-}
-
-contract Topics_contract {
-    uint256 timestamp;
-    address sender;
-    string name;
-
-    constructor(string memory _name) {
-        sender = tx.origin;
-        timestamp = block.timestamp;
-        name = _name;
-    }
-
-    function getall()
-        public
-        view
-        returns (
-            address,
-            uint256,
-            address,
-            string memory
-        )
-    {
-        return (address(this), timestamp, sender, name);
-    }
-
-    function get_timestamp() public view returns (uint256) {
-        return timestamp;
-    }
-
-    function get_sender() public view returns (address) {
-        return sender;
-    }
-
-    function get_name() public view returns (string memory) {
-        return name;
-    }
-}
-
-contract App {
     address[] FilComments_list;
     uint256 FilComments_list_length;
 
@@ -399,6 +338,11 @@ contract App {
         string memory photo,
         address topic
     ) public returns (address) {
+        uint256 tokenId = nft_contracts.length;
+        nft_contracts.push(Contracts.FilComments);
+
+        _safeMint(msg.sender, tokenId);
+
         address mynew =
             address(
                 new FilComments_contract({
@@ -407,6 +351,8 @@ contract App {
                     _topic: topic
                 })
             );
+
+        nft_addresses.push(mynew);
 
         if (!FilComments_Topics_map[topic].exists) {
             FilComments_Topics_map[
@@ -473,11 +419,19 @@ contract App {
     }
 
     function new_Topics(string memory name) public returns (address) {
+        uint256 tokenId = nft_contracts.length;
+        nft_contracts.push(Contracts.Topics);
+
+        _safeMint(msg.sender, tokenId);
+
         bytes32 hash_Topics = keccak256(abi.encodePacked(name));
 
         require(unique_map_Topics[hash_Topics] == address(0));
 
         address mynew = address(new Topics_contract({_name: name}));
+
+        nft_addresses.push(mynew);
+
         unique_map_Topics[hash_Topics] = mynew;
 
         if (!user_map[tx.origin].exists) {

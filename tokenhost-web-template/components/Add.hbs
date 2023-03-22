@@ -3,8 +3,11 @@ import { auth } from '../../lib/db'
 import ImageUpload from '../ImageUpload.js'
 
 import { contract, w3 , getMetamaskAddress} from '../../helpers/Web3Helper'
+import { useDispatch, useSelector } from 'react-redux';
 
 export default function Send(props) {
+
+  const { networkId, metamaskConnected, ethAddress } = useSelector(state => state.user);
 
     {{#if reference_contract}}
       const {{reference_contract}}_address = props.{{reference_contract}}_address
@@ -28,15 +31,6 @@ export default function Send(props) {
 
   const [errorMessage, setErrorMessage] = useState()
   const [sendStatus, setSendStatus] = useState()
-  const [user, setUser] = useState(false)
-
-  useEffect(() => {    
-        async function fetch(){
-          const address = await getMetamaskAddress()
-          setUser(address);
-        }
-        fetch()
-  }, [])
 
   const mySubmitHandler = async (event) => {
     event.preventDefault()
@@ -65,12 +59,12 @@ export default function Send(props) {
 
       contract.methods
         .new_{{contract}}({{add_value contract_data.initRules.passIn}}) {{! loop over the pass in elements contract_data.initRules.passIn}}
-        .estimateGas()
+        .estimateGas({from:ethAddress})
         .then((gasEstimate) => {
-	  gasEstimate = 200000 // short term hyperspace hack
+	  //gasEstimate = 200000 // short term hyperspace hack
           contract.methods
             .new_{{contract}}({{add_value contract_data.initRules.passIn}}) {{! loop over the pass in elements contract_data.initRules.passIn}}
-            .send({ gas: gasEstimate, from: user,gasPrice: 0})
+            .send({ gas: gasEstimate, from: ethAddress,gasPrice: 0})
             .then(() => {
               setSendStatus('')
                 {{#each contract_data.initRules.passIn}}
@@ -83,7 +77,7 @@ export default function Send(props) {
         })
     }
   }
-  if (user) {
+  if (ethAddress) {
     return (
       <form className="p-6" onSubmit={mySubmitHandler}>
 
@@ -104,7 +98,7 @@ export default function Send(props) {
               <div className="field">
                 <label className="label">{{this}}</label>
                 <div className="control">
-                  <ImageUpload setImage={ ({{this}}) => setValue({{this}}) } user={user} />
+                  <ImageUpload setImage={ ({{this}}) => setValue({{this}}) } user={ethAddress} />
                 </div>
               </div>
               {{else}}
@@ -145,7 +139,7 @@ export default function Send(props) {
                 <div className="field">
                   <label className="label">{{this}}</label>
                   <div className="control">
-                    <ImageUpload setImage={ ({{this}}) => setValue({{this}}) } user={user} />
+                    <ImageUpload setImage={ ({{this}}) => setValue({{this}}) } user={ethAddress} />
                   </div>
             {{/each}}
         {{else}}

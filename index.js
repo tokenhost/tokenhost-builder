@@ -1,4 +1,7 @@
 const fs = require('fs')
+const path = require('path');
+
+const folder = process.argv[2]
 
 
 
@@ -11,6 +14,7 @@ let template = `
 //SPDX-License-Identifier: UNLICENSED
 pragma solidity ^0.8.2;
 pragma experimental ABIEncoderV2;
+import "@openzeppelin/contracts/token/ERC721/ERC721.sol";
 `
 
 var contract_references = {}
@@ -59,46 +63,58 @@ for (const ContractName in contracts) {
 }
 
 for (const ContractName in contracts) {
+  let contract_template = `//SPDX-License-Identifier: UNLICENSED
+pragma solidity ^0.8.2;
+pragma experimental ABIEncoderV2;
+import "@openzeppelin/contracts/utils/Strings.sol";
+import "@openzeppelin/contracts/utils/Base64.sol";
+
+`
   const contract = contracts[ContractName]
   const fields = contract.fields
 
-  template += `contract ${ContractName}_contract{\n\n`
+  contract_template += `contract ${ContractName}_contract{\n\n`
   for (const field in contract.fields) {
     const field_type = fields[field]
-    template += `\t${field_type} ${field};\n`
+    contract_template += `\t${field_type} ${field};\n`
   }
 
   //now create init method
+	//
+	contract_template += `
+	    using Strings for uint256;
+
+	`
 
   //define function name
-  template += `\n\t constructor(`
+  contract_template += `\n\t constructor(`
 
   //add all the pass-in methods
   contract['initRules']['passIn'].forEach((element, index) => {
     const type = contract.fields_types[element]
-    template += `${type} _${element}`
+    contract_template += `${type} _${element}`
     if (index != contract['initRules']['passIn'].length - 1) {
-      template += `, `
+      contract_template += `, `
     }
   })
 
-  template += `){\n`
+  contract_template += `){\n`
 
   //create all the auto definitions
 
   for (const autofield in contract.initRules.auto) {
     const value = contract.initRules.auto[autofield]
-    template += `\t\t${autofield} = ${value};\n`
+    contract_template += `\t\t${autofield} = ${value};\n`
   }
 
   //assign all the pass in variables using the _ hack
   contract.initRules.passIn.forEach((autofield) => {
-    template += `\t\t${autofield} = _${autofield};\n`
+    contract_template += `\t\t${autofield} = _${autofield};\n`
   })
 
   //end init
 
-  template += `\t}\n`
+  contract_template += `\t}\n`
 
   //read rules
   const get_all_types = []
@@ -113,22 +129,88 @@ for (const ContractName in contracts) {
 
 	//getter
 
+	//XXX
+
+	contract_template += `
+function getTokenData() public view returns (bytes memory){
+	    return abi.encodePacked(
+        '{',
+	`
+  contract.readRules.gets.forEach((field) => {
+          const type = contract.fields_types[field]
+
+	  contract_template += ` '"${field}": "' , `
+	  if(type == "address"){
+		contract_template += `string(abi.encodePacked(${field}))`
+	  }
+	  else if(type == "uint"){
+		  contract_template += `${field}.toString()`
+
+	  } else if(type == "image" || type == "string"){
+		  contract_template += `${field}`
+	  }else{
+		contract_template += `string(abi.encodePacked(${field}))`
+
+	  }
+
+	  contract_template += `, '",',\n`
+  })
+	contract_template += ` '}'); } `
 
 
-  template += `
+  contract_template += `
     function getall() public view returns (address, ${get_all_types_string}){
         return (address(this), ${get_all_fields_string});
     }`
 
   contract.readRules.gets.forEach((field) => {
     const type = contract.fields_types[field]
-    template += `\tfunction get_${field}() public view returns (${type}){return ${field};}\n`
+    contract_template += `\tfunction get_${field}() public view returns (${type}){return ${field};}\n`
   })
-  template += `\n}`
+  contract_template += `\n}`
+	const contract_filename = `${ContractName}.sol`
+const filePath = path.join(folder,contract_filename)
+fs.writeFileSync(filePath, contract_template);
+	template += `import "${contract_filename}";\n`
+}
+
+console.log( contracts)
+console.log( Object.keys(contracts))
+console.log( Object.keys(contracts).join(","))
+
+template += `
+contract App is ERC721 {\n
+
+constructor() ERC721("MyToken", "MTK") {}
+
+enum Contracts {` + Object.keys(contracts).join(",") + ` }
+
+Contracts[] public nft_contracts;
+address[] public nft_addresses;
+
+
+function getTokenURI(uint256 tokenId) public view returns (string memory){
+    Contracts nft_contract = nft_contracts[tokenId];
+    address nft_address = nft_addresses[tokenId];
+
+    bytes memory dataURI;
+`
+for (const ContractName in contracts) {
+	template += `
+	if(nft_contract == Contracts.${ContractName}){
+		dataURI = ${ContractName}_contract(nft_address).getTokenData();
+	}`
 }
 
 template += `
-contract App {\n`
+    return string(
+        abi.encodePacked(
+            "data:application/json;base64,",
+            Base64.encode(dataURI)
+        )
+    );
+    }
+`
 
 for (const ContractName in contracts) {
   const contract = contracts[ContractName]
@@ -363,6 +445,14 @@ function new_${ContractName}(`
   })
 
   template += `) public returns (address){\n
+
+	uint256 tokenId = nft_contracts.length;
+	nft_contracts.push(Contracts.${ContractName});
+
+        _safeMint(msg.sender, tokenId);
+
+
+
     `
     //check if unique index and then revert if already exists
     // do the index stuff
@@ -403,7 +493,11 @@ function new_${ContractName}(`
 
   template += `
 
-}));`
+}));
+
+nft_addresses.push(mynew);
+
+`
 
 
     //add to the unique index
@@ -509,6 +603,10 @@ if(contract_references[ContractName]){
 }
 
 template += '}'
-console.log(template)
+
+
+const filePath = path.join(folder,'App.sol' );
+fs.writeFileSync(filePath, template);
+
 
 //todo create the parent contract and the events
