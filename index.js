@@ -1,15 +1,19 @@
-const fs = require('fs')
+const fs = require('fs');
 const path = require('path');
 
-const folder = process.argv[2]
+// Get the folder path from command line arguments
+const folder = process.argv[2];
 
 
 
+
+// Read and parse the JSON configuration file
 let rawdata = fs.readFileSync('contracts.json')
 let program = JSON.parse(rawdata)
-//console.log(JSON.stringify(program,null,4));
 
 let contracts = program.contracts
+
+// Define the template for solidity contract with necessary imports
 let template = `
 //SPDX-License-Identifier: UNLICENSED
 pragma solidity ^0.8.2;
@@ -17,17 +21,21 @@ pragma experimental ABIEncoderV2;
 import "@openzeppelin/contracts/token/ERC721/ERC721.sol";
 `
 
+// Initialize dictionaries for contract references and field lookups
 var contract_references = {}
 var field_lookup = {}
-//convert image to string:
+
+// Convert image fields to string and handle contract references
 for (const ContractName in contracts) {
   const contract = contracts[ContractName]
   let fields = contract.fields
   for(var field in fields){
     let type = fields[field]
+    // Convert image field to string
     if (type == 'image') {
         fields[field] = 'string'
     }
+    // Convert contract reference to address type
     if(Object.keys(contracts).includes(type)){
       fields[field] = 'address';
       if(!contract_references[ContractName]){
@@ -44,8 +52,8 @@ for (const ContractName in contracts) {
 
   }
 }
-//
-//add memory to strings
+
+// Add memory to string types in contract fields
 for (const ContractName in contracts) {
   const contract = contracts[ContractName]
   let fields_types = {}
@@ -62,6 +70,7 @@ for (const ContractName in contracts) {
   }
 }
 
+// Generate contract templates based on the JSON configuration
 for (const ContractName in contracts) {
   let contract_template = `//SPDX-License-Identifier: UNLICENSED
 pragma solidity ^0.8.2;
@@ -73,23 +82,21 @@ import "@openzeppelin/contracts/utils/Base64.sol";
   const contract = contracts[ContractName]
   const fields = contract.fields
 
+  // Start the contract definition
   contract_template += `contract ${ContractName}_contract{\n\n`
   for (const field in contract.fields) {
     const field_type = fields[field]
     contract_template += `\t${field_type} ${field};\n`
   }
 
-  //now create init method
-	//
+    // Using Strings for uint256
 	contract_template += `
 	    using Strings for uint256;
 
 	`
 
-  //define function name
+  // Define the constructor
   contract_template += `\n\t constructor(`
-
-  //add all the pass-in methods
   contract['initRules']['passIn'].forEach((element, index) => {
     const type = contract.fields_types[element]
     contract_template += `${type} _${element}`
@@ -100,20 +107,19 @@ import "@openzeppelin/contracts/utils/Base64.sol";
 
   contract_template += `){\n`
 
-  //create all the auto definitions
 
+  // Auto-assign fields in the constructor
   for (const autofield in contract.initRules.auto) {
     const value = contract.initRules.auto[autofield]
     contract_template += `\t\t${autofield} = ${value};\n`
   }
 
-  //assign all the pass in variables using the _ hack
+  // Assign passed-in variables
   contract.initRules.passIn.forEach((autofield) => {
     contract_template += `\t\t${autofield} = _${autofield};\n`
   })
 
-  //end init
-
+  // End of constructor
   contract_template += `\t}\n`
 
   //read rules
@@ -127,10 +133,7 @@ import "@openzeppelin/contracts/utils/Base64.sol";
   get_all_fields_string = get_all_fields.join(', ')
   get_all_types_string = get_all_types.join(', ')
 
-	//getter
-
-	//XXX
-
+      // Define the getTokenData function
 	contract_template += `
 function getTokenData() public view returns (bytes memory){
 	    return abi.encodePacked(
@@ -158,17 +161,23 @@ function getTokenData() public view returns (bytes memory){
 	contract_template += ` '}'); } `
 
 
+      // Define the getall function
+
   contract_template += `
     function getall() public view returns (address, ${get_all_types_string}){
         return (address(this), ${get_all_fields_string});
     }`
 
+  // Define individual getters for each field
   contract.readRules.gets.forEach((field) => {
     const type = contract.fields_types[field]
     contract_template += `\tfunction get_${field}() public view returns (${type}){return ${field};}\n`
   })
+  // End of contract definition
   contract_template += `\n}`
-	const contract_filename = `${ContractName}.sol`
+
+// Write the contract to a file
+    const contract_filename = `${ContractName}.sol`
 const filePath = path.join(folder,contract_filename)
 fs.writeFileSync(filePath, contract_template);
 	template += `import "${contract_filename}";\n`
@@ -212,9 +221,12 @@ template += `
     }
 `
 
+// Loop over each contract in the contracts object
 for (const ContractName in contracts) {
   const contract = contracts[ContractName]
   const fields = contract.fields
+
+      // Add contract specific list and length to the template
   template += `
   address[] ${ContractName}_list; 
   uint256 ${ContractName}_list_length;
@@ -222,6 +234,8 @@ for (const ContractName in contracts) {
 function get_${ContractName}_list_length() public view returns (uint256){
     return ${ContractName}_list_length;
 }`
+
+      // Define a struct for getters specific to each contract
   template += `struct ${ContractName}_getter{
         address _address;
         `
@@ -231,9 +245,7 @@ function get_${ContractName}_list_length() public view returns (uint256){
   })
   template += `}`
 
-
-  //get all
-
+      // Initialize arrays for types and fields for getters
   const get_all_types = []
   const get_all_types_array = []
   const get_all_fields = []
@@ -251,6 +263,7 @@ function get_${ContractName}_list_length() public view returns (uint256){
   const get_all_types_string = get_all_types.join(', ')
   const get_all_types_array_string = get_all_types_array.join(', ')
 
+      // Function to get a single contract instance by index
   template += `
   function get_${ContractName}_N(uint256 index) public view returns (address, ${get_all_types_string}){
       return ${ContractName}_contract(${ContractName}_list[index]).getall();
@@ -260,6 +273,7 @@ function get_${ContractName}_list_length() public view returns (uint256){
   function get_first_${ContractName}_N(uint256 count, uint256 offset) public view returns ( ${ContractName}_getter[] memory){
   ${ContractName}_getter[] memory getters = new ${ContractName}_getter[](count);
     `
+      // Function to get the first N contract instances from the list
   template += `for (uint i = offset; i < count; i++) {
         ${ContractName}_contract  my${ContractName} = ${ContractName}_contract(${ContractName}_list[i+offset]);
         getters[i-offset]._address = address(my${ContractName});
@@ -267,11 +281,13 @@ function get_${ContractName}_list_length() public view returns (uint256){
   contract.readRules.gets.forEach((field) => {
     template += `getters[i-offset].${field} = my${ContractName}.get_${field}();`
   })
-  template += `}
+      template += `}
     return getters;
-    }
+    }`;
 
   
+    // Function to get the last N contract instances from the list
+  template += `
   function get_last_${ContractName}_N(uint256 count, uint256 offset) public view returns ( ${ContractName}_getter[] memory){
   ${ContractName}_getter[] memory getters = new ${ContractName}_getter[](count);
     `
@@ -290,8 +306,7 @@ function get_${ContractName}_list_length() public view returns (uint256){
 
 
 
-    //now do user stuff
-
+      // Functions related to user-specific contract data
     template +=`
       function get_${ContractName}_user_length(address user) public view returns (uint256){
         return user_map[user].${ContractName}_list_length;
@@ -317,27 +332,21 @@ getters[i-offset]._address = user_map[user].${ContractName}_list[i+offset];
     }`
 }
 
-//need to loop over each key to get index for now we just hardcode it as Txt/Hashtag
 
-    //do all the references 
-
+// Loop over each parent contract to handle references
     for (parent_contract in contract_references) {
         const reference_contract = contract_references[parent_contract];
 
+  // Define a struct for the reference contract
       template += `
     struct ${parent_contract}_${reference_contract}{
       bool exists;
       address[] ${parent_contract}_list;
   }
   mapping(address => ${parent_contract}_${reference_contract}) public ${parent_contract}_${reference_contract}_map;
-
-
-
-
-
   `
 
-  //get lenght of list
+          // Function to get the length of the reference contract list
   template +=`
     function get_length_${parent_contract}_${reference_contract}_map(address hash) public view returns (uint256){
         return ${parent_contract}_${reference_contract}_map[hash].${parent_contract}_list.length;
@@ -345,6 +354,7 @@ getters[i-offset]._address = user_map[user].${ContractName}_list[i+offset];
 
   `
 
+          // Function to get the last N instances of the reference contract
   template += `
   function get_last_${parent_contract}_${reference_contract}_map_N(address hash, uint256 count, uint256 offset) public view returns ( ${parent_contract}_getter[] memory){
   ${parent_contract}_getter[] memory getters = new ${parent_contract}_getter[](count);
