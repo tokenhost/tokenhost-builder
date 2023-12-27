@@ -15,7 +15,6 @@ const chainName  =  config.get(network+".chainName")
 
 const web3 = new Web3( config.get(network+".rpcUrl"))
 const Handlebars = require('handlebars')
-const Tx = require('ethereumjs-tx')
 const SignerProvider = require('ethjs-provider-signer')
 
 
