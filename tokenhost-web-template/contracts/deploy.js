@@ -18,8 +18,8 @@ const Handlebars = require('handlebars')
 const SignerProvider = require('ethjs-provider-signer')
 
 
-const bytecode = fs.readFileSync('contracts/App_sol_App.bin','utf8');
-var abi = JSON.parse(fs.readFileSync('contracts/App_sol_App.abi', 'utf8'));
+const bytecode = fs.readFileSync('contracts/App.bin','utf8');
+var abi = JSON.parse(fs.readFileSync('contracts/App.abi', 'utf8'));
 
 async function main(){
 
