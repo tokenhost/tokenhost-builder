@@ -1,8 +1,8 @@
 {
   "tokenhost": {
     "chainName": "Token Host",
-    "rpcUrl": "https://chain.txt.rs",
-    "rpcWS": "wss://chain.txt.rs"
+    "rpcUrl": "https://chain.token.ax",
+    "rpcWS": "wss://chain.token.ax"
   },
   "hyperspace": {
     "chainName": "Hyperspace",
