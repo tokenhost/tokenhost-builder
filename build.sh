@@ -4,7 +4,7 @@ cp  -r config tokenhost-web-template/
 
 node index.js > tokenhost-web-template/contracts/App.sol
 npx prettier --write 'tokenhost-web-template/contracts/App.sol'
-(cd tokenhost-web-template/contracts; solcjs --optimize --overwrite --bin --abi -o . App.sol; 
+(cd tokenhost-web-template/contracts; npx solcjs --optimize --overwrite --bin --abi -o . App.sol;
 cp App.abi App_sol_App.json
 )
 
