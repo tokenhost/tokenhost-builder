@@ -1,11 +1,13 @@
 const fs = require('fs');
 
+// Function to read contracts from the JSON file
 function readContracts(filename) {
   const rawdata = fs.readFileSync(filename);
   const program = JSON.parse(rawdata);
   return program.contracts;
 }
 
+// Function to process contracts and update field types
 function processContracts(contracts) {
   const contractReferences = {};
   const fieldLookup = {};
@@ -55,6 +57,7 @@ function processContracts(contracts) {
   return { contracts, contractReferences, fieldLookup };
 }
 
+// Function to generate contract code for a given contract
 function generateContractCode(contractName, contract) {
   let code = `contract ${contractName}_contract {\n`;
 
@@ -86,7 +89,10 @@ function generateContractCode(contractName, contract) {
   code += `\t}\n`;
 
   // Read rules
-  const getAllTypes = contract.readRules.gets.map((field) => contract.fields_types[field]);
+  const getAllTypes = contract.readRules.gets.map((field) => {
+    const fieldType = contract.fields_types[field];
+    return fieldType;
+  });
   const getAllFields = contract.readRules.gets.join(', ');
 
   code += `
@@ -103,6 +109,7 @@ function generateContractCode(contractName, contract) {
   return code;
 }
 
+// Function to generate the application (App) contract code
 function generateAppCode(contracts, contractReferences, fieldLookup) {
   let code = `contract App {\n`;
 
@@ -131,6 +138,7 @@ function generateAppCode(contracts, contractReferences, fieldLookup) {
   return code;
 }
 
+// Helper function to generate code for individual contracts in the App contract
 function generateAppContractForContract(contractName, contract, contracts, contractReferences, fieldLookup) {
   let code = `
 \taddress[] ${contractName}_list;
@@ -163,16 +171,24 @@ function generateAppContractForContract(contractName, contract, contracts, contr
   return code;
 }
 
+// Helper function to generate getter functions for contracts
 function generateGetFunctions(contractName, contract) {
   let code = '';
-  const getAllTypes = contract.readRules.gets.map((field) => contract.fields[field]);
+  const getAllTypes = contract.readRules.gets.map((field) => {
+    const fieldType = contract.fields[field];
+    // Include 'memory' for string types
+    return fieldType === 'string' ? 'string memory' : fieldType;
+  });
   const getAllFields = contract.readRules.gets.join(', ');
 
   code += `
 \tfunction get_${contractName}_N(uint256 index) public view returns (address, ${getAllTypes.join(', ')}) {
 \t\treturn ${contractName}_contract(${contractName}_list[index]).getAll();
 \t}
+`;
 
+  // First N getter
+  code += `
 \tfunction get_first_${contractName}_N(uint256 count, uint256 offset) public view returns (${contractName}_getter[] memory) {
 \t\t${contractName}_getter[] memory getters = new ${contractName}_getter[](count);
 \t\tfor (uint256 i = offset; i < count; i++) {
@@ -184,8 +200,10 @@ function generateGetFunctions(contractName, contract) {
   });
   code += `\t\t}
 \t\treturn getters;
-\t}\n`;
+\t}
+`;
 
+  // Last N getter
   code += `
 \tfunction get_last_${contractName}_N(uint256 count, uint256 offset) public view returns (${contractName}_getter[] memory) {
 \t\t${contractName}_getter[] memory getters = new ${contractName}_getter[](count);
@@ -198,14 +216,20 @@ function generateGetFunctions(contractName, contract) {
   });
   code += `\t\t}
 \t\treturn getters;
-\t}\n`;
+\t}
+`;
 
   return code;
 }
 
+// Generate user-specific functions
 function generateUserFunctions(contractName, contract) {
   let code = '';
-  const getAllTypes = contract.readRules.gets.map((field) => contract.fields[field]);
+  const getAllTypes = contract.readRules.gets.map((field) => {
+    const fieldType = contract.fields[field];
+    // Include 'memory' for string types
+    return fieldType === 'string' ? 'string memory' : fieldType;
+  });
 
   code += `
 \tfunction get_${contractName}_user_length(address user) public view returns (uint256) {
@@ -226,11 +250,13 @@ function generateUserFunctions(contractName, contract) {
   });
   code += `\t\t}
 \t\treturn getters;
-\t}\n`;
+\t}
+`;
 
   return code;
 }
 
+// Generate reference functions for contracts
 function generateReferenceFunctions(contractName, contractReferences, contracts, fieldLookup) {
   let code = '';
 
@@ -260,13 +286,15 @@ function generateReferenceFunctions(contractName, contractReferences, contracts,
       });
       code += `\t\t}
 \t\treturn getters;
-\t}\n`;
+\t}
+`;
     });
   }
 
   return code;
 }
 
+// Generate new entry function for each contract
 function generateNewEntryFunction(contractName, contract, contracts, contractReferences, fieldLookup) {
   let code = `\tevent New${contractName}(address sender);\n`;
 
@@ -345,6 +373,7 @@ function generateNewEntryFunction(contractName, contract, contracts, contractRef
   return code;
 }
 
+// Main function to generate contracts and write them to the output
 function main() {
   const contracts = readContracts('contracts.json');
   const { contracts: processedContracts, contractReferences, fieldLookup } = processContracts(contracts);
@@ -366,4 +395,3 @@ pragma experimental ABIEncoderV2;\n\n`;
 }
 
 main();
-

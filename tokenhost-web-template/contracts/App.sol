@@ -130,8 +130,8 @@ contract App {
             address,
             uint256,
             address,
-            string,
-            string,
+            string memory,
+            string memory,
             address
         )
     {
@@ -193,8 +193,8 @@ contract App {
             address,
             uint256,
             address,
-            string,
-            string,
+            string memory,
+            string memory,
             address
         )
     {
@@ -357,7 +357,7 @@ contract App {
             address,
             uint256,
             address,
-            string
+            string memory
         )
     {
         return Topics_contract(Topics_list[index]).getAll();
@@ -414,7 +414,7 @@ contract App {
             address,
             uint256,
             address,
-            string
+            string memory
         )
     {
         return Topics_contract(user_map[user].Topics_list[index]).getAll();
