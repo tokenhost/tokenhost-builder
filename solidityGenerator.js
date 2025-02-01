@@ -484,10 +484,14 @@ function generateNewContractFunction(contractName, contract, contractReferences,
   return code;
 }
 
-// Main execution: load contracts, process field types, generate the Solidity code.
+// Main execution: load contracts from the provided file (or default to "contracts.json"),
+// process field types, and generate the Solidity code.
 (function main() {
   try {
-    const contracts = loadContracts('contracts.json');
+    const args = process.argv.slice(2);
+    const jsonFile = args[0] || 'contracts.json';
+
+    const contracts = loadContracts(jsonFile);
     const { contractReferences, fieldLookup } = processFieldTypes(contracts);
     applyMemoryToStringFields(contracts);
     const solidityCode = generateSolidityCode(contracts, contractReferences, fieldLookup);
@@ -496,7 +500,6 @@ function generateNewContractFunction(contractName, contract, contractReferences,
     console.error('Error generating Solidity code:', error);
   }
 })();
-
 
 export {
   loadContracts,
