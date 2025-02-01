@@ -1,0 +1,71 @@
+{
+  "contracts": {
+    "FilComments": {
+      "fields": {
+        "timestamp": "uint",
+        "sender": "address",
+        "comment": "string",
+        "photo": "image",
+        "topic": "Topics",
+        "likes": "uint"
+      },
+      "initRules": {
+        "passIn": [
+          "comment",
+          "photo",
+          "topic",
+          "likes"
+        ],
+        "auto": {
+          "sender": "tx.origin",
+          "timestamp": "block.timestamp"
+        }
+      },
+      "writeRules": {
+        "index": ["likes"]
+      },
+      "readRules": {
+        "gets": [
+          "timestamp",
+          "sender",
+          "comment",
+          "photo",
+          "topic",
+          "likes"
+        ]
+      }
+    },
+    "Topics": {
+      "fields": {
+        "timestamp": "uint",
+        "sender": "address",
+        "name": "string",
+        "description": "string"
+      },
+      "initRules": {
+        "passIn": [
+          "name",
+          "description"
+        ],
+        "auto": {
+          "sender": "tx.origin",
+          "timestamp": "block.timestamp"
+        }
+      },
+      "writeRules": {
+        "index": [
+          "name"
+        ]
+      },
+      "readRules": {
+        "gets": [
+          "timestamp",
+          "sender",
+          "name",
+          "description"
+        ]
+      }
+    }
+  }
+}
+

@@ -1,0 +1,64 @@
+{
+  "contracts": {
+    "MultiType": {
+      "fields": {
+        "id": "uint",
+        "active": "bool",
+        "description": "string",
+        "image": "image",
+        "owner": "address",
+        "refContract": "RefContract"
+      },
+      "initRules": {
+        "passIn": [
+          "id",
+          "active",
+          "description",
+          "image",
+          "refContract"
+        ],
+        "auto": {
+          "owner": "tx.origin"
+        }
+      },
+      "writeRules": {
+        "index": ["id"]
+      },
+      "readRules": {
+        "gets": [
+          "id",
+          "active",
+          "description",
+          "image",
+          "owner",
+          "refContract"
+        ]
+      }
+    },
+    "RefContract": {
+      "fields": {
+        "data": "string",
+        "value": "uint"
+      },
+      "initRules": {
+        "passIn": [
+          "data",
+          "value"
+        ],
+        "auto": {
+          "value": "100"
+        }
+      },
+      "writeRules": {
+        "index": ["data"]
+      },
+      "readRules": {
+        "gets": [
+          "data",
+          "value"
+        ]
+      }
+    }
+  }
+}
+

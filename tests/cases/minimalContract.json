@@ -1,0 +1,24 @@
+{
+  "contracts": {
+    "Minimal": {
+      "fields": {
+        "data": "string"
+      },
+      "initRules": {
+        "passIn": [
+          "data"
+        ],
+        "auto": {}
+      },
+      "writeRules": {
+        "index": []
+      },
+      "readRules": {
+        "gets": [
+          "data"
+        ]
+      }
+    }
+  }
+}
+
