@@ -4,9 +4,11 @@
   "main": "index.js",
   "repository": "https://github.com/Token-ax/contracts-orm.git",
   "license": "MIT",
+  "type": "module",
   "scripts": {
     "build": "sh build.sh;",
-    "build-run": "sh build.sh && cd site && yarn run dev"
+    "build-run": "sh build.sh && cd site && yarn run dev",
+    "test": "mocha"
   },
   "dependencies": {
     "config": "^3.3.9",
