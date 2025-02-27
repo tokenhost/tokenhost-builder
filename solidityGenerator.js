@@ -2,7 +2,6 @@
 
 import fs from 'fs';
 
-
 /**
  * Reads and parses the JSON file containing contract definitions.
  * @param {string} filename - The JSON file name.
@@ -89,11 +88,10 @@ function applyMemoryToStringFields(contracts) {
  * @returns {string} The Solidity source code.
  */
 function generateSolidityCode(contracts, contractReferences, fieldLookup) {
-  // Solidity header and pragmas.
+  // Updated header with Solidity 0.8.20 (ABIEncoderV2 not needed anymore).
   let code = `
-//SPDX-License-Identifier: UNLICENSED
-pragma solidity ^0.8.2;
-pragma experimental ABIEncoderV2;
+// SPDX-License-Identifier: UNLICENSED
+pragma solidity ^0.8.20;
 
 `;
 
@@ -111,6 +109,14 @@ pragma experimental ABIEncoderV2;
 /**
  * Generates the Solidity code for an individual contract.
  *
+ * This version:
+ *  - Declares state variables (with auto–generated getters as public if desired).
+ *  - Uses a constructor that accepts parameters with proper data locations (e.g. "string memory").
+ *  - Declares a bundled struct (ContractNameData) that contains:
+ *      • address self;
+ *      • Each field from readRules.gets (using its original type, without a location).
+ *  - Provides a single getAll() function returning that struct.
+ *
  * @param {string} contractName - The contract name.
  * @param {Object} contract - The contract definition.
  * @returns {string} The Solidity code for this contract.
@@ -121,13 +127,22 @@ function generateContractDefinition(contractName, contract) {
   // Declare state variables.
   for (const field in contract.fields) {
     const fieldType = contract.fields[field];
-    contractCode += `\t${fieldType} ${field};\n`;
+    contractCode += `\t${fieldType} public ${field};\n`;
   }
   contractCode += `\n`;
 
   // Build the constructor parameters based on initRules.passIn.
+  // Use "string memory" for strings (or images) instead of "image memory".
   const passInParams = contract.initRules.passIn
-    .map(field => `${contract.fields_types[field]} _${field}`)
+    .map(field => {
+      let type;
+      if (contract.fields[field] === 'string' || contract.fields[field] === 'image') {
+        type = 'string memory';
+      } else {
+        type = contract.fields_types[field];
+      }
+      return `${type} _${field}`;
+    })
     .join(', ');
 
   contractCode += `\tconstructor(${passInParams}) {\n`;
@@ -143,21 +158,25 @@ function generateContractDefinition(contractName, contract) {
   });
   contractCode += `\t}\n\n`;
 
-  // Generate a getter that returns all values.
-  const getFields = contract.readRules.gets;
-  const getTypes = getFields.map(field => contract.fields_types[field]).join(', ');
-  const getFieldsList = getFields.join(', ');
-  contractCode += `\tfunction getall() public view returns (address, ${getTypes}) {\n`;
-  contractCode += `\t\treturn (address(this), ${getFieldsList});\n`;
+  // Generate bundled struct for getters.
+  contractCode += `\tstruct ${contractName}Data {\n`;
+  contractCode += `\t\taddress self;\n`;
+  contract.readRules.gets.forEach(field => {
+    const fieldType = contract.fields[field];
+    contractCode += `\t\t${fieldType} ${field};\n`;
+  });
   contractCode += `\t}\n\n`;
 
-  // Generate individual getter functions.
-  getFields.forEach(field => {
-    const type = contract.fields_types[field];
-    contractCode += `\tfunction get_${field}() public view returns (${type}) {\n`;
-    contractCode += `\t\treturn ${field};\n`;
-    contractCode += `\t}\n`;
+  // Generate a getAll() function returning the struct.
+  contractCode += `\tfunction getAll() external view returns (${contractName}Data memory) {\n`;
+  contractCode += `\t\treturn ${contractName}Data({\n`;
+  contractCode += `\t\t\tself: address(this),\n`;
+  contract.readRules.gets.forEach((field, index) => {
+    const comma = index === contract.readRules.gets.length - 1 ? '' : ',';
+    contractCode += `\t\t\t${field}: ${field}${comma}\n`;
   });
+  contractCode += `\t\t});\n`;
+  contractCode += `\t}\n\n`;
 
   contractCode += `}\n\n`;
   return contractCode;
@@ -166,8 +185,11 @@ function generateContractDefinition(contractName, contract) {
 /**
  * Generates the main App contract which:
  * – Declares arrays and getter functions for each contract type.
- * – Creates mappings for user data.
- * – Includes functions to instantiate new contracts.
+ * – Uses the bundled getAll() getters from the child contracts.
+ * – Declares user–related functions and reference mappings.
+ *
+ * In the getters, the return type is referenced as:
+ *   ContractName_contract.ContractNameData
  *
  * @param {Object} contracts - All contract definitions.
  * @param {Object} contractReferences - Contract reference mapping.
@@ -177,44 +199,65 @@ function generateContractDefinition(contractName, contract) {
 function generateAppContract(contracts, contractReferences, fieldLookup) {
   let appCode = `contract App {\n\n`;
 
-  // For each contract, create list variables and getter structs.
+  // For each contract, create list variables and getter functions.
   for (const contractName in contracts) {
-    appCode += `\taddress[] ${contractName}_list;\n`;
-    appCode += `\tuint256 ${contractName}_list_length;\n\n`;
-    appCode += `\tfunction get_${contractName}_list_length() public view returns (uint256) {\n`;
-    appCode += `\t\treturn ${contractName}_list_length;\n`;
+    appCode += `\taddress[] public ${contractName}_list;\n\n`;
+
+    // Single-instance getter using getAll().
+    appCode += `\tfunction get_${contractName}_N(uint256 index) public view returns (${contractName}_contract.${contractName}Data memory) {\n`;
+    appCode += `\t\treturn ${contractName}_contract(${contractName}_list[index]).getAll();\n`;
     appCode += `\t}\n\n`;
 
-    // Define a struct to hold getter results.
-    appCode += `\tstruct ${contractName}_getter {\n`;
-    appCode += `\t\taddress _address;\n`;
-    contracts[contractName].readRules.gets.forEach(field => {
-      const fieldType = contracts[contractName].fields[field];
-      appCode += `\t\t${fieldType} ${field};\n`;
-    });
+    // Function to get the first N instances.
+    appCode += `\tfunction get_first_${contractName}_N(uint256 count, uint256 offset) public view returns (${contractName}_contract.${contractName}Data[] memory) {\n`;
+    appCode += `\t\trequire(offset + count <= ${contractName}_list.length, "Offset + count out of bounds");\n`;
+    appCode += `\t\t${contractName}_contract.${contractName}Data[] memory results = new ${contractName}_contract.${contractName}Data[](count);\n`;
+    appCode += `\t\tfor (uint i = 0; i < count; i++) {\n`;
+    appCode += `\t\t\tresults[i] = ${contractName}_contract(${contractName}_list[i + offset]).getAll();\n`;
+    appCode += `\t\t}\n`;
+    appCode += `\t\treturn results;\n`;
     appCode += `\t}\n\n`;
 
-    // Function to get a single contract instance by index.
-    const getFields = contracts[contractName].readRules.gets;
-    const getTypes = getFields
-      .map(field => (contracts[contractName].fields[field] === 'string' ? 'string memory' : contracts[contractName].fields[field]))
-      .join(', ');
-    appCode += `\tfunction get_${contractName}_N(uint256 index) public view returns (address, ${getTypes}) {\n`;
-    appCode += `\t\treturn ${contractName}_contract(${contractName}_list[index]).getall();\n`;
+    // Function to get the last N instances.
+    appCode += `\tfunction get_last_${contractName}_N(uint256 count, uint256 offset) public view returns (${contractName}_contract.${contractName}Data[] memory) {\n`;
+    appCode += `\t\trequire(count + offset <= ${contractName}_list.length, "Count + offset out of bounds");\n`;
+    appCode += `\t\t${contractName}_contract.${contractName}Data[] memory results = new ${contractName}_contract.${contractName}Data[](count);\n`;
+    appCode += `\t\tuint len = ${contractName}_list.length;\n`;
+    appCode += `\t\tfor (uint i = 0; i < count; i++) {\n`;
+    appCode += `\t\t\tuint idx = len - i - offset - 1;\n`;
+    appCode += `\t\t\tresults[i] = ${contractName}_contract(${contractName}_list[idx]).getAll();\n`;
+    appCode += `\t\t}\n`;
+    appCode += `\t\treturn results;\n`;
     appCode += `\t}\n\n`;
 
-    // Generate functions to return the first and last N elements.
-    appCode += generateFirstNGetter(contractName, contracts[contractName]);
-    appCode += generateLastNGetter(contractName, contracts[contractName]);
+    // Return length Number of instances
+    appCode += `\tfunction get_${contractName}_list_length() public view returns (uint256) { return ${contractName}_list.length; }\n`;
 
-    // Generate user–related getter functions.
-    appCode += generateUserFunctions(contractName, contracts[contractName]);
+    // User–related functions.
+    appCode += `\tfunction get_${contractName}_user_length(address user) public view returns (uint256) {\n`;
+    appCode += `\t\treturn user_map[user].${contractName}_list.length;\n`;
+    appCode += `\t}\n\n`;
+
+    appCode += `\tfunction get_${contractName}_user_N(address user, uint256 index) public view returns (${contractName}_contract.${contractName}Data memory) {\n`;
+    appCode += `\t\treturn ${contractName}_contract(user_map[user].${contractName}_list[index]).getAll();\n`;
+    appCode += `\t}\n\n`;
+
+    appCode += `\tfunction get_last_${contractName}_user_N(address user, uint256 count, uint256 offset) public view returns (${contractName}_contract.${contractName}Data[] memory) {\n`;
+    appCode += `\t\trequire(count + offset <= user_map[user].${contractName}_list.length, "Count + offset out of bounds");\n`;
+    appCode += `\t\t${contractName}_contract.${contractName}Data[] memory results = new ${contractName}_contract.${contractName}Data[](count);\n`;
+    appCode += `\t\tuint len = user_map[user].${contractName}_list.length;\n`;
+    appCode += `\t\tfor (uint i = 0; i < count; i++) {\n`;
+    appCode += `\t\t\tuint idx = len - i - offset - 1;\n`;
+    appCode += `\t\t\tresults[i] = ${contractName}_contract(user_map[user].${contractName}_list[idx]).getAll();\n`;
+    appCode += `\t\t}\n`;
+    appCode += `\t\treturn results;\n`;
+    appCode += `\t}\n\n`;
   }
 
   // Generate mapping structures and functions for contract references.
   appCode += generateReferenceMappings(contractReferences, contracts, fieldLookup);
 
-  // Generate the user info struct and mapping.
+  // Generate the UserInfo struct and mapping.
   appCode += generateUserInfo(contracts);
 
   // Generate functions to create new contracts.
@@ -233,83 +276,18 @@ function generateAppContract(contracts, contractReferences, fieldLookup) {
   return appCode;
 }
 
-/**
- * Generates a function that returns the first N contract getters.
- *
- * @param {string} contractName - The contract name.
- * @param {Object} contractData - The contract definition.
- * @returns {string} The Solidity code for the getter function.
- */
+// The following helper functions (generateFirstNGetter, generateLastNGetter, generateUserFunctions)
+// are now deprecated since their functionality is integrated into generateAppContract.
 function generateFirstNGetter(contractName, contractData) {
-  let code = `\tfunction get_first_${contractName}_N(uint256 count, uint256 offset) public view returns (${contractName}_getter[] memory) {\n`;
-  code += `\t\t${contractName}_getter[] memory getters = new ${contractName}_getter[](count);\n`;
-  code += `\t\tfor (uint i = offset; i < count; i++) {\n`;
-  code += `\t\t\t${contractName}_contract my${contractName} = ${contractName}_contract(${contractName}_list[i + offset]);\n`;
-  code += `\t\t\tgetters[i - offset]._address = address(my${contractName});\n`;
-  contractData.readRules.gets.forEach(field => {
-    code += `\t\t\tgetters[i - offset].${field} = my${contractName}.get_${field}();\n`;
-  });
-  code += `\t\t}\n`;
-  code += `\t\treturn getters;\n`;
-  code += `\t}\n\n`;
-  return code;
+  return '';
 }
 
-/**
- * Generates a function that returns the last N contract getters.
- *
- * @param {string} contractName - The contract name.
- * @param {Object} contractData - The contract definition.
- * @returns {string} The Solidity code for the getter function.
- */
 function generateLastNGetter(contractName, contractData) {
-  let code = `\tfunction get_last_${contractName}_N(uint256 count, uint256 offset) public view returns (${contractName}_getter[] memory) {\n`;
-  code += `\t\t${contractName}_getter[] memory getters = new ${contractName}_getter[](count);\n`;
-  code += `\t\tfor (uint i = 0; i < count; i++) {\n`;
-  code += `\t\t\t${contractName}_contract my${contractName} = ${contractName}_contract(${contractName}_list[${contractName}_list_length - i - offset - 1]);\n`;
-  code += `\t\t\tgetters[i]._address = address(my${contractName});\n`;
-  contractData.readRules.gets.forEach(field => {
-    code += `\t\t\tgetters[i].${field} = my${contractName}.get_${field}();\n`;
-  });
-  code += `\t\t}\n`;
-  code += `\t\treturn getters;\n`;
-  code += `\t}\n\n`;
-  return code;
+  return '';
 }
 
-/**
- * Generates user–related getter functions.
- *
- * @param {string} contractName - The contract name.
- * @param {Object} contractData - The contract definition.
- * @returns {string} The Solidity code for user functions.
- */
 function generateUserFunctions(contractName, contractData) {
-  let code = `\tfunction get_${contractName}_user_length(address user) public view returns (uint256) {\n`;
-  code += `\t\treturn user_map[user].${contractName}_list_length;\n`;
-  code += `\t}\n\n`;
-
-  const getFields = contractData.readRules.gets;
-  const getTypes = getFields
-    .map(field =>
-      contractData.fields[field] === 'string' ? 'string memory' : contractData.fields[field]
-    )
-    .join(', ');
-  code += `\tfunction get_${contractName}_user_N(address user, uint256 index) public view returns (address, ${getTypes}) {\n`;
-  code += `\t\treturn ${contractName}_contract(user_map[user].${contractName}_list[index]).getall();\n`;
-  code += `\t}\n\n`;
-
-  code += `\tfunction get_last_${contractName}_user_N(address user, uint256 count, uint256 offset) public view returns (${contractName}_getter[] memory) {\n`;
-  code += `\t\t${contractName}_getter[] memory getters = new ${contractName}_getter[](count);\n`;
-  code += `\t\tfor (uint i = offset; i < count; i++) {\n`;
-  code += `\t\t\tgetters[i - offset]._address = user_map[user].${contractName}_list[i + offset];\n`;
-  getFields.forEach(field => {
-    code += `\t\t\tgetters[i - offset].${field} = ${contractName}_contract(user_map[user].${contractName}_list[i + offset]).get_${field}();\n`;
-  });
-  code += `\t\t}\n`;
-  code += `\t\treturn getters;\n`;
-  code += `\t}\n\n`;
-  return code;
+  return '';
 }
 
 /**
@@ -323,7 +301,6 @@ function generateUserFunctions(contractName, contractData) {
 function generateReferenceMappings(contractReferences, contracts, fieldLookup) {
   let code = '';
 
-  // For each parent contract that references other contracts…
   for (const parentContract in contractReferences) {
     contractReferences[parentContract].forEach(referenceContract => {
       code += `\tstruct ${parentContract}_${referenceContract} {\n`;
@@ -336,16 +313,13 @@ function generateReferenceMappings(contractReferences, contracts, fieldLookup) {
       code += `\t\treturn ${parentContract}_${referenceContract}_map[hash].${parentContract}_list.length;\n`;
       code += `\t}\n\n`;
 
-      code += `\tfunction get_last_${parentContract}_${referenceContract}_map_N(address hash, uint256 count, uint256 offset) public view returns (${parentContract}_getter[] memory) {\n`;
-      code += `\t\t${parentContract}_getter[] memory getters = new ${parentContract}_getter[](count);\n`;
+      code += `\tfunction get_last_${parentContract}_${referenceContract}_map_N(address hash, uint256 count, uint256 offset) public view returns (${parentContract}_contract.${parentContract}Data[] memory) {\n`;
+      code += `\t\t${parentContract}_contract.${parentContract}Data[] memory results = new ${parentContract}_contract.${parentContract}Data[](count);\n`;
       code += `\t\tfor (uint i = 0; i < count; i++) {\n`;
-      code += `\t\t\t${parentContract}_contract my${parentContract} = ${parentContract}_contract(${parentContract}_${referenceContract}_map[hash].${parentContract}_list[${parentContract}_${referenceContract}_map[hash].${parentContract}_list.length - i - offset - 1]);\n`;
-      code += `\t\t\tgetters[i]._address = address(my${parentContract});\n`;
-      contracts[parentContract].readRules.gets.forEach(field => {
-        code += `\t\t\tgetters[i].${field} = my${parentContract}.get_${field}();\n`;
-      });
+      code += `\t\t\t${parentContract}_contract instance = ${parentContract}_contract(${parentContract}_${referenceContract}_map[hash].${parentContract}_list[${parentContract}_${referenceContract}_map[hash].${parentContract}_list.length - i - offset - 1]);\n`;
+      code += `\t\t\tresults[i] = instance.getAll();\n`;
       code += `\t\t}\n`;
-      code += `\t\treturn getters;\n`;
+      code += `\t\treturn results;\n`;
       code += `\t}\n\n`;
     });
   }
@@ -368,16 +342,17 @@ function generateUserInfo(contracts) {
   }
   code += `\t}\n`;
   code += `\tmapping(address => UserInfo) public user_map;\n`;
-  code += `\taddress[] UserInfoList;\n`;
-  code += `\tuint256 UserInfoListLength;\n\n`;
+  code += `\taddress[] public UserInfoList;\n`;
+  code += `\tuint256 public UserInfoListLength;\n\n`;
   return code;
 }
 
 /**
  * Generates the function for creating a new instance of a given contract.
+ *
  * This function:
  *  – Checks for unique indexes (if defined)
- *  – Instantiates the new contract
+ *  – Instantiates the new contract using named parameters
  *  – Updates any reference mappings and user data.
  *
  * @param {string} contractName - The contract name.
@@ -391,9 +366,8 @@ function generateNewContractFunction(contractName, contract, contractReferences,
   let code = '';
 
   // Declare the event.
-  code += `\tevent New${contractName}(address sender);\n\n`;
+  code += `\tevent New${contractName}(address indexed sender, address indexed contractAddress);\n\n`;
 
-  // If the contract has index rules, create a unique mapping.
   if (contract.writeRules.index && contract.writeRules.index.length > 0) {
     code += `\tmapping(bytes32 => address) unique_map_${contractName};\n\n`;
     code += `\tfunction get_unique_map_${contractName}(`;
@@ -406,32 +380,27 @@ function generateNewContractFunction(contractName, contract, contractReferences,
     code += `\t}\n\n`;
   }
 
-  // Create the new_<contractName> function.
   code += `\tfunction new_${contractName}(`;
   code += contract.initRules.passIn
     .map(field => `${contract.fields_types[field]} ${field}`)
     .join(', ');
   code += `) public returns (address) {\n`;
 
-  // Check for uniqueness if an index is defined.
   if (contract.writeRules.index && contract.writeRules.index.length > 0) {
     code += `\t\tbytes32 hash_${contractName} = keccak256(abi.encodePacked(${contract.writeRules.index.join(', ')}));\n`;
     code += `\t\trequire(unique_map_${contractName}[hash_${contractName}] == address(0));\n`;
   }
 
-  // Instantiate the new contract.
   code += `\t\taddress mynew = address(new ${contractName}_contract({\n`;
   code += contract.initRules.passIn
     .map(field => `\t\t\t_${field} : ${field}`)
     .join(',\n');
   code += `\n\t\t}));\n\n`;
 
-  // Update the unique mapping if necessary.
   if (contract.writeRules.index && contract.writeRules.index.length > 0) {
     code += `\t\tunique_map_${contractName}[hash_${contractName}] = mynew;\n\n`;
   }
 
-  // Update any reference mappings.
   if (contractReferences[contractName] && contractReferences[contractName].length > 0) {
     contractReferences[contractName].forEach(referenceContract => {
       const fieldName = fieldLookup[contractName][referenceContract];
@@ -442,36 +411,31 @@ function generateNewContractFunction(contractName, contract, contractReferences,
     });
   }
 
-  // Update user mappings.
   code += `\t\tif(!user_map[tx.origin].exists) {\n`;
   code += `\t\t\tuser_map[tx.origin] = create_user_on_new_${contractName}(mynew);\n`;
   code += `\t\t}\n`;
   code += `\t\tuser_map[tx.origin].${contractName}_list.push(mynew);\n`;
   code += `\t\tuser_map[tx.origin].${contractName}_list_length += 1;\n\n`;
 
-  // Update global contract list.
   code += `\t\t${contractName}_list.push(mynew);\n`;
-  code += `\t\t${contractName}_list_length += 1;\n\n`;
+  code += `\t\t// The length of ${contractName}_list is tracked by the array length\n\n`;
 
-  code += `\t\temit New${contractName}(tx.origin);\n\n`;
+  code += `\t\temit New${contractName}(tx.origin, mynew);\n\n`;
   code += `\t\treturn mynew;\n`;
   code += `\t}\n\n`;
 
-  // Create a helper to initialize a new UserInfo record.
   code += `\tfunction create_user_on_new_${contractName}(address addr) private returns (UserInfo memory) {\n`;
-  // For each contract, initialize an empty memory array.
   const initLines = allContractNames.map(name => `\t\taddress[] memory ${name}_list_ = new address[](0);`);
   code += initLines.join('\n') + '\n';
   code += `\t\tUserInfoList.push(addr);\n`;
   code += `\t\treturn UserInfo({\n`;
+  code += `\t\t\texists: true,\n\t\t\towner: addr,\n`;
   const userFields = allContractNames
     .map(name => `\t\t\t${name}_list: ${name}_list_,\n\t\t\t${name}_list_length: 0`)
     .join(',\n');
-  // Also set owner and exists.
-  code += `\t\t\texists: true,\n\t\t\towner: addr,\n${userFields}\n\t\t});\n`;
+  code += userFields + `\n\t\t});\n`;
   code += `\t}\n\n`;
 
-  // If there are reference mappings for this contract, add helper functions.
   if (contractReferences[contractName] && contractReferences[contractName].length > 0) {
     contractReferences[contractName].forEach(referenceContract => {
       code += `\tfunction create_index_on_new_${contractName}_${referenceContract}() private pure returns (${contractName}_${referenceContract} memory) {\n`;
@@ -515,3 +479,5 @@ export {
   generateUserInfo,
   generateNewContractFunction
 };
+
+

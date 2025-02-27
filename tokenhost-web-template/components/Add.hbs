@@ -67,10 +67,9 @@ export default function Send(props) {
         .new_{{contract}}({{add_value contract_data.initRules.passIn}}) {{! loop over the pass in elements contract_data.initRules.passIn}}
         .estimateGas()
         .then((gasEstimate) => {
-	  gasEstimate = 200000 // short term hyperspace hack
           contract.methods
             .new_{{contract}}({{add_value contract_data.initRules.passIn}}) {{! loop over the pass in elements contract_data.initRules.passIn}}
-            .send({ gas: gasEstimate, from: user,gasPrice: 0})
+            .send({ gas: gasEstimate, from: user})
             .then(() => {
               setSendStatus('')
                 {{#each contract_data.initRules.passIn}}
