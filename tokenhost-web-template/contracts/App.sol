@@ -333,14 +333,25 @@ contract App {
 
     event NewHashtag(address indexed sender, address indexed contractAddress);
 
-    mapping(bytes32 => address) public unique_map_tag;
+    mapping(bytes32 => address) unique_map_tag;
+
+    function get_unique_map_tag(string memory tag)
+        public
+        view
+        returns (address)
+    {
+        bytes32 hash = keccak256(abi.encodePacked(tag));
+        return unique_map_tag[hash];
+    }
 
     function new_Hashtag(string memory tag) public returns (address) {
         bytes32 hash_tag = keccak256(abi.encodePacked(tag));
-        require(unique_map_tag[hash_tag] == address(0), "tag must be unique");
+        require(
+            unique_map_tag[hash_tag] == address(0),
+            "Unique constraint violation for tag"
+        );
         address mynew = address(new Hashtag_contract({_tag: tag}));
 
-        bytes32 hash_tag = keccak256(abi.encodePacked(tag));
         unique_map_tag[hash_tag] = mynew;
 
         if (!user_map[tx.origin].exists) {
