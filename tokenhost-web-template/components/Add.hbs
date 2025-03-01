@@ -69,7 +69,11 @@ export default function Send(props) {
         .then((gasEstimate) => {
           contract.methods
             .new_{{contract}}({{add_value contract_data.initRules.passIn}}) {{! loop over the pass in elements contract_data.initRules.passIn}}
-            .send({ gas: gasEstimate, from: user})
+
+// for now just double gas
+// TODO look into why its failing
+
+            .send({ gas: gasEstimate*2, from: user})
             .then(() => {
               setSendStatus('')
                 {{#each contract_data.initRules.passIn}}
