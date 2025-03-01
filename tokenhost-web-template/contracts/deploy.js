@@ -1,100 +1,54 @@
-
-let network = "tokenhost"
-if(process.argv.length > 1){
-  network = process.argv[2]
-}
-
-
+const { execSync } = require('child_process');
 const fs = require('fs');
-const Web3 = require('web3');
 const config = require('config');
+const Handlebars = require('handlebars');
 
-const rpcUrl =  config.get(network+".rpcUrl")
-const rpcWS =  config.get(network+".rpcWS")
-const chainName  =  config.get(network+".chainName")
+let network = process.argv.length > 2 ? process.argv[2] : "tokenhost";
 
-const web3 = new Web3( config.get(network+".rpcUrl"))
-const Handlebars = require('handlebars')
-const SignerProvider = require('ethjs-provider-signer')
+// Load network configuration
+const rpcUrl = config.get(`${network}.rpcUrl`);
+const rpcWS = config.get(`${network}.rpcWS`);
+const chainName = config.get(`${network}.chainName`);
+const privateKey = config.get(`${network}.privateKey`);
 
+try {
+    console.log(`Deploying contract to ${network} (${rpcUrl})...`);
 
-const bytecode = fs.readFileSync('contracts/App_sol_App.bin','utf8');
-var abi = JSON.parse(fs.readFileSync('contracts/App_sol_App.abi', 'utf8'));
+    // Execute forge create and parse output
+    const output = execSync(
+        `forge create --rpc-url ${rpcUrl} --private-key ${privateKey} site/contracts/App.sol:App --broadcast --json`,
+        { encoding: 'utf-8' }
+    );
 
-async function main(){
+    const deployedContract = JSON.parse(output);
+    const contractAddress = deployedContract.deployedTo;
 
-  var account;
-  if(config.has(network+".privateKey")){
-    const privateKey =  config.get(network+".privateKey")
-    account = web3.eth.accounts.privateKeyToAccount(privateKey)
-  }else{
-    account = web3.eth.accounts.create();
-  }
-  web3.eth.accounts.wallet.add(account.privateKey);
-  web3.eth.defaultAccount = account.address;
-    var localprovider = new SignerProvider(config.get(network+".rpcUrl"), {
-      signTransaction: (rawTx, cb) => cb(null, sign(rawTx, account.privateKey)),
-      accounts: (cb) => cb(null, [account.address]),
-    })
-    web3.setProvider(localprovider)
+    console.log(`Contract deployed at: ${contractAddress}`);
 
-    web3.eth.accounts.wallet.add(account)
-    web3.eth.defaultAccount = account.address
+    // Read Handlebars template
+    const web3helperTemplate = Handlebars.compile(
+        fs.readFileSync('./helpers/Web3Helper.hbs', 'utf-8')
+    );
 
-  const chainId = web3.eth.getChainId();
+    // Get chain ID (optional if needed)
+    const chainId = config.has(`${network}.chainId`) ? config.get(`${network}.chainId`) : null;
 
+    // Generate Web3Helper.js
+    const web3helperOutput = web3helperTemplate({
+        contract_address: contractAddress,
+        rpcUrl: rpcUrl,
+        rpcWS: rpcWS,
+        chainName: chainName,
+        chainId: chainId
+    });
 
-  const ganacheAccounts = await web3.eth.getAccounts();
-  console.log('ganace',ganacheAccounts)
-  const helloWorld = new web3.eth.Contract(abi);
-    helloWorld.options.from = account.address
+    fs.writeFileSync(`./helpers/Web3Helper.js`, web3helperOutput);
 
-  const gas = await helloWorld.deploy({ data: bytecode }).estimateGas()
-  console.log(gas)
-  const gasPrice = await web3.eth.getGasPrice()
-  console.log(gasPrice)
+    console.log("Web3Helper.js updated.");
+    console.log("DONE");
 
-  console.log(account)
-  var tx = {}
-  if(network != "tokenhost"){
-    tx = {
-      from: ganacheAccounts[0],
-      gas:gas,
-      maxFeePerGas:gasPrice,
-      maxPriorityFeePerGas:gasPrice
-    }
-  }else{
-    tx = {
-      from: ganacheAccounts[0],
-      gas:gas
-    }
-  }
-
-  helloWorld.deploy({
-    data: bytecode
-  }).send(tx).then((deployment) => {
-    console.log('Contract was deployed at the following address:');
-    console.log(deployment.options.address);
-    
-    let web3helper_template = Handlebars.compile(
-      fs.readFileSync('./helpers/Web3Helper.hbs', 'utf-8'),
-    )
-
-
-  fs.writeFileSync(
-    `./helpers/Web3Helper.js`,
-    web3helper_template({ contract_address:deployment.options.address, rpcUrl: rpcUrl, rpcWS: rpcWS, chainName: chainName, chainId: chainId}),
-  )
-
-
-  }).catch((err) => {
-    console.error(err);
-  });
+} catch (error) {
+    console.error("Deployment failed:", error.message);
 }
 
-main().then(function(){
-  console.log("DONE")
-})
 
-//Contract was deployed at the following address:
-//0xbd6959D258c24b0922505859E6aCAA700858f18e
