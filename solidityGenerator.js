@@ -355,10 +355,12 @@ function generateNewContractFunction(contractName, contract, contractReferences,
 
   // --- UNIQUE INDEX SETUP ---
   // If the writeRules contain a "unique" field, create a mapping and a getter function for it.
+	// TODO handle multiple unique fields in a contract
+	// TODO handle multiple contracts with same named unique field ie namespace field by contract name
   if (contract.writeRules.unique && contract.writeRules.unique.length > 0) {
     contract.writeRules.unique.forEach(uniqueField => {
       code += `\tmapping(bytes32 => address) unique_map_${uniqueField};\n\n`;
-      code += `\tfunction get_unique_map_${uniqueField}(string memory ${uniqueField}) public view returns (address) {\n`;
+      code += `\tfunction get_unique_map_${contractName}(string memory ${uniqueField}) public view returns (address) {\n`;
       code += `\t\tbytes32 hash = keccak256(abi.encodePacked(${uniqueField}));\n`;
       code += `\t\treturn unique_map_${uniqueField}[hash];\n`;
       code += `\t}\n\n`;
