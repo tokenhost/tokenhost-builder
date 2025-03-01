@@ -347,60 +347,54 @@ function generateUserInfo(contracts) {
   return code;
 }
 
-/**
- * Generates the function for creating a new instance of a given contract.
- *
- * This function:
- *  – Checks for unique indexes (if defined)
- *  – Instantiates the new contract using named parameters
- *  – Updates any reference mappings and user data.
- *
- * @param {string} contractName - The contract name.
- * @param {Object} contract - The contract definition.
- * @param {Object} contractReferences - Mapping of contract references.
- * @param {Object} fieldLookup - Lookup for referenced field names.
- * @param {Array<string>} allContractNames - All contract names (for user initialization).
- * @returns {string} The Solidity code for the new_<contractName> function.
- */
 function generateNewContractFunction(contractName, contract, contractReferences, fieldLookup, allContractNames) {
   let code = '';
 
   // Declare the event.
   code += `\tevent New${contractName}(address indexed sender, address indexed contractAddress);\n\n`;
 
-  if (contract.writeRules.index && contract.writeRules.index.length > 0) {
-    code += `\tmapping(bytes32 => address) unique_map_${contractName};\n\n`;
-    code += `\tfunction get_unique_map_${contractName}(`;
-    code += contract.writeRules.index
-      .map(indexField => `${contract.fields_types[indexField]} ${indexField}`)
-      .join(', ');
-    code += `) public view returns (address) {\n`;
-    code += `\t\tbytes32 hash_${contractName} = keccak256(abi.encodePacked(${contract.writeRules.index.join(', ')}));\n`;
-    code += `\t\treturn unique_map_${contractName}[hash_${contractName}];\n`;
-    code += `\t}\n\n`;
+  // --- UNIQUE INDEX SETUP ---
+  if (contract.writeRules.unique && contract.writeRules.unique.length > 0) {
+    // For each unique field, create a separate mapping and getter.
+    contract.writeRules.unique.forEach(uniqueField => {
+      code += `\tmapping(bytes32 => address) unique_map_${uniqueField};\n\n`;
+      code += `\tfunction get_unique_map_${uniqueField}(string memory ${uniqueField}) public view returns (address) {\n`;
+      code += `\t\tbytes32 hash = keccak256(abi.encodePacked(${uniqueField}));\n`;
+      code += `\t\treturn unique_map_${uniqueField}[hash];\n`;
+      code += `\t}\n\n`;
+    });
   }
 
+  // New contract function header.
   code += `\tfunction new_${contractName}(`;
   code += contract.initRules.passIn
     .map(field => `${contract.fields_types[field]} ${field}`)
     .join(', ');
   code += `) public returns (address) {\n`;
 
-  if (contract.writeRules.index && contract.writeRules.index.length > 0) {
-    code += `\t\tbytes32 hash_${contractName} = keccak256(abi.encodePacked(${contract.writeRules.index.join(', ')}));\n`;
-    code += `\t\trequire(unique_map_${contractName}[hash_${contractName}] == address(0));\n`;
+  // --- UNIQUE INDEX CHECKS ---
+  if (contract.writeRules.unique && contract.writeRules.unique.length > 0) {
+    contract.writeRules.unique.forEach(uniqueField => {
+      code += `\t\tbytes32 hash_${uniqueField} = keccak256(abi.encodePacked(${uniqueField}));\n`;
+      code += `\t\trequire(unique_map_${uniqueField}[hash_${uniqueField}] == address(0));\n`;
+    });
   }
 
+  // Instantiate the new contract.
   code += `\t\taddress mynew = address(new ${contractName}_contract({\n`;
   code += contract.initRules.passIn
     .map(field => `\t\t\t_${field} : ${field}`)
     .join(',\n');
   code += `\n\t\t}));\n\n`;
 
-  if (contract.writeRules.index && contract.writeRules.index.length > 0) {
-    code += `\t\tunique_map_${contractName}[hash_${contractName}] = mynew;\n\n`;
+  // --- UPDATE UNIQUE INDEX MAPPINGS ---
+  if (contract.writeRules.unique && contract.writeRules.unique.length > 0) {
+    contract.writeRules.unique.forEach(uniqueField => {
+      code += `\t\tunique_map_${uniqueField}[hash_${uniqueField}] = mynew;\n\n`;
+    });
   }
 
+  // (Continue with reference mappings and user data updates as before)
   if (contractReferences[contractName] && contractReferences[contractName].length > 0) {
     contractReferences[contractName].forEach(referenceContract => {
       const fieldName = fieldLookup[contractName][referenceContract];
@@ -447,6 +441,7 @@ function generateNewContractFunction(contractName, contract, contractReferences,
 
   return code;
 }
+
 
 // Main execution: load contracts from the provided file (or default to "contracts.json"),
 // process field types, and generate the Solidity code.
