@@ -1,4 +1,4 @@
-# Token Host Platform Specification (Draft v0.3)
+# Token Host Platform Specification (Draft v0.4)
 
 Status: Draft (spec-driven design)  
 Owner: Token Host  
@@ -27,6 +27,32 @@ A user defines an **app schema** (collections, fields, constraints, and access r
 6) hosts the generated UI at `https://<app-slug>.tokenhost.com`.
 
 Token Host also supports a **developer/automation** mode via a CLI that runs the same validation/generation/deploy steps locally or in CI and can export a complete app bundle.
+
+### 1.1 Primary lifecycle: launch on Token Host, migrate outward
+
+The original Token Host product intent (predating modern rollups) was a “cloud-hosted chain”: a middle ground between cloud databases and public blockchains where developers get:
+- a developer-friendly creator experience (schemas, CRUD, indexing),
+- a trusted operator (Token Host) who can run the infrastructure like a cloud provider,
+- and a cryptographic audit trail because the authoritative state machine is an EVM.
+
+In today’s ecosystem, the practical implementation is a low-cost EVM rollup/appchain operated by Token Host (“Token Host Chain”) plus a path to graduate onto external EVM chains (including OP Stack-based “OP Chains”).
+
+Token Host’s primary recommended workflow is:
+1) **Launch on Token Host Chain** in full on-chain mode (records + indexes) for fast iteration, low fees, and a cloud-like managed experience where the entire *backend* of the app runs on the EVM (no custom servers required for correctness).
+2) **Graduate to a dedicated appchain / external rollup** when the app needs more sovereignty, scale, or ecosystem alignment. Token Host supports this by:
+   - deploying the same schema-backed contracts to the destination chain,
+   - switching the release’s primary write deployment,
+   - preserving continuity by reading legacy deployments and optionally copying state.
+
+Advantages of “EVM as the database backend” (especially on a low-cost rollup):
+- **Audit trail**: all writes are transactions with receipts and events; history is inspectable.
+- **Deterministic correctness**: business rules, access control, constraints, and payments live in contracts.
+- **Portability**: the same generated contracts can run on any EVM chain (subject to chain configs), enabling migration and multi-chain releases.
+- **Operational simplicity**: a static UI + RPC is sufficient to operate a functional app (indexers enhance UX but do not define correctness).
+
+Token Host explicitly targets a “trusted operator with auditability” model:
+- Early-stage apps can accept Token Host as the operator (analogous to “IBM-style” managed infrastructure) while benefiting from a verifiable ledger.
+- As apps mature, the operator trust model can be reduced over time by migrating to a more decentralized rollup/appchain deployment.
 
 ---
 
@@ -64,6 +90,21 @@ Token Host also supports a **developer/automation** mode via a CLI that runs the
 ### 2.7 Economics-aware, L2-first
 - Token Host SHOULD be positioned and optimized for L2s/high-throughput chains (e.g., Base, Arbitrum, Optimism, Polygon) where on-chain CRUD is economically viable.
 - Studio MUST warn users when deploying schemas that store large `string` fields or maintain heavy on-chain indexes on expensive chains.
+- For L1 deployments, Studio SHOULD default to Lite mode and MUST clearly communicate the gas/storage economics tradeoffs.
+
+### 2.8 Cloud-chain first, portable
+- Token Host SHOULD offer a first-party, low-cost EVM rollup/appchain (“Token Host Chain”) optimized for full on-chain mode (records + indexes).
+- Token Host Chain and Token Host-provisioned appchains SHOULD be based on a standardized EVM rollup/appchain stack (e.g., OP Stack) to simplify provisioning, operations, and migration workflows.
+- Token Host MUST support a first-class “launch on Token Host Chain, migrate to external chain” workflow via releases that can reference legacy deployments and switch the primary write target over time (see Section 11.8).
+- Token Host MUST keep generated contracts portable across EVM chains (no hidden dependencies on Token Host Chain-specific precompiles); chain differences are expressed only through adapters and configuration.
+
+### 2.9 Progressive decentralization (appchain growth path)
+
+Token Host’s managed-chain model is designed to support a deliberate, staged reduction of trust in the operator over time.
+
+- Token Host Chain and Token Host-provisioned appchains MAY begin with a centralized operator (sequencer + ops) for performance and DX.
+- The system MUST be designed so that decentralization can increase over time without changing application schemas or contract semantics (only the chain environment changes).
+- Studio MUST represent chain “trust posture” clearly (e.g., managed vs external vs decentralized) and MUST avoid implying decentralization where it does not exist.
 
 ---
 
@@ -79,6 +120,9 @@ Token Host also supports a **developer/automation** mode via a CLI that runs the
 - **Release**: a published UI + contract address set mapped to a domain (subdomain or custom domain).
 - **Manifest**: a machine-readable artifact describing build inputs, outputs, and deployments.
 - **Indexer**: optional off-chain service that consumes on-chain events to enable search and advanced queries.
+- **Token Host Chain**: a Token Host-operated EVM rollup/appchain intended to provide a cloud-like default environment for full-mode apps.
+- **Appchain**: a dedicated EVM rollup/appchain provisioned for a specific app (or org) with its own RPC endpoints and chain configuration, intended as a “graduation” step from the shared Token Host Chain.
+- **Chain migration**: switching a release’s primary deployment from one chain to another (while optionally continuing to read legacy deployments and optionally copying state).
 
 ---
 
@@ -113,16 +157,53 @@ Token Host consists of the following production services:
 8) **Indexer Layer (Optional)**  
    - Provides deployable/queryable indexers (e.g., The Graph or a managed event indexer).
 
+9) **Token Host Chain (Optional, first-party network)**  
+   - A Token Host-operated EVM rollup/appchain providing low-cost execution, stable RPC endpoints, and (optionally) standardized AA/sponsorship infrastructure for hosted apps.
+
+10) **Appchain Provisioner (Optional)**  
+   - Service that provisions dedicated EVM appchains (e.g., OP Stack-based “OP Chains”) for apps/orgs, manages chain configuration, and integrates new chains into Token Host’s deploy/index/host workflows.
+
 ### 4.2 Trust boundaries
 
 - The user’s wallet (EOA or smart account) is outside Token Host trust boundaries.
 - Token Host MUST treat RPC nodes, explorers, and OAuth providers as external dependencies.
 - Token Host MUST assume schema input is untrusted and MUST validate/sanitize before using it to generate code.
+- If Token Host operates Token Host Chain and/or managed appchains, those networks are part of Token Host’s operational trust boundary; Studio MUST disclose their trust posture to users (managed vs external vs decentralized).
 
 ### 4.3 Deployment models
 
 - **Managed**: Token Host hosts the UI and orchestrates builds and deployments; users interact via Studio + generated app.
 - **Export/Self-host**: Users can download a complete app bundle (schema + generated source + UI bundle + manifest) and deploy/host themselves.
+
+### 4.4 Token Host Chain and appchains (cloud chain -> rollup)
+
+Token Host is designed around the idea that an application’s backend can live entirely on an EVM execution layer:
+- data (records),
+- integrity constraints (uniqueness),
+- access control (create/update/delete/transfer),
+- optional on-chain indexes for browsing (full mode),
+- and optional payment/reward mechanics.
+
+In this model, “hosting the app” is primarily:
+- hosting a static UI bundle, and
+- operating reliable RPC/indexing infrastructure for the chain(s) the app targets.
+
+Token Host provides two managed chain deployment flavors:
+
+1) **Token Host Chain (shared)**  
+   A Token Host-operated EVM rollup/appchain intended as the default “cloud chain” environment for new apps. It SHOULD be optimized for:
+   - low, predictable fees suitable for CRUD workloads,
+   - stable RPC endpoints and operational SLOs,
+   - standardized account-abstraction/sponsorship capabilities (where feasible),
+   - easy migration out to external EVM chains.
+
+2) **Appchains (dedicated)**  
+   Token Host MAY provision dedicated EVM rollups/appchains per app or org (e.g., OP Stack-based “OP Chains”). These are the “growth path” for apps that need more sovereignty or dedicated throughput while keeping the same EVM contract backend model.
+
+Token Host’s “trusted authority with audit trail” positioning implies:
+- The operator (Token Host) MAY control sequencing, fees, and infrastructure in managed environments.
+- The system SHOULD provide verifiable history and auditability so that developers/users can independently inspect state transitions.
+- Studio MUST clearly communicate when an app is running on a Token Host-managed chain vs an external chain and MUST avoid implying trustlessness when a trusted operator exists.
 
 ---
 
@@ -237,7 +318,7 @@ Each collection defines:
 - `name`: string, required (PascalCase)
 - `plural`: string, optional for UI (defaults to `name + "s"`)
 - `fields`: array of Field Definitions (user-defined fields)
-- `createRules`, `visibilityRules`, `updateRules`, `deleteRules`: access and field policies
+- `createRules`, `visibilityRules`, `updateRules`, `deleteRules`, `transferRules`: access and field policies
 - `indexes`: uniqueness and query indexes
 - `relations`: references to other collections
 - `ui`: per-collection UI overrides (default list columns, sort, forms)
@@ -266,7 +347,7 @@ Supported v1 field types:
 - `externalReference`: address pointer to an external contract/account (stored as `address`)
 
 Field names MUST NOT conflict with:
-- system field names (`id`, `createdAt`, `createdBy`, `updatedAt`, `updatedBy`, `isDeleted`, `deletedAt`, `version`),
+- system field names (`id`, `createdAt`, `createdBy`, `owner`, `updatedAt`, `updatedBy`, `isDeleted`, `deletedAt`, `version`),
 - reserved Solidity keywords or global names (`address`, `mapping`, `contract`, etc.),
 - reserved UI/runtime identifiers used by the generated app.
 
@@ -276,6 +357,7 @@ Token Host collections always include system fields in the generated contract, e
 - `id` (`uint256`): record ID
 - `createdAt` (`uint256`): block timestamp at create
 - `createdBy` (`address`): `_msgSender()` at create
+- `owner` (`address`): current owner at create (defaults to `_msgSender()`); updated by transfers if enabled
 - `updatedAt` (`uint256`): block timestamp at update (if updates enabled)
 - `updatedBy` (`address`): `_msgSender()` at update (if updates enabled)
 - `isDeleted` (`bool`): soft delete flag (if soft delete enabled)
@@ -291,11 +373,18 @@ Each collection defines operation policies:
 **Create rules**
 - `required`: list of field names required at create
 - `auto`: map of system/custom fields to expressions (limited safe set)
+- `payment`: optional payment requirement for create (v1 supports native currency only)
 - `access`: one of:
   - `public`: any address
-  - `owner`: shorthand for “any address, but record ownership is createdBy”
+  - `owner`: shorthand for “any address; record `owner` is set to `_msgSender()` at create”
   - `allowlist`: only addresses in an on-chain allowlist
   - `role`: addresses with RBAC roles (OpenZeppelin-style AccessControl)
+
+If `createRules.payment` is present, it MUST have:
+- `asset`: `"native"` (v1)
+- `amountWei`: string (uint256 in wei)
+
+Studio MAY accept human-readable inputs (e.g., “0.01 ETH”) but MUST convert and store the canonical `amountWei` in the schema to preserve determinism and chain-agnostic behavior.
 
 **Visibility rules (gateway/API access)**
 - `gets`: list of fields returned by default contract getter methods and displayed by default in the generated UI
@@ -311,6 +400,34 @@ Visibility rules MUST be described as gateway/API visibility only. They MUST NOT
 **Delete rules**
 - `softDelete`: boolean (default true)
 - `access`: `owner|allowlist|role`
+
+**Transfer rules**
+
+Transfers enable asset-like ownership changes (tickets, coupons, items) where the current owner can assign the record to a new owner address.
+
+- If `transferRules` is absent, the generator MUST NOT emit transfer methods for the collection.
+- If `transferRules` is present, it MUST define:
+  - `access`: `owner|allowlist|role` (default SHOULD be `owner`)
+
+Transfers MUST:
+- change `record.owner` (but MUST NOT change `record.createdBy`),
+- be disabled for deleted records (soft or hard deleted),
+- reject `to == address(0)`.
+
+Example (transfer-enabled asset collection):
+
+```json
+{
+  "name": "Ticket",
+  "fields": [{ "name": "eventName", "type": "string", "required": true }],
+  "createRules": { "required": ["eventName"], "access": "public" },
+  "visibilityRules": { "gets": ["eventName"], "access": "public" },
+  "updateRules": { "mutable": [], "access": "owner" },
+  "deleteRules": { "softDelete": true, "access": "owner" },
+  "transferRules": { "access": "owner" },
+  "indexes": { "unique": [], "index": [] }
+}
+```
 
 Access rules are enforced on-chain. UI MUST reflect access (disable/hide actions), but on-chain enforcement is authoritative.
 
@@ -372,23 +489,40 @@ Token Host MAY support advanced continuity modes, but they MUST be explicitly se
 {
   "schemaVersion": "1.0.0",
   "app": { "name": "Job Board", "slug": "job-board" },
-  "collections": [
-    {
-      "name": "Candidate",
-      "fields": [
-        { "name": "handle", "type": "string", "required": true },
-        { "name": "bio", "type": "string" },
-        { "name": "photo", "type": "image" }
-      ],
-      "createRules": { "required": ["handle"], "access": "public" },
-      "visibilityRules": { "gets": ["handle", "bio", "photo"], "access": "public" },
-      "updateRules": { "mutable": ["bio", "photo"], "access": "owner" },
-      "deleteRules": { "softDelete": true, "access": "owner" },
-      "indexes": { "unique": ["handle"], "index": [] }
-    }
-  ]
-}
-```
+	  "collections": [
+	    {
+	      "name": "Candidate",
+	      "fields": [
+	        { "name": "handle", "type": "string", "required": true },
+	        { "name": "bio", "type": "string" },
+	        { "name": "photo", "type": "image" }
+	      ],
+	      "createRules": { "required": ["handle"], "access": "public" },
+	      "visibilityRules": { "gets": ["handle", "bio", "photo"], "access": "public" },
+	      "updateRules": { "mutable": ["bio", "photo"], "access": "owner" },
+	      "deleteRules": { "softDelete": true, "access": "owner" },
+	      "indexes": { "unique": ["handle"], "index": [] }
+	    },
+	    {
+	      "name": "JobPosting",
+	      "fields": [
+	        { "name": "title", "type": "string", "required": true },
+	        { "name": "description", "type": "string" },
+	        { "name": "salary", "type": "decimal", "decimals": 2 }
+	      ],
+	      "createRules": {
+	        "required": ["title"],
+	        "payment": { "asset": "native", "amountWei": "10000000000000000" },
+	        "access": "public"
+	      },
+	      "visibilityRules": { "gets": ["title", "description", "salary"], "access": "public" },
+	      "updateRules": { "mutable": ["description", "salary"], "access": "owner" },
+	      "deleteRules": { "softDelete": true, "access": "owner" },
+	      "indexes": { "unique": [], "index": [] }
+	    }
+	  ]
+	}
+	```
 
 ### 6.11 Validation, linting, and safety limits
 
@@ -473,7 +607,8 @@ The record struct MUST include all system fields plus user-defined fields. Soft 
 ### 7.2 Ownership and attribution
 
 - Generated contracts MUST use OpenZeppelin’s `Context` and MUST use `_msgSender()` for attribution and access checks (future-proofing for meta-transactions and account abstraction patterns).
-- `createdBy` MUST equal `_msgSender()` at record creation.
+- `createdBy` MUST equal `_msgSender()` at record creation and MUST be immutable thereafter.
+- `owner` MUST equal `_msgSender()` at record creation. If transfers are enabled for the collection, `owner` MAY change via an explicit transfer method.
 - `updatedBy` MUST equal `_msgSender()` at update.
 - The system MUST NOT use `tx.origin` for attribution.
 
@@ -481,16 +616,27 @@ The record struct MUST include all system fields plus user-defined fields. Soft 
 
 Create operations MUST:
 1) check create access (public/allowlist/role),
-2) validate required fields (on-chain representable validation),
-3) enforce uniqueness constraints for configured unique fields,
-4) optionally enforce reference existence constraints,
-5) assign ID = `nextIdC` and increment `nextIdC`,
-6) populate system fields,
-7) store the record,
-8) update indexes,
-9) emit events.
+2) if `createRules.payment` is configured, enforce the payment requirement (see below),
+3) validate required fields (on-chain representable validation),
+4) enforce uniqueness constraints for configured unique fields,
+5) optionally enforce reference existence constraints,
+6) assign ID = `nextIdC` and increment `nextIdC`,
+7) populate system fields,
+8) store the record,
+9) update indexes,
+10) emit events.
 
 Create MUST be a single transaction and MUST be deterministic for identical inputs.
+
+#### 7.3.1 Paid creates (native currency)
+If `createRules.payment` is configured for a collection:
+- the generated create function MUST be `payable`,
+- the function MUST revert unless `msg.value == amountWei`,
+- collected value SHOULD remain in the App contract balance (pull pattern).
+
+If `createRules.payment` is not configured for a collection, the generated create function SHOULD be non-payable.
+
+The generated App contract MUST include an admin-controlled withdrawal mechanism for accumulated native fees (exact shape generator-defined), and MUST avoid reentrancy hazards (e.g., `nonReentrant` + effects-before-interactions on withdrawals).
 
 ### 7.4 Read semantics
 
@@ -527,7 +673,7 @@ Update MUST:
 8) update indexes for changed indexed fields,
 9) emit events.
 
-### 7.7 Delete semantics
+### 7.7 Delete and transfer semantics
 
 Delete operations MUST support:
 - **soft delete** (default): mark `isDeleted=true` and set `deletedAt`
@@ -536,7 +682,17 @@ Delete operations MUST support:
 Soft delete affects constraints and counters:
 - `activeCountC` MUST decrement on soft delete and increment on restore (if restore is supported).
 - If `activeIdsC` is present, soft delete MUST remove the record ID from `activeIdsC` using swap-and-pop and MUST clear `activePosC` for that record ID.
+- If an owner index is present, soft delete MUST remove the record ID from the current owner’s owner index set.
 - Unique mappings SHOULD be cleared on soft delete so the unique value becomes available again among active records. If an app needs “unique across all time”, that MUST be modeled explicitly as a future schema feature (or by using hard delete only).
+
+Transfers are optional per collection (enabled when `transferRules` is present). If enabled, a transfer operation MUST:
+1) check transfer access (`owner|allowlist|role`),
+2) validate record exists and is not deleted,
+3) validate `to != address(0)`,
+4) update `record.owner` from `from` to `to`,
+5) update owner index sets (remove from `from`, add to `to`) when `onChainIndexing=true`,
+6) set `updatedAt` and `updatedBy`,
+7) emit transfer events.
 
 ### 7.8 Indexing inside the contract
 
@@ -551,8 +707,15 @@ On-chain indexes materially increase write gas costs. Token Host MUST support a 
 
 **Owner index (when `onChainIndexing=true`)**  
 For each collection C:
-- `byOwnerC: mapping(address => uint256[])` append-only list of record IDs created by the owner.
-  - The generator MUST NOT expose an unbounded “return the full array” getter for this index. Any owner-index accessor MUST be paginated (offset + limit) and MUST cap `limit`.
+- `ownedIdsC: mapping(address => uint256[])` list of active record IDs currently owned by an address.
+- `ownedPosC: mapping(address => mapping(uint256 => uint256))` mapping `(owner, id) -> position+1` in `ownedIdsC[owner]` (0 means “not present”), enabling O(1) removal via swap-and-pop.
+
+Owner index maintenance MUST:
+- add the record ID to `ownedIdsC[owner]` at create,
+- move the record ID between owner sets on transfer (if enabled),
+- remove the record ID from the owner set on soft delete (and add it back on restore if supported).
+
+The generator MUST NOT expose an unbounded “return the full array” getter for this index. Any owner-index accessor MUST be paginated (offset + limit) and MUST cap `limit`.
 
 **Unique index**  
 For each unique field `f`:
@@ -593,6 +756,7 @@ Token Host MUST emit, per collection:
 - `RecordCreated(collectionId, recordId, actor, timestamp, dataHash)`
 - `RecordUpdated(collectionId, recordId, actor, timestamp, changedFieldsHash)`
 - `RecordDeleted(collectionId, recordId, actor, timestamp, isHardDelete)`
+- `RecordTransferred(collectionId, recordId, fromOwner, toOwner, actor, timestamp)` (only for collections with transfers enabled)
 
 `dataHash` and `changedFieldsHash` SHOULD be keccak256 of ABI-encoded values to allow indexers to detect mismatches without storing full payloads in events. Token Host MAY additionally emit field-level events for frequently queried fields.
 
@@ -600,13 +764,14 @@ Token Host MUST emit, per collection:
 
 Token Host MUST avoid unbounded loops in state-changing methods.
 
-- Create/update/delete MUST NOT iterate over unbounded arrays.
-- Append-only index lists are permitted to keep writes O(1).
+- Create/update/delete/transfer MUST NOT iterate over unbounded arrays.
+- Append-only index lists and swap-and-pop set maintenance are permitted to keep writes O(1).
 - Read/list methods may iterate up to `count` (bounded) and MUST cap output size.
 
 Gas economics note:
 - On-chain storage (especially `string`) and on-chain index maintenance can be expensive. Token Host SHOULD be treated as L2-first for practical CRUD workloads.
 - Studio MUST surface cost/scaling warnings when schemas imply heavy storage or indexing, and when users target chains with high calldata/storage costs.
+- Token Host Chain (where offered) SHOULD be the default target for full-mode apps because it is operated and priced for “EVM as database” workloads.
 
 For high-scale apps (or Lite mode), Token Host SHOULD recommend enabling the indexer and using events as the canonical query surface.
 
@@ -620,9 +785,10 @@ For each collection `Candidate`, the generator MUST emit an external API that, a
 - list records,
 - (if configured) update a record,
 - (if configured) delete a record,
+- (if configured) transfer a record to a new owner,
 - (if configured) lookup by unique field(s),
 - (if configured and `onChainIndexing=true`) list by reference field(s),
-- (if configured and `onChainIndexing=true`) list records by owner (createdBy).
+- (if configured and `onChainIndexing=true`) list records by owner (`record.owner`).
 
 The exact Solidity signatures are generator-defined but MUST follow these rules:
 - Create/update functions MUST accept parameters for required/mutable user fields (plus any required reference IDs).
@@ -637,6 +803,8 @@ In addition to per-collection CRUD, the generated App contract MUST include a ba
   - MUST preserve `_msgSender()` for access checks (delegatecall-based pattern),
   - MUST revert the entire batch if any call fails (atomicity),
   - MUST cap the number of calls per batch to a safe maximum.
+
+For v1, `multicall` SHOULD be non-payable. Paid create operations (those requiring a native fee) SHOULD be executed as single direct calls (not inside multicall) unless a future multicall-with-value design is introduced.
 
 Token Host MAY emit both:
 - generic events (`RecordCreated`, `RecordUpdated`, `RecordDeleted`) for uniform indexing, and
@@ -664,12 +832,14 @@ If `role` access is used, Token Host SHOULD generate per-collection per-operatio
 - `CANDIDATE_READ_ROLE` (rare; used for gating generated getter methods and UI flows; this does not provide confidentiality for on-chain data)
 - `CANDIDATE_UPDATE_ROLE`
 - `CANDIDATE_DELETE_ROLE`
+- `CANDIDATE_TRANSFER_ROLE` (only for collections with transfers enabled)
 
 If `allowlist` access is used, Token Host SHOULD generate per-collection per-operation allowlists such as:
 - `candidateCreateAllowlist[address] => bool`
 - `candidateUpdateAllowlist[address] => bool`
+- `candidateTransferAllowlist[address] => bool` (only for collections with transfers enabled)
 
-To avoid ambiguity, “owner” access MUST always be defined as “record.createdBy == _msgSender()” unless a more advanced ownership model is explicitly introduced in a future schema version.
+To avoid ambiguity, “owner” access MUST always be defined as “record.owner == _msgSender()”.
 
 ### 7.14 Record hashing (event integrity)
 
@@ -687,11 +857,14 @@ This design ensures:
 Generated contracts MUST use explicit, distinguishable reverts. For gas efficiency, Token Host SHOULD prefer Solidity custom errors over string revert reasons.
 
 At minimum, generated contracts SHOULD expose the following error classes:
-- unauthorized access (create/read/update/delete)
+- unauthorized access (create/read/update/delete/transfer)
 - record not found
 - record deleted (soft-deleted record accessed without includeDeleted)
 - unique constraint violation
 - invalid reference (referenced record missing or deleted when enforce=true)
+- invalid payment (incorrect `msg.value` for paid creates)
+- transfer disabled (transfer attempted when not enabled)
+- invalid transfer recipient (`to == address(0)`)
 - version mismatch (optimistic concurrency)
 - invalid pagination (limit too large, offset out of range)
 
@@ -730,7 +903,8 @@ For each collection, Token Host MUST generate:
 - detail page,
 - create page/form,
 - (if enabled) edit page/form,
-- (if enabled) delete UI with confirmation.
+- (if enabled) delete UI with confirmation,
+- (if enabled) transfer UI (set new owner) with confirmation.
 
 For unique fields, the UI SHOULD offer:
 - “lookup by unique field” page (e.g., `/candidate/by-handle/<handle>`), backed by on-chain unique mapping or indexer query.
@@ -770,6 +944,16 @@ At minimum, generated apps MUST include:
 - transaction status UI (submitted, pending, confirmed, failed),
 - optimistic UI patterns only when correctness is preserved (e.g., display “pending” record until confirmed).
 
+If a collection has paid creates, the UI MUST:
+- display the required create fee alongside gas estimates before submission,
+- submit the transaction with the correct native value,
+- clearly distinguish “fee” from “gas”.
+
+If a collection has transfers enabled, the UI MUST:
+- render a “Transfer” action only when the user is authorized,
+- validate destination addresses client-side (basic checks) and require confirmation,
+- surface transfer history from events when an indexer is available (optional but recommended).
+
 Generated apps SHOULD include:
 - pagination controls that preserve URL state (shareable links),
 - deep links for record detail pages,
@@ -786,10 +970,10 @@ Template customization MUST NOT allow arbitrary server-side code execution in To
 
 ### 8.7 Multi-chain awareness
 
-If an app has deployments on multiple chains, the manifest MUST enumerate them. The generated UI MUST:
-- select a default chain (configured in Studio),
-- detect the user’s current wallet network,
-- provide a clear network switch prompt when required,
+If an app has deployments on multiple chains, the manifest MUST enumerate them and MUST identify a **primary deployment** for writes (plus optional legacy deployments for continuity). The generated UI MUST:
+- use the primary deployment as the default write target,
+- detect the user’s current wallet network and guide network switching when the user attempts a write,
+- make it clear which chain is “primary” vs “legacy” when legacy deployments exist (migration-aware UX),
 - allow read-only browsing via public RPC even without a wallet (optional but recommended).
 
 ---
@@ -801,6 +985,8 @@ If an app has deployments on multiple chains, the manifest MUST enumerate them. 
 Token Host accounts are used to access Studio and manage apps. Wallet addresses are used to sign on-chain transactions in generated apps.
 
 Token Host MUST support linking wallet addresses to Token Host accounts to provide richer profile displays, but the generated app MUST NOT require Token Host login to function.
+
+However, generated apps MAY optionally offer Token Host login (OAuth) as a convenience layer (e.g., for profiles, notifications, or optional gas sponsorship/session UX), as long as the app remains usable with direct wallet connections.
 
 ### 9.2 Supported sign-in methods (Studio)
 
@@ -867,6 +1053,11 @@ Token Host SHOULD design these features so that the App contract remains the can
 EIP-7702 alone does not guarantee “gasless” transactions on all chains. Gas sponsorship generally requires either:
 - chain-native sponsorship mechanisms, or
 - an account abstraction/paymaster model (e.g., EIP-4337 or L2-specific equivalents).
+
+On Token Host Chain (if operated by Token Host), Token Host SHOULD treat sponsorship support as part of the “cloud-like” offering:
+- provide a standard paymaster/relayer under strict quotas and abuse controls,
+- standardize on supported AA primitives for that network (e.g., EIP-4337 and/or EIP-7702 where available),
+- enable sponsorship flows that can work for both wallet-connected and Token Host login (OAuth) onboarding, without requiring Token Host to custody user private keys.
 
 Token Host MAY offer gas sponsorship only where the underlying chain infrastructure supports it. If offered, it MUST be:
 - rate-limited,
@@ -996,6 +1187,56 @@ Publishing creates a release pointer for a domain. Token Host MUST support:
 
 Rollbacks MUST be domain-pointer changes only (immutable assets remain versioned by hash), and must not mutate historical artifacts.
 
+### 11.8 Chain migration (launch on Token Host, migrate outward)
+
+Token Host’s primary lifecycle includes starting apps on Token Host Chain (full on-chain mode) and later migrating the app to either:
+- a Token Host-provisioned dedicated appchain (growth step), and/or
+- an external EVM chain for ecosystem alignment or other requirements.
+
+A **chain migration** is modeled as publishing a new release that changes the **primary deployment** used for writes, while retaining prior deployments as legacy read sources for continuity.
+
+In v1:
+- Chain migration MUST be supported as an **EVM-to-EVM** workflow (Token Host Chain -> an EVM appchain / external EVM chain such as an OP Stack chain or other L2/appchain).
+- Non-EVM migrations that do not preserve EVM semantics (e.g., to CosmWasm) are out of scope and require a different contract backend. EVM-based chains in other ecosystems are in-scope if they can run the generated contracts without semantic changes.
+
+Migration steps (conceptual):
+1) deploy the target deployment on the destination chain (same schema version or a newer schema version),
+2) (optional) provision/update indexers to cover the destination chain and any legacy chains required for read continuity,
+3) publish a new release where the destination deployment is `role=primary` and previous deployments are `role=legacy`,
+4) (optional) run an explicit state copy job that replays/copies selected legacy records into the new deployment.
+
+State copy MUST be explicit and MUST NOT be implied by simply publishing a new release. If state copy is performed:
+- copied records MUST be treated as new records with new IDs on the destination chain,
+- the UI MUST preserve provenance (e.g., “copied from <legacy chain>/<legacy deployment>/<legacy recordId>”),
+- access control and ownership MUST be validated on the destination chain at the time of copying (no blind imports).
+
+Cost note: migrating full historical state from a cheap chain to an expensive chain may be cost-prohibitive. Studio MUST surface this risk and SHOULD encourage migration strategies that preserve legacy data via UI aggregation where feasible.
+
+### 11.9 Appchain provisioning and progressive decentralization
+
+Token Host MAY offer “appchains” as a managed service: dedicated EVM rollup/appchains provisioned per app or org, intended as a growth step from the shared Token Host Chain.
+
+Appchain provisioning MUST be modeled as an auditable job with explicit inputs and outputs (similar to build/deploy jobs). At minimum, provisioning MUST produce:
+- chain identity: `chainId`, human-readable name, network type,
+- RPC endpoints (public + optionally private),
+- explorer endpoint(s) (if provided),
+- canonical bridge/entry points (if applicable),
+- AA/sponsorship capability flags (if applicable),
+- signed chain configuration artifact that can be exported/self-hosted.
+
+Token Host MUST treat “appchain” as an infrastructure choice, not a schema/contract change:
+- the same schema version MUST be deployable onto Token Host Chain or an appchain,
+- the UI/manifest model (primary + legacy deployments) MUST remain the mechanism for migrating the primary write target.
+
+Progressive decentralization expectations:
+- Token Host SHOULD provide a clear staged posture for appchains (e.g., “managed”, “co-managed”, “decentralized”) and MUST communicate what each stage means in operational and trust terms.
+- Moving between stages MUST NOT require changing application schemas; it is a chain operation and governance operation.
+- Token Host MUST preserve verifiable audit logs for chain lifecycle actions (provision, config changes, governance changes, upgrades) and MUST provide exportable evidence (signed artifacts and/or on-chain references).
+
+Safety constraints:
+- Appchains MUST have an explicit upgrade/maintenance policy for the chain stack itself (separate from app contract immutability), and Studio MUST distinguish “chain upgrade” from “app schema upgrade”.
+- Token Host MUST provide an exit story for users and developers where feasible (e.g., the ability to migrate the app to another EVM chain and keep legacy reads available).
+
 ---
 
 ## 12. Token Host CLI
@@ -1008,10 +1249,16 @@ Required commands:
 - `th generate`: generate contracts and UI
 - `th build`: compile + package, output manifest
 - `th deploy`: deploy to a chain (BYO key) and update manifest
+- `th migrate-chain`: migrate primary deployment to a new chain (deploy + release manifest with legacy deployments)
 - `th verify`: verify on explorers
 - `th indexer`: generate/deploy indexer configuration (optional)
 - `th migrate`: apply schema migrations locally
 - `th doctor`: environment checks
+
+Optional commands (chain management):
+- `th chains`: list configured chains / show chain details
+- `th chains add`: add an external chain config locally
+- `th chains provision`: request provisioning of a Token Host-managed appchain (managed mode)
 
 The CLI MUST be able to export a complete bundle suitable for self-hosting.
 
@@ -1140,6 +1387,23 @@ Example conceptual endpoints:
 - `POST /v1/admin/apps/:appId/takedown` (suspend hosting; requires admin)
 - `POST /v1/admin/apps/:appId/restore` (restore hosting; requires admin)
 
+### 13.10 Chains and appchains
+
+Token Host’s chain registry and (optional) appchain provisioning capabilities MUST be represented explicitly in the API.
+
+The API MUST support:
+- listing supported/public chain configs (including Token Host Chain if available),
+- storing org-scoped external chain configs (BYO RPC/explorer keys),
+- requesting provisioning of Token Host-managed appchains (where offered),
+- tracking chain lifecycle as jobs with audit logs.
+
+Example conceptual endpoints:
+- `GET /v1/chains` (public chain registry)
+- `POST /v1/orgs/:orgId/chains` (add/update org-scoped external chain config)
+- `GET /v1/apps/:appId/chains` (chains relevant to an app: Token Host Chain, provisioned appchains, user-configured chains)
+- `POST /v1/apps/:appId/chains/provision` (request a managed appchain; returns a job)
+- `GET /v1/apps/:appId/chains/:chainId` (chain details and status)
+
 ---
 
 ## 14. Observability and Audit
@@ -1147,7 +1411,7 @@ Example conceptual endpoints:
 Token Host MUST provide:
 - build logs (streaming and stored),
 - deployment logs,
-- structured audit logs for schema changes, publish actions, domain changes,
+- structured audit logs for schema changes, publish actions, domain changes, and chain/appchain lifecycle actions,
 - metrics (SLOs for build time, deploy success, hosting availability),
 - error reporting for Studio and (optionally) hosted apps.
 
@@ -1209,6 +1473,15 @@ If Token Host operates relayers or paymasters:
 - relayer actions MUST be attributable and logged,
 - compromise of relayer keys MUST not grant control of user-owned assets (only the ability to spend Token Host gas budgets).
 
+### 15.7 Chain operator key management (if Token Host operates chains)
+
+If Token Host operates Token Host Chain and/or Token Host-managed appchains, chain operator keys and admin controls are security-critical. Token Host MUST:
+- store chain operator keys (sequencer/batcher/bridge/governance keys, as applicable) in HSM/KMS-backed systems,
+- use least-privilege separation between operational roles (sequencing vs governance vs deployment tooling),
+- require multi-party approval for high-impact actions (chain upgrades, bridge parameter changes),
+- maintain immutable, queryable audit logs for chain lifecycle actions (provisioning, upgrades, key rotation),
+- publish clear incident-response and rollback procedures for chain incidents.
+
 ---
 
 ## 16. Acceptance Criteria (Phase 1 “Production MVP”)
@@ -1219,6 +1492,8 @@ The system is considered Phase 1 complete when:
 - A build produces a deterministic manifest and artifacts.
 - A deployment to one public testnet succeeds and verifies contracts.
 - The app is published at `https://<slug>.tokenhost.com` and supports basic CRUD.
+- A schema can require a native fee for create on a collection, and the generated UI/contract correctly enforces it.
+- A transfer-enabled collection can transfer record ownership via an on-chain transfer method and generated UI.
 - Admins can place a published app into a takedown/suspended state that stops serving the user-generated UI under Token Host-controlled domains.
 - Export bundle download works and can be self-hosted.
 - Optional: indexer integration can be enabled for the example app.
@@ -1301,3 +1576,71 @@ Token Host-generated apps SHOULD use predictable routes so users can share links
 - `/<collection>/by-<ref>/<refId>` reverse-reference lookup (if enabled)
 
 Route naming MUST be stable across builds for a given schema version.
+
+---
+
+## Appendix C. Tokenized Records and App Economy (Future Modules)
+
+This appendix captures optional, future-facing modules that align with Token Host’s “EVM as the backend” philosophy while expanding beyond pure CRUD data into assets and economies. These modules are intentionally opt-in because they increase security, UX, and regulatory complexity.
+
+### C.1 Tokenized collections (“records as NFTs”)
+
+Token Host collections can represent either:
+- **data records** (identity/profile, logs, posts), or
+- **assets** (tickets, coupons, items) where transferability and wallet-native UX are desirable.
+
+The core spec supports asset-like records via `transferRules` and the `owner` system field. A natural extension is to make a collection’s records be NFTs (ERC-721 or ERC-1155) so they integrate with existing wallets, tooling, and marketplaces.
+
+Conceptual schema shape (non-normative):
+- `tokenization` (optional):
+  - `standard`: `"erc721" | "erc1155"`
+  - `soulbound`: boolean (if true, transfers are disabled)
+  - `metadata`: `"offchain" | "onchain" | "hybrid"`
+
+Normative requirements if tokenization is enabled:
+- `recordId` MUST equal `tokenId`.
+- Create MUST mint the token to the initial `owner`.
+- Ownership checks MUST be based on token ownership (`ownerOf(tokenId)` / ERC-1155 balance model) and MUST remain compatible with `_msgSender()`.
+- Transfers SHOULD be implemented using the relevant token standard’s semantics (`transferFrom`/`safeTransferFrom`) and MUST update the app’s `owner` view consistently (either stored as a cached field kept in sync, or derived at read time).
+- Soft delete MUST have defined behavior:
+  - either disallow deleting tokenized records,
+  - or implement “freeze” semantics (record is marked inactive while token still exists),
+  - or treat hard delete as burning the token (only if explicitly enabled).
+
+Design note:
+- Tokenizing everything is not the goal; the goal is to let an app mix data collections and asset collections within the same schema while retaining deterministic generation and migration capabilities.
+
+### C.2 App economy module (payments, rewards, liquidity)
+
+Some apps want first-class economic primitives (e.g., “pay to post”, “reward contributors”, “stake for access”). Token Host can support this via an optional “app economy” module layered on top of deterministic schema generation.
+
+Scope goals:
+- Let app actions be paid for in native currency (already supported for creates) and/or in an app token (ERC-20).
+- Optionally reward actions (“farming”) under strict safety constraints.
+- Optionally support a developer-funded liquidity bootstrap, recognizing that DEX integrations are chain-specific and must be adapter-based.
+
+Conceptual schema shape (non-normative):
+- `app.economy` (optional):
+  - `token`:
+    - `mode`: `"external" | "generated"`
+    - `addressByChain`: map of `chainId -> tokenAddress` (if external)
+    - `symbol`, `decimals` (display only)
+  - `payments`:
+    - enable ERC-20 payments in `createRules.payment`/`updateRules.payment`/etc (future)
+    - allow `asset: "native" | "erc20"`
+  - `rewards`:
+    - `enabled`: boolean
+    - `funding`: `"prefunded"` (recommended default)
+    - `rules`: action-based reward rules (create/update/verify/etc) with strict rate limits
+  - `liquidity`:
+    - `enabled`: boolean
+    - `bootstrap`: explicit operator/dev-driven steps (no implicit swaps)
+
+Safety requirements (if implemented):
+- The platform MUST NOT imply that token modules are safe by default; Studio MUST require explicit opt-in and display risk warnings (security, sybil abuse, market risk).
+- Rewards MUST NOT be implemented as “mint on every CRUD action” without strict anti-abuse controls; prefunded + claim-based distribution SHOULD be preferred.
+- Dynamic pricing and oracle-based conversions SHOULD NOT be part of the initial design; “pay in ETH or pay in token” SHOULD be modeled as explicit fixed-price options per action.
+- Token Host MUST NOT require custody of user private keys for economy features. Any relayers/paymasters used for token payments MUST be abuse-controlled.
+
+Relationship to Token Host Chain / OP chains:
+- A first-party Token Host Chain can standardize paymaster/AA primitives and token-payment UX, making Web2-like onboarding (OAuth + sponsored actions) more achievable without compromising key custody defaults.
