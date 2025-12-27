@@ -1,4 +1,4 @@
-# Token Host Platform Specification (Draft v0.4)
+# Token Host Platform Specification (Draft v0.5)
 
 Status: Draft (spec-driven design)  
 Owner: Token Host  
@@ -204,6 +204,140 @@ Token Host’s “trusted authority with audit trail” positioning implies:
 - The operator (Token Host) MAY control sequencing, fees, and infrastructure in managed environments.
 - The system SHOULD provide verifiable history and auditability so that developers/users can independently inspect state transitions.
 - Studio MUST clearly communicate when an app is running on a Token Host-managed chain vs an external chain and MUST avoid implying trustlessness when a trusted operator exists.
+
+### 4.5 Token Host Chain & Appchain Specification (Draft)
+
+This section specifies the chain-layer assumptions and artifacts required to support Token Host’s primary lifecycle (launch on a managed “cloud chain”, then migrate to an appchain/external EVM chain) without changing application contract semantics.
+
+Token Host Chain and Token Host-provisioned appchains are “trusted operator + audit trail” environments: the operator may be centralized, but state transitions are recorded on an EVM ledger and are independently inspectable.
+
+#### 4.5.1 Goals
+- Provide a low-cost, high-throughput EVM execution environment suitable for full-mode apps (records + indexes) and creator workflows.
+- Provide cloud-like operational guarantees (reliable RPC, predictable fees, observability) while keeping application correctness in contracts.
+- Preserve portability: Token Host-generated contracts MUST remain deployable on external EVM chains without semantic changes.
+- Provide a credible “graduation” path: from shared Token Host Chain -> dedicated appchain -> external EVM chain(s).
+
+#### 4.5.2 Trust posture and authority model
+
+Token Host MUST treat chain trust posture as a first-class, explicit property of every chain configuration.
+
+At minimum, Token Host MUST support the following trust posture labels:
+- `managed`: Token Host operates the sequencer and chain infrastructure.
+- `co-managed`: Token Host and customer/dev share governance and/or operational control via multi-party controls.
+- `external`: Token Host does not operate the chain (external EVM chain).
+- `decentralized`: chain governance/sequencing is not controlled by Token Host (must not be used unless defensible).
+
+For `managed` and `co-managed` chains, Token Host MUST assume (and disclose) that:
+- The operator MAY be able to censor or delay transactions.
+- The operator MAY perform chain software upgrades that affect performance/availability.
+- The operator’s infrastructure is part of the app’s operational dependency graph.
+
+“Audit trail” in this context means:
+- all successful writes are transactions with receipts and emitted events,
+- the chain exposes sufficient public RPC access for independent inspection of history,
+- Token Host provides signed configuration and change logs for chain lifecycle actions (see below).
+
+Audit trail MUST NOT be described as censorship resistance or privacy.
+
+#### 4.5.3 Verification guarantees
+
+Token Host Chain/appchains MUST provide:
+- stable, documented RPC endpoints for reads and writes,
+- access to transaction receipts and logs for indexing,
+- consistent chain identifiers (`chainId`) and network metadata.
+
+Token Host MUST provide a chain configuration artifact that can be independently verified for integrity (Section 4.5.5).
+
+For managed chains, Token Host SHOULD provide additional verification affordances, such as:
+- a public “chain status” endpoint (uptime/incident history),
+- published hashes/digests of chain configuration and upgrades,
+- a public archive RPC endpoint (where feasible) or a documented data retention policy.
+
+#### 4.5.4 Upgrade and maintenance policy
+
+Token Host MUST distinguish between:
+- **app immutability** (schema versions and deployed app contracts), and
+- **chain upgrades** (rollup/appchain software upgrades, sequencer infrastructure, DA configuration).
+
+Chain upgrades are sometimes necessary. Therefore:
+- Token Host MUST publish an explicit chain upgrade/maintenance policy for Token Host Chain and Token Host-managed appchains.
+- Token Host MUST log and audit all chain lifecycle actions (provisioning, upgrades, parameter changes, key rotations) with immutable records and timestamps.
+- High-impact chain actions SHOULD require multi-party approval controls (see Section 15.7).
+
+Studio MUST surface chain upgrade status separately from app build/deploy status.
+
+#### 4.5.5 Chain configuration artifact (canonical)
+
+Every chain used by Token Host (Token Host Chain, Token Host-provisioned appchains, and user-configured external chains) MUST be representable as a versioned chain configuration artifact.
+
+- The canonical JSON Schema for this artifact is `schemas/tokenhost-chain-config.schema.json`.
+- Token Host MUST store and serve chain config artifacts as immutable, versioned documents.
+- Chain config artifacts MUST be signed by the issuer (Token Host for managed chains; user/org for BYO chain configs).
+
+At minimum, the chain config artifact MUST include:
+- `chainId`, name, and native currency metadata,
+- RPC endpoints and expected capabilities,
+- explorer URLs (if applicable),
+- trust posture label,
+- AA/sponsorship capability flags (if applicable),
+- issuer identity and signatures.
+
+#### 4.5.6 Chain and appchain lifecycle
+
+Token Host MUST model chain/appchain lifecycle actions as jobs with audit logs, similar to build/deploy jobs:
+- provision Token Host-managed appchain,
+- update chain configuration,
+- rotate operator keys (where applicable),
+- deprecate chain endpoints and migrate apps off a chain.
+
+When Token Host provisions an appchain, the provisioning result MUST include:
+- a chain config artifact that can be exported/self-hosted,
+- explicit trust posture and operator identity,
+- a clear “exit path” recommendation (how to migrate to another EVM chain).
+
+### 4.6 Progressive Decentralization Playbook
+
+This section defines how Token Host communicates and executes a “managed -> co-managed -> decentralized” growth path for Token Host Chain and Token Host-managed appchains.
+
+#### 4.6.1 UX requirements (normative)
+
+Token Host MUST represent chain trust posture clearly and consistently across Studio and hosted apps.
+
+Studio MUST:
+- show the chain’s trust posture label (`managed|co-managed|external|decentralized`) alongside every chain selector,
+- display the chain operator identity (e.g., “Operated by Token Host”) for `managed`/`co-managed` chains,
+- link to the chain config artifact (and its signatures) for the selected chain,
+- show a warning banner before deploying to a `managed` chain explaining the authority model (possible censorship/delay) and the auditability model (verifiable history),
+- never label a chain as `decentralized` unless Token Host can justify that claim with documented criteria.
+
+Hosted apps (generated UI) SHOULD:
+- display the primary chain trust posture in an “About/Network” panel,
+- link to release manifests and chain config artifacts where discoverable,
+- display migration context when legacy deployments exist (see Section 8.8).
+
+#### 4.6.2 Technical stage plan (non-normative)
+
+This is a non-normative reference progression that Token Host can use to communicate maturity and guide engineering.
+
+Stage 0: **Managed (default launch posture)**
+- Centralized operator runs sequencer + infra.
+- Focus: low fees, reliability, and developer velocity.
+- Requirements: strong operational security, clear disclosure, robust audit logs, stable RPC.
+
+Stage 1: **Co-managed**
+- Introduce multi-party controls for governance/admin actions (e.g., multi-sig for upgrades).
+- Clarify separation of duties between Token Host and the customer/dev org.
+- Improve transparency: published change logs, signed config versions, scheduled maintenance windows.
+
+Stage 2: **Decentralization-ready**
+- Reduce single-operator risk through stronger guarantees around configuration integrity, retention, and recoverability.
+- Expand independent verification affordances (archive access, consistent indexing surfaces, documented DA/finality assumptions).
+- Formalize and test migration/exit procedures as a first-class capability.
+
+Stage 3: **Decentralized (aspirational)**
+- Governance and sequencing are not controlled by Token Host.
+- Token Host’s role becomes tooling + hosting + service integration.
+- Warning: Token Host MUST treat “decentralized” as a claim requiring rigor and MUST avoid marketing-driven redefinitions.
 
 ---
 
@@ -976,6 +1110,29 @@ If an app has deployments on multiple chains, the manifest MUST enumerate them a
 - make it clear which chain is “primary” vs “legacy” when legacy deployments exist (migration-aware UX),
 - allow read-only browsing via public RPC even without a wallet (optional but recommended).
 
+### 8.8 Migration UX copy (required terminology)
+
+When a release includes multiple deployments (primary + legacy), the generated UI MUST use consistent, explicit terminology so users understand where reads and writes occur.
+
+The generated UI MUST:
+- label the active write target as **“Primary chain”**,
+- label any historical read sources as **“Legacy chain”** (or “Legacy chains”),
+- treat legacy deployments as read-only by default and communicate this clearly.
+
+Required action terminology:
+- Any UI action that creates a new record on the primary chain based on a legacy record MUST be labeled **“Copy record”**.
+- The UI MUST NOT label this action as “move”, “migrate”, or “transfer” unless it actually preserves identity and mutates the source (which v1 does not).
+
+Required provenance display:
+- If a record on the primary chain is known to have been copied from a legacy deployment, the UI MUST display provenance in a human-readable way using the term **“Copied from”**.
+- Provenance SHOULD include at minimum: source chain name + chainId, source app contract address, source collection name, and source recordId.
+
+Recommended default English copy (illustrative):
+- “Primary chain: <chainName> (<chainId>)”
+- “Legacy chain (read-only): <chainName> (<chainId>)”
+- “Copy record: Create a new record on the primary chain based on this legacy record. The new record will have a new ID.”
+- “Copied from <chainName> (<chainId>) / <appContractAddress> / <collection>#<recordId>”
+
 ---
 
 ## 9. Authentication, Profiles, and Identity
@@ -1146,9 +1303,13 @@ The manifest MUST include:
 - Solidity compiler version and settings,
 - UI bundle hash and URLs,
 - per-chain deployment addresses,
+- per-deployment chain config references/digests (recommended, especially for managed chains),
 - release lineage (primary deployment, legacy deployments, and superseded releases where applicable),
 - feature flags (indexer enabled, delegation enabled, uploads enabled, on-chain indexing enabled),
 - signatures/checksums.
+
+Canonical JSON Schema:
+- `schemas/tokenhost-release-manifest.schema.json`
 
 ### 11.5 Build/deploy job lifecycle (managed mode)
 

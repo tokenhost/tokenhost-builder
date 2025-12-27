@@ -1,0 +1,142 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://tokenhost.com/schemas/tokenhost-chain-config.schema.json",
+  "title": "Token Host Chain Config",
+  "description": "Canonical, signed chain configuration artifact used by Token Host for Token Host Chain, Token Host-provisioned appchains, and external EVM chains configured by users.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["chainConfigVersion", "chainId", "name", "type", "nativeCurrency", "trust", "rpc", "issuer", "signatures"],
+  "properties": {
+    "chainConfigVersion": {
+      "type": "string",
+      "description": "Version of this chain config artifact schema (semver).",
+      "pattern": "^(0|[1-9]\\d*)\\.(0|[1-9]\\d*)\\.(0|[1-9]\\d*)(?:-[0-9A-Za-z-]+(?:\\.[0-9A-Za-z-]+)*)?(?:\\+[0-9A-Za-z-]+(?:\\.[0-9A-Za-z-]+)*)?$"
+    },
+    "chainId": { "type": "integer", "minimum": 1 },
+    "name": { "type": "string", "minLength": 1 },
+    "type": {
+      "type": "string",
+      "enum": ["tokenhost-chain", "tokenhost-appchain", "external-evm"],
+      "description": "High-level chain category. Token Host MUST NOT assume 'tokenhost-*' types for chains it does not operate."
+    },
+    "nativeCurrency": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["name", "symbol", "decimals"],
+      "properties": {
+        "name": { "type": "string", "minLength": 1 },
+        "symbol": { "type": "string", "minLength": 1 },
+        "decimals": { "type": "integer", "minimum": 0, "maximum": 18 }
+      }
+    },
+    "trust": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["posture"],
+      "properties": {
+        "posture": { "type": "string", "enum": ["managed", "co-managed", "external", "decentralized"] },
+        "operator": {
+          "type": "string",
+          "description": "Human-readable operator identity (e.g., 'Token Host'). Required for managed/co-managed chains.",
+          "minLength": 1
+        },
+        "notes": { "type": "string" }
+      },
+      "allOf": [
+        {
+          "if": { "properties": { "posture": { "enum": ["managed", "co-managed"] } }, "required": ["posture"] },
+          "then": { "required": ["operator"] }
+        }
+      ]
+    },
+    "rpc": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["endpoints"],
+      "properties": {
+        "endpoints": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["url"],
+            "properties": {
+              "url": { "type": "string", "format": "uri" },
+              "kind": { "type": "string", "enum": ["public", "private"] },
+              "priority": { "type": "integer", "minimum": 0 },
+              "capabilities": {
+                "type": "object",
+                "additionalProperties": false,
+                "properties": {
+                  "archive": { "type": "boolean" },
+                  "batching": { "type": "boolean" }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "explorers": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["name", "url"],
+        "properties": {
+          "name": { "type": "string", "minLength": 1 },
+          "url": { "type": "string", "format": "uri" },
+          "apiUrl": { "type": "string", "format": "uri" }
+        }
+      }
+    },
+    "aa": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "eip7702": { "type": "boolean" },
+        "eip4337": { "type": "boolean" },
+        "paymaster": { "type": "boolean" }
+      }
+    },
+    "sponsorship": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "supported": { "type": "boolean" },
+        "docsUrl": { "type": "string", "format": "uri" }
+      }
+    },
+    "issuer": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["name", "issuedAt"],
+      "properties": {
+        "name": { "type": "string", "minLength": 1 },
+        "issuedAt": { "type": "string", "format": "date-time" },
+        "orgId": { "type": "string" }
+      }
+    },
+    "signatures": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["alg", "sig"],
+        "properties": {
+          "alg": { "type": "string" },
+          "keyId": { "type": "string" },
+          "sig": { "type": "string" }
+        }
+      }
+    },
+    "extensions": {
+      "type": "object",
+      "description": "Extension point for forward-compatible metadata.",
+      "additionalProperties": true
+    }
+  }
+}
+
