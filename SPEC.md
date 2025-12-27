@@ -1,4 +1,4 @@
-# Token Host Platform Specification (Draft v0.5)
+# Token Host Platform Specification (Draft v0.6)
 
 Status: Draft (spec-driven design)  
 Owner: Token Host  
@@ -6,7 +6,7 @@ Domain: `tokenhost.com`
 Last updated: 2025-12-27  
 Scope: Production system. All existing repos are legacy prototypes and are not binding.
 
-This document defines the intended production design of the Token Host platform: a managed schema-to-dapp builder that generates and deploys smart contracts, generates a hosted UI, optionally provisions indexing, and publishes apps under `*.tokenhost.com` (plus optional custom domains).
+This document defines the intended production design of the Token Host platform: a managed schema-to-dapp builder that generates and deploys smart contracts, generates a hosted UI, optionally provisions indexing, and publishes apps under a dedicated hosted-app origin (default `*.apps.tokenhost.com`, plus optional custom domains).
 
 Normative language: The keywords **MUST**, **MUST NOT**, **SHOULD**, **SHOULD NOT**, and **MAY** are to be interpreted as described in RFC 2119.
 
@@ -16,7 +16,7 @@ Normative language: The keywords **MUST**, **MUST NOT**, **SHOULD**, **SHOULD NO
 
 Token Host is a “Firebase for Web3”: a platform for building blockchain-backed applications using a CRUD-first mental model.
 
-Unlike traditional CRUD databases, smart contract storage and events are publicly readable on most chains. Token Host can generate **gateway/API visibility controls** and “read access” checks for its generated UI and contract getter methods, but these do not provide confidentiality. Apps MUST NOT store secrets or sensitive PII on-chain.
+Unlike traditional CRUD databases, smart contract storage and events are publicly readable on most chains. Token Host can generate **gateway/API visibility controls** and “read access” checks for its generated UI and hosted APIs, but these do not provide confidentiality. Apps MUST NOT store secrets or sensitive PII on-chain.
 
 A user defines an **app schema** (collections, fields, constraints, and access rules). Token Host:
 1) validates the schema,
@@ -24,7 +24,7 @@ A user defines an **app schema** (collections, fields, constraints, and access r
 3) generates a static web UI for CRUD and browsing,
 4) deploys and verifies the contract on a selected chain,
 5) (optionally) deploys/attaches an indexer for scalable queries,
-6) hosts the generated UI at `https://<app-slug>.tokenhost.com`.
+6) hosts the generated UI at `https://<app-slug>.apps.tokenhost.com`.
 
 Token Host also supports a **developer/automation** mode via a CLI that runs the same validation/generation/deploy steps locally or in CI and can export a complete app bundle.
 
@@ -59,8 +59,9 @@ Token Host explicitly targets a “trusted operator with auditability” model:
 ## 2. Design Principles
 
 ### 2.1 Deterministic, auditable builds
-- Given the same schema version and toolchain versions, Token Host MUST produce identical contract source outputs and identical UI bundles (byte-for-byte where feasible, or with stable hashes when build systems introduce non-determinism).
-- Every build MUST emit a signed manifest that records schema hash, toolchain versions, and produced artifacts.
+- Given the same canonical schema (`schemaHash`), generator version, and toolchain digest, Token Host MUST produce deterministic contract sources and MUST produce artifacts with stable, verifiable digests recorded in the manifest.
+- Token Host MUST define determinism in terms of canonical artifact digests rather than byte-for-byte identity of bundler output directories; the manifest is the verification surface.
+- Every build MUST emit a signed manifest that records schema identity, toolchain versions, and produced artifact digests.
 
 ### 2.2 Chain-agnostic by default
 - The platform MUST support a chain registry and per-chain deployment adapters.
@@ -148,7 +149,7 @@ Token Host consists of the following production services:
    - Stores build outputs: manifests, generated sources, ABIs, UI bundles, checksums, and logs.
 
 6) **Hosting + CDN**  
-   - Serves static releases under `*.tokenhost.com`.
+   - Serves static releases under `*.apps.tokenhost.com` (or a separate hosted-app domain).
    - Provides a “Building…” status page when a release is not yet published.
 
 7) **Chain Adapter Layer**  
@@ -276,9 +277,13 @@ Every chain used by Token Host (Token Host Chain, Token Host-provisioned appchai
 
 At minimum, the chain config artifact MUST include:
 - `chainId`, name, and native currency metadata,
-- RPC endpoints and expected capabilities,
+- trust posture label and operator identity (for `managed`/`co-managed`),
+- expected finality assumptions (e.g., recommended confirmations, typical finality time),
+- data availability / settlement metadata for rollups (L1 origin chain, bridge entry points, DA mode/provider where applicable),
+- sequencer/proposer identity metadata for managed chains (at minimum, operator name; optionally key IDs),
+- RPC endpoints and explicit capability flags (archive, batching, trace/debug availability),
+- operational metadata (rate limits, status/SLO URL pointers where available),
 - explorer URLs (if applicable),
-- trust posture label,
 - AA/sponsorship capability flags (if applicable),
 - issuer identity and signatures.
 
@@ -347,7 +352,7 @@ Stage 3: **Decentralized (aspirational)**
 
 Every app MAY be published to a Token Host subdomain:
 
-- `https://<app-slug>.tokenhost.com`
+- `https://<app-slug>.apps.tokenhost.com`
 
 `app-slug` MUST be unique platform-wide and MUST conform to:
 - lowercase letters, digits, hyphen
@@ -387,30 +392,34 @@ Token Host hosts user-generated applications under Token Host-controlled domains
 - Takedown actions MUST be audited and access-controlled (admin-only).
 - Takedown MUST NOT attempt to “delete” on-chain data; it only affects hosted content and Token Host services.
 
-### 5.6 Hosted-app domain isolation (recommended)
+### 5.6 Hosted-app origin isolation (required)
+Serving untrusted, user-generated apps under the same origin or cookie scope as platform control planes increases security and reputation risk.
 
-Serving untrusted, user-generated apps under the same root domain as platform control planes increases brand and security risk.
-
-- Token Host MAY publish apps under `https://<app-slug>.tokenhost.com` for simplicity, but SHOULD be architected to support a dedicated “apps hosting domain” (e.g., `https://<app-slug>.apps.tokenhost.com` or a separate domain) distinct from Studio/API to reduce reputation and cookie-scope risk.
-- Hosted apps MUST be treated as untrusted content: strict CSP, no privileged cookies scoped to the hosted-app domain, and careful isolation of authentication boundaries.
+- Hosted apps MUST be served from a dedicated hosted-app origin distinct from Studio and API.
+- Studio/API session cookies MUST NOT be scoped to `.tokenhost.com` and MUST NOT be readable by hosted apps.
+- Studio and API cookies SHOULD be host-only (no `Domain=` attribute) and SHOULD use `__Host-` cookie prefixes.
+- Token Host SHOULD use a separate registrable domain (different eTLD+1) for hosted apps in production. If hosted apps are served under a `tokenhost.com` subdomain (e.g., `*.apps.tokenhost.com`), Token Host MUST harden cookie scope and isolation as above.
+- Hosted apps MUST be treated as untrusted content: strict CSP, no privileged cookies, and safe escaping of user-provided content.
 
 ---
 
 ## 6. Schema Specification (“Token Host Schema”, THS)
 
 ### 6.1 Format and versioning
-
 The Token Host Schema (THS) is a JSON document that fully describes the user-facing and on-chain behavior of a Token Host app. It is the single source of truth for generation, builds, and deployments.
 
 At minimum, a schema contains:
-- a `schemaVersion` (semver) for human-readable versioning,
+- a required `thsVersion` (the THS document format version),
+- a `schemaVersion` (the app’s semantic version) for human-readable versioning,
 - an `app` section (metadata, features, theming),
 - a list of `collections` (CRUD data models).
 
-In addition to `schemaVersion`, Token Host computes a canonical `schemaHash` for identity and reproducibility. The `schemaHash` MUST be computed by:
+`thsVersion` identifies how to parse/validate the schema document. `schemaVersion` identifies the app’s semantic version and MUST NOT be used to infer schema document format.
+
+In addition to `schemaVersion`, Token Host computes a canonical `schemaHash` for identity and reproducibility. The `schemaHash` MUST be computed over the entire schema document (including `thsVersion`) by:
 1) canonicalizing JSON using RFC 8785 (JSON Canonicalization Scheme), and
 2) hashing the canonical bytes with SHA-256,
-3) representing the output as lowercase hex.
+3) representing the output as `sha256:<lowercase-hex>`.
 
 The `schemaHash` is used to:
 - uniquely identify build inputs,
@@ -421,9 +430,9 @@ The `schemaHash` is used to:
 Schema versions are immutable once published. Editing a published schema MUST create a new schema version.
 
 ### 6.2 Root structure (conceptual)
-
 The canonical root fields are:
-- `schemaVersion`: string, required (semver)
+- `thsVersion`: string, required (THS document format version)
+- `schemaVersion`: string, required (app semver)
 - `app`: object, required
   - `name`: string, required
   - `slug`: string, required (must equal or derive from hosted slug rules)
@@ -440,11 +449,11 @@ If present, `app.features` MAY include:
 - `onChainIndexing`: boolean, default true (when false, disable optional on-chain query indexes; see Section 7.8)
 
 The `app.slug` is the durable identifier used for:
-- hosted subdomain routing (`<slug>.tokenhost.com`),
+- hosted routing (`<slug>.apps.tokenhost.com` by default),
 - release ownership and access checks in Studio,
 - template selection defaults.
 
-Token Host MUST treat `slug` as immutable once an app has been published to a subdomain. If renaming is supported, it MUST be implemented as “new slug + redirect” rather than reassigning ownership of an existing slug.
+Token Host MUST treat `slug` as immutable once an app has been published to a hosted origin. If renaming is supported, it MUST be implemented as “new slug + redirect” rather than reassigning ownership of an existing slug.
 
 ### 6.3 Collections
 
@@ -462,11 +471,13 @@ Each collection defines:
 Fields define on-chain storage and UI behavior. A field includes:
 - `name`: string, required (camelCase, unique in collection)
 - `type`: enum, required
-- `required`: boolean, default false
+- `required`: boolean, default false (UI-only; on-chain requiredness is defined by `createRules.required`)
 - `decimals`: number, required when `type="decimal"` (0–18 recommended; defines the scale factor `10^decimals`)
 - `default`: optional default value (off-chain only unless representable on-chain)
-- `validation`: optional (min/max, regex for strings, etc.; enforced off-chain)
+- `validation`: optional validation rules; Token Host MUST clearly label which validations are enforced on-chain (authoritative) vs off-chain (UX-only)
 - `ui`: optional display metadata (label, placeholder, widget, helpText)
+
+Studio SHOULD auto-derive `field.required` from `createRules.required` and MUST warn (or auto-correct) when they diverge.
 
 Supported v1 field types:
 - `string`: UTF-8 string, stored on-chain
@@ -520,9 +531,9 @@ If `createRules.payment` is present, it MUST have:
 
 Studio MAY accept human-readable inputs (e.g., “0.01 ETH”) but MUST convert and store the canonical `amountWei` in the schema to preserve determinism and chain-agnostic behavior.
 
-**Visibility rules (gateway/API access)**
-- `gets`: list of fields returned by default contract getter methods and displayed by default in the generated UI
-- `access`: `public|owner|allowlist|role` (enforced by generated getter methods and UI flows)
+**Visibility rules (UI/gateway visibility; not confidentiality)**
+- `gets`: list of fields displayed by default in the generated UI and returned by Token Host-hosted gateway/indexer APIs (if applicable)
+- `access`: `public|owner|allowlist|role` (enforced in UI and Token Host-hosted APIs; does not provide confidentiality for on-chain data)
 
 Visibility rules MUST be described as gateway/API visibility only. They MUST NOT be presented as privacy or confidentiality, because on-chain storage and events remain publicly readable.
 
@@ -568,14 +579,18 @@ Access rules are enforced on-chain. UI MUST reflect access (disable/hide actions
 In managed mode, Studio MAY expose convenience “roles” (e.g., “Only my team”) that map to explicit on-chain allowlists or RBAC role assignments. The contract MUST remain the final arbiter of permission.
 
 ### 6.7 Indexes and constraints
-
 Token Host defines two families of constraints:
 
-1) **Uniqueness constraints** (`unique`)  
+1) **Uniqueness constraints** (`unique`)
    - Enforced on-chain at create and update.
-   - Example: `username` unique within a collection.
+   - Each uniqueness constraint MUST specify a `field` and MAY specify a `scope`:
 
-2) **Query indexes** (`index`)  
+Schema shape (normative):
+- `indexes.unique`: array of objects `{ "field": string, "scope": "active"|"allTime" }` (`scope` defaults to `active`).
+     - `active` (default): unique among non-deleted records; values MAY be reused after soft delete.
+     - `allTime`: values are never reusable once claimed (recommended for handles/slugs where reuse enables impersonation).
+
+2) **Query indexes** (`index`)
    - Used to support equality-based listing and reverse reference listing.
    - Indexes MAY be implemented as append-only lists (see on-chain scaling notes).
 
@@ -596,7 +611,7 @@ Schema evolution requires explicit migrations and an explicit data continuity st
 
 #### 6.9.1 Default upgrade model: new contract per schema version
 - Each schema version deployment MUST be treated as immutable: contract code and storage are not upgraded in place.
-- Deploying schema v2 on a chain produces a new App contract address for that chain.
+- Deploying schema v2 on a chain produces a new App deployment for that chain (one or more contract addresses, depending on deployment mode).
 - A release MAY point to multiple deployments across schema versions to preserve continuity in the user experience.
 
 #### 6.9.2 Data continuity strategy (default): UI aggregation
@@ -606,7 +621,8 @@ To avoid “migration cliffs” where historical data becomes stranded at an old
   - a **primary deployment** (the latest schema version the app writes to), and
   - **legacy deployments** (previous schema versions the UI can still read from).
 - The generated UI MUST support presenting legacy data as **read-only** (unless the legacy deployment is also configured as writable, which SHOULD NOT be the default).
-- When displaying records across deployments, the UI MUST treat a record’s durable identity as `(deploymentAddress, collectionId, recordId)` (not just `recordId`).
+- When displaying records across deployments, the UI MUST treat a record’s durable identity as `(chainId, deploymentEntrypointAddress, collectionId, recordId)` (not just `recordId`).
+  - `deploymentEntrypointAddress` is the canonical address for a deployment: the single App contract address in single-contract mode, or the App Router contract address in modular mode.
 - If schema v2 adds fields that did not exist in v1, the UI MUST render missing fields for v1 records as “not available” (not as empty strings) and MUST NOT pretend those fields ever existed historically.
 
 Token Host MAY provide a user-driven “upgrade record” flow that copies a legacy record into the new deployment (creating a new record ID in v2), but MUST clearly label it as a copy/migration action (not a transparent in-place update).
@@ -618,48 +634,50 @@ Token Host MAY support advanced continuity modes, but they MUST be explicitly se
 - **Proxy upgrades (EIP-1967)**: upgradeable proxies can preserve a single address across logic upgrades, but introduce additional trust/upgrade risk and complicate Token Host’s “deterministic + immutable artifacts” philosophy. If supported, Token Host MUST surface proxy risks clearly in Studio and MUST provide strict admin controls and auditability.
 
 ### 6.10 Example schema (illustrative)
-
 ```json
 {
+  "thsVersion": "2025-12",
   "schemaVersion": "1.0.0",
   "app": { "name": "Job Board", "slug": "job-board" },
-	  "collections": [
-	    {
-	      "name": "Candidate",
-	      "fields": [
-	        { "name": "handle", "type": "string", "required": true },
-	        { "name": "bio", "type": "string" },
-	        { "name": "photo", "type": "image" }
-	      ],
-	      "createRules": { "required": ["handle"], "access": "public" },
-	      "visibilityRules": { "gets": ["handle", "bio", "photo"], "access": "public" },
-	      "updateRules": { "mutable": ["bio", "photo"], "access": "owner" },
-	      "deleteRules": { "softDelete": true, "access": "owner" },
-	      "indexes": { "unique": ["handle"], "index": [] }
-	    },
-	    {
-	      "name": "JobPosting",
-	      "fields": [
-	        { "name": "title", "type": "string", "required": true },
-	        { "name": "description", "type": "string" },
-	        { "name": "salary", "type": "decimal", "decimals": 2 }
-	      ],
-	      "createRules": {
-	        "required": ["title"],
-	        "payment": { "asset": "native", "amountWei": "10000000000000000" },
-	        "access": "public"
-	      },
-	      "visibilityRules": { "gets": ["title", "description", "salary"], "access": "public" },
-	      "updateRules": { "mutable": ["description", "salary"], "access": "owner" },
-	      "deleteRules": { "softDelete": true, "access": "owner" },
-	      "indexes": { "unique": [], "index": [] }
-	    }
-	  ]
-	}
-	```
+  "collections": [
+    {
+      "name": "Candidate",
+      "fields": [
+        { "name": "handle", "type": "string", "required": true },
+        { "name": "bio", "type": "string" },
+        { "name": "photo", "type": "image" }
+      ],
+      "createRules": { "required": ["handle"], "access": "public" },
+      "visibilityRules": { "gets": ["handle", "bio", "photo"], "access": "public" },
+      "updateRules": { "mutable": ["bio", "photo"], "access": "owner" },
+      "deleteRules": { "softDelete": true, "access": "owner" },
+      "indexes": {
+        "unique": [{ "field": "handle", "scope": "allTime" }],
+        "index": []
+      }
+    },
+    {
+      "name": "JobPosting",
+      "fields": [
+        { "name": "title", "type": "string", "required": true },
+        { "name": "description", "type": "string" },
+        { "name": "salary", "type": "decimal", "decimals": 2 }
+      ],
+      "createRules": {
+        "required": ["title"],
+        "payment": { "asset": "native", "amountWei": "10000000000000000" },
+        "access": "public"
+      },
+      "visibilityRules": { "gets": ["title", "description", "salary"], "access": "public" },
+      "updateRules": { "mutable": ["description", "salary"], "access": "owner" },
+      "deleteRules": { "softDelete": true, "access": "owner" },
+      "indexes": { "unique": [], "index": [] }
+    }
+  ]
+}
+```
 
 ### 6.11 Validation, linting, and safety limits
-
 Token Host validates schemas in two phases:
 
 1) **Structural validation** (JSON Schema)  
@@ -675,12 +693,20 @@ Token Host validates schemas in two phases:
    - contradictory rules (e.g., updateRules references fields not declared),
    - contract-size risk (too many collections/fields for a single deployment target).
 
+**Validation taxonomy (authoritative vs UX-only)**
+
+Token Host MUST clearly distinguish:
+- **On-chain authoritative constraints**: enforced by the generated contracts (e.g., access control, required fields at create, uniqueness, reference existence when `enforce=true`, payment requirements, pagination bounds).
+- **Off-chain UX-only validations**: enforced only by Studio / the generated UI (e.g., regex patterns, rich formatting rules, complex field interdependencies).
+
+If a schema includes UX-only validations, Studio MUST label them as “UI-only” and MUST NOT imply they are enforced for callers who interact with the contracts directly.
+
 To keep generated contracts deployable and usable, Token Host SHOULD enforce configurable safety limits, such as:
 - maximum number of collections per schema,
 - maximum number of fields per collection,
 - maximum number of indexed fields per collection,
 - maximum string length (enforced off-chain; optionally enforced on-chain with `bytes(s).length` checks),
-- maximum pagination `count` in list methods.
+- maximum pagination `limit` in list methods.
 
 Studio MUST surface validation failures as actionable, field-scoped errors (not generic “failed” messages).
 
@@ -723,7 +749,20 @@ Token Host MUST treat `image` as a string at the contract layer and MUST NOT att
 
 ## 7. CRUD Builder (Generated On-chain Data Model)
 
-Token Host’s “CRUD builder” is the contract generation strategy for turning collections into on-chain storage and methods. The default strategy is a single generated App contract per schema version (one contract address per deployment).
+Token Host’s “CRUD builder” is the contract generation strategy for turning collections into on-chain storage and methods.
+
+A schema version deployment is called an **App deployment**. An App deployment MUST be either:
+- **Single-contract mode**: one generated App contract address per deployment, or
+- **Modular mode**: multiple immutable contracts per deployment (e.g., an App Router + per-collection module contracts) to avoid EVM bytecode size and deployment gas limits.
+
+The generator MAY choose the mode automatically based on schema size and target-chain constraints, but the release manifest MUST fully describe the resulting contract set.
+
+### 7.0 Deployment modes (single vs modular)
+
+- In single-contract mode, all collections are implemented in one contract.
+- In modular mode, Token Host MUST generate per-collection module contracts and MUST provide a discoverability mechanism (either an App Router contract that lists module addresses, or a manifest URL published in contract metadata).
+- In modular mode, the generated UI/client MUST be able to route calls to the correct contract per collection based on the manifest.
+- Reference enforcement (when `relations[].enforce=true`) in modular mode MUST be implemented as bounded external calls to the referenced collection module (no unbounded iteration).
 
 ### 7.1 Storage model
 
@@ -770,7 +809,9 @@ If `createRules.payment` is configured for a collection:
 
 If `createRules.payment` is not configured for a collection, the generated create function SHOULD be non-payable.
 
-The generated App contract MUST include an admin-controlled withdrawal mechanism for accumulated native fees (exact shape generator-defined), and MUST avoid reentrancy hazards (e.g., `nonReentrant` + effects-before-interactions on withdrawals).
+**Treasury and withdrawal**
+- Deployments MUST specify a `treasuryAddress` (see Section 7.13) that is the default recipient of withdrawn native fees.
+- The generated App contract MUST include an admin-controlled withdrawal mechanism for accumulated native fees (exact shape generator-defined), and MUST avoid reentrancy hazards (e.g., `nonReentrant` + effects-before-interactions on withdrawals).
 
 ### 7.4 Read semantics
 
@@ -781,16 +822,21 @@ Read operations MUST include:
 
 The generated UI MUST prefer `getC` for detail pages.
 
-To distinguish “never created” from “created but empty values”, Token Host MUST include an existence signal in storage. In v1, existence SHOULD be derived from `createdAt != 0` (because `createdAt` is set on create and is never 0 on live chains).
+To distinguish “never created” from “created but empty values”, Token Host MUST include an existence signal in storage. In v1, existence SHOULD be derived from `createdBy != address(0)` (because `createdBy` is set on create and is never the zero address on live chains).
 
 ### 7.5 List/pagination semantics
+List operations MUST be paginated and MUST avoid oversized responses.
 
-List operations MUST use cursor-style pagination based on (count, offset) or (cursor, limit). For v1:
-- `listC(count, offset, includeDeleted=false)` returns up to `count` records:
-  - If `includeDeleted=false`, `offset` MUST be interpreted as an index into `activeIdsC` and the function MUST run in O(`count`) without scanning tombstones.
-  - If `includeDeleted=true`, `offset` MUST be interpreted as a 0-based index into the full created ID range (`recordId = offset + 1`), and the function MAY return deleted records.
+For each collection `C`, the generator MUST emit a paginated ID listing method:
+- `listIdsC(offset, limit, includeDeleted=false)` returns up to `limit` record IDs (`uint256[]`).
 
-Implementation note: to avoid unbounded work and RPC timeouts, list methods MUST cap `count` to a safe maximum (configurable per deployment).
+Semantics:
+- If `includeDeleted=false`, `offset` MUST be interpreted as an index into `activeIdsC` and the function MUST run in O(`limit`) without scanning tombstones.
+- If `includeDeleted=true`, `offset` MUST be interpreted as a 0-based index into the full created ID range (`recordId = offset + 1`), and the function MAY return deleted records.
+
+To reduce RPC payload size, returning full records from list methods SHOULD be avoided. If the generator emits a list-of-records convenience method (e.g., `listSummariesC`), it MUST be bounded, paginated, and MUST return only system fields plus a schema-configured subset of “summary fields” (recommended default: `visibilityRules.gets`).
+
+Implementation note: list methods MUST cap `limit` to a safe maximum (configurable per deployment).
 
 ### 7.6 Update semantics
 
@@ -817,7 +863,7 @@ Soft delete affects constraints and counters:
 - `activeCountC` MUST decrement on soft delete and increment on restore (if restore is supported).
 - If `activeIdsC` is present, soft delete MUST remove the record ID from `activeIdsC` using swap-and-pop and MUST clear `activePosC` for that record ID.
 - If an owner index is present, soft delete MUST remove the record ID from the current owner’s owner index set.
-- Unique mappings SHOULD be cleared on soft delete so the unique value becomes available again among active records. If an app needs “unique across all time”, that MUST be modeled explicitly as a future schema feature (or by using hard delete only).
+- Uniqueness constraints MUST declare a scope: `active` (default; value reusable after soft delete) or `allTime` (value never reusable once claimed). If scope is `active`, unique mappings SHOULD be cleared on soft delete; if scope is `allTime`, they MUST NOT be cleared.
 
 Transfers are optional per collection (enabled when `transferRules` is present). If enabled, a transfer operation MUST:
 1) check transfer access (`owner|allowlist|role`),
@@ -852,9 +898,10 @@ Owner index maintenance MUST:
 The generator MUST NOT expose an unbounded “return the full array” getter for this index. Any owner-index accessor MUST be paginated (offset + limit) and MUST cap `limit`.
 
 **Unique index**  
-For each unique field `f`:
-- `uniqueC_f: mapping(bytes32 => uint256)` mapping of `hash(value)` to record ID.
+For each unique constraint on field `f`:
+- `uniqueC_f: mapping(bytes32 => uint256)` maps `hash(value)` to record ID.
 - Update MUST clear old hash mapping if the value changes.
+- If the uniqueness scope is `active`, soft delete SHOULD clear the mapping so the value becomes reusable among active records. If the scope is `allTime`, soft delete MUST NOT clear the mapping.
 
 **Equality index (secondary index; when `onChainIndexing=true`)**  
 For each indexed field `f`:
@@ -866,6 +913,12 @@ For each indexed field `f`:
 For reference fields `ref`:
 - `refIndexC_ref: mapping(uint256 => uint256[])` mapping of referenced ID to append-only list of record IDs.
   - Index accessors MUST be paginated (offset + limit) and MUST cap `limit`.
+
+**Index accessor semantics (normative)**
+- Index accessors MUST return **candidate IDs only**. Callers MUST validate record existence, deletion status, and current field values via `getC`/`existsC` when correctness matters.
+- For append-only equality/reference indexes, ordering MUST be insertion order (oldest to newest) within the bucket.
+- For swap-and-pop sets (e.g., owner index sets), ordering MUST NOT be relied upon.
+- Index accessors MUST be paginated and MUST cap `limit` to avoid RPC timeouts.
 
 #### 7.8.1 Index key derivation
 
@@ -911,23 +964,25 @@ For high-scale apps (or Lite mode), Token Host SHOULD recommend enabling the ind
 
 ### 7.11 Generated contract API (normative surface)
 
-The generated App contract is intended to be the *only* on-chain contract a typical Token Host app needs to interact with. To keep ABIs stable and UIs simple, Token Host generates **typed functions per collection** rather than an untyped “bytes payload” generic interface.
+A generated Token Host app is intended to expose a small, stable on-chain surface for UIs and indexers. In single-contract mode that surface is one App contract; in modular mode it is an App deployment composed of one or more contracts described by the release manifest. To keep ABIs stable and UIs simple, Token Host generates **typed functions per collection** rather than an untyped “bytes payload” generic interface.
 
 For each collection `Candidate`, the generator MUST emit an external API that, at minimum, enables:
 - create a record,
 - fetch a record by id,
-- list records,
+- list record IDs (and optionally summaries),
 - (if configured) update a record,
 - (if configured) delete a record,
 - (if configured) transfer a record to a new owner,
 - (if configured) lookup by unique field(s),
 - (if configured and `onChainIndexing=true`) list by reference field(s),
-- (if configured and `onChainIndexing=true`) list records by owner (`record.owner`).
+- (if configured and `onChainIndexing=true`) list record IDs by owner (`record.owner`).
 
 The exact Solidity signatures are generator-defined but MUST follow these rules:
 - Create/update functions MUST accept parameters for required/mutable user fields (plus any required reference IDs).
 - Create functions MUST return the new record ID (`uint256`).
-- Read/list functions MUST return a view struct that includes system fields and user fields (in schema order).
+- `getC(id)` MUST return a view struct that includes system fields and user fields (in schema order).
+- `listIdsC(...)` MUST return IDs only (not full record structs).
+- If `listSummariesC(...)` is emitted, it MUST return only system fields plus configured summary fields.
 - Any function that returns a dynamic array MUST be paginated (offset + limit or cursor + limit) and MUST cap `limit`. The generator MUST NOT emit unbounded “return all IDs/records” accessors.
 - All write functions MUST revert (not silently fail) on access violations and constraint violations.
 
@@ -954,16 +1009,15 @@ Token Host MUST define a stable `collectionId` for each collection. In v1, `coll
 This allows indexers and external tools to identify collections without relying on ordering. The generator MUST record `collectionName -> collectionId` in the build manifest.
 
 ### 7.13 Access control and administration
+When a collection uses `allowlist` or `role` access modes, the generated contract(s) MUST include administrative functions to manage membership.
 
-When a collection uses `allowlist` or `role` access modes, the generated contract MUST include administrative functions to manage membership.
-
-The default administrative model is:
-- The deployer address receives `DEFAULT_ADMIN_ROLE`.
-- Admins can grant/revoke roles and manage allowlists for collections that require them.
+**Deployment-time admin and treasury**
+- Deployments MUST specify an `adminAddress` that receives `DEFAULT_ADMIN_ROLE` (or equivalent) for any AccessControl/allowlist management.
+- If paid creates are enabled for any collection, deployments MUST also specify a `treasuryAddress` that is the default recipient of withdrawn native fees.
+- In managed deployments, Token Host infrastructure MAY submit the deployment transaction, but Token Host MUST set `adminAddress`/`treasuryAddress` to customer-selected addresses and MUST NOT retain on-chain admin privileges by default.
 
 If `role` access is used, Token Host SHOULD generate per-collection per-operation roles such as:
 - `CANDIDATE_CREATE_ROLE`
-- `CANDIDATE_READ_ROLE` (rare; used for gating generated getter methods and UI flows; this does not provide confidentiality for on-chain data)
 - `CANDIDATE_UPDATE_ROLE`
 - `CANDIDATE_DELETE_ROLE`
 - `CANDIDATE_TRANSFER_ROLE` (only for collections with transfers enabled)
@@ -1039,6 +1093,8 @@ For each collection, Token Host MUST generate:
 - (if enabled) edit page/form,
 - (if enabled) delete UI with confirmation,
 - (if enabled) transfer UI (set new owner) with confirmation.
+
+List pages MUST avoid oversized on-chain reads. Without an indexer, the generated UI SHOULD render list pages by calling `listIdsC` and then fetching details via `multicall(getC)` or `listSummariesC` when available.
 
 For unique fields, the UI SHOULD offer:
 - “lookup by unique field” page (e.g., `/candidate/by-handle/<handle>`), backed by on-chain unique mapping or indexer query.
@@ -1125,13 +1181,13 @@ Required action terminology:
 
 Required provenance display:
 - If a record on the primary chain is known to have been copied from a legacy deployment, the UI MUST display provenance in a human-readable way using the term **“Copied from”**.
-- Provenance SHOULD include at minimum: source chain name + chainId, source app contract address, source collection name, and source recordId.
+- Provenance SHOULD include at minimum: source chain name + chainId, source deployment entrypoint address, source collection name, and source recordId.
 
 Recommended default English copy (illustrative):
 - “Primary chain: <chainName> (<chainId>)”
 - “Legacy chain (read-only): <chainName> (<chainId>)”
 - “Copy record: Create a new record on the primary chain based on this legacy record. The new record will have a new ID.”
-- “Copied from <chainName> (<chainId>) / <appContractAddress> / <collection>#<recordId>”
+- “Copied from <chainName> (<chainId>) / <deploymentEntrypointAddress> / <collection>#<recordId>”
 
 ---
 
@@ -1280,29 +1336,31 @@ Build steps:
 6) write artifacts and manifest to the artifact store.
 
 ### 11.2 Deployment (chain-specific)
-
 Deployment steps:
 1) select chain config from registry,
-2) deploy contract(s),
-3) verify contract source on explorer and/or Sourcify,
-4) update manifest with deployed addresses and chain metadata.
+2) select deployment-time parameters (at minimum: `adminAddress`; and `treasuryAddress` if paid creates are enabled),
+3) deploy contract(s),
+4) verify contract source on explorer and/or Sourcify,
+5) update manifest with deployed addresses, deployment parameters, and chain metadata.
+
+In managed deployments, Token Host infrastructure MAY submit deployment transactions, but MUST set `adminAddress`/`treasuryAddress` to customer-selected addresses and MUST NOT retain on-chain admin privileges by default.
 
 ### 11.3 Publish (domain mapping)
 
 Publishing steps:
 1) select a build + deployment set,
 2) publish UI bundle to hosting,
-3) map `https://<slug>.tokenhost.com` (and optional custom domain) to the release,
+3) map `https://<slug>.apps.tokenhost.com` (and optional custom domain) to the release,
 4) expose release metadata publicly (manifest URL).
 
 ### 11.4 Manifest requirements
-
 The manifest MUST include:
-- schema hash and schemaVersion,
+- `thsVersion`, schema hash, and schemaVersion,
 - generator version,
 - Solidity compiler version and settings,
-- UI bundle hash and URLs,
-- per-chain deployment addresses,
+- canonical artifact digests for generated sources, compiled artifacts (ABI/bytecode), and UI bundle,
+- per-chain deployments including a canonical `deploymentEntrypointAddress` and the full set of deployed contract addresses (one or many, depending on deployment mode),
+- deployment-time parameters (`adminAddress`, `treasuryAddress`) per deployment,
 - per-deployment chain config references/digests (recommended, especially for managed chains),
 - release lineage (primary deployment, legacy deployments, and superseded releases where applicable),
 - feature flags (indexer enabled, delegation enabled, uploads enabled, on-chain indexing enabled),
@@ -1331,25 +1389,42 @@ Token Host MUST implement the following job states:
 Studio MUST surface job state changes in real time (polling or streaming) and MUST provide sufficient context for users to remediate failures (e.g., “verification failed: missing explorer API key”, “deploy failed: insufficient funds”).
 
 ### 11.6 Reproducibility and toolchain pinning
-
 To keep builds reproducible and auditable, Token Host MUST:
 - pin Node.js version, Solidity compiler version, and build tooling versions per generator release,
 - run builds in hermetic environments (container images) where inputs are controlled,
-- record toolchain digests (container image digest, package lock hashes) in the manifest.
+- record toolchain digests (container image digest, package lock hashes) in the manifest,
+- compute and record canonical artifact digests for all emitted artifacts (Section 11.6.1).
 
 Token Host SHOULD support build caching keyed by `(schemaHash, generatorVersion, toolchainDigest)` and MUST treat caches as an optimization only (never a source of truth).
+
+#### 11.6.1 Canonical artifact digests (normative)
+
+All digests recorded in Token Host manifests and chain config artifacts MUST be expressed as `sha256:<lowercase-hex>`.
+
+Token Host MUST compute digests as follows:
+- **File digest**: `sha256(fileBytes)`.
+- **Directory digest** (e.g., UI bundle directory):
+  1) recursively list all regular files,
+  2) compute `sha256:<hex>` for each file,
+  3) build a JSON object `{ "version": 1, "files": [{"path": "...", "digest": "sha256:..."}, ...] }` where `path` uses `/` separators,
+  4) sort `files` by `path` ascending (bytewise UTF-8),
+  5) canonicalize the JSON using RFC 8785 and hash it with SHA-256.
+
+The manifest MUST record artifact digests for at least:
+- generated Solidity sources (directory digest),
+- compiled ABI/bytecode bundle (directory digest),
+- generated UI bundle (directory digest).
 
 ### 11.7 Release management and rollback
 
 Publishing creates a release pointer for a domain. Token Host MUST support:
-- publishing a new release to `https://<slug>.tokenhost.com`,
+- publishing a new release to `https://<slug>.apps.tokenhost.com`,
 - keeping a release history per app,
 - rolling back the domain pointer to a previous release.
 
 Rollbacks MUST be domain-pointer changes only (immutable assets remain versioned by hash), and must not mutate historical artifacts.
 
 ### 11.8 Chain migration (launch on Token Host, migrate outward)
-
 Token Host’s primary lifecycle includes starting apps on Token Host Chain (full on-chain mode) and later migrating the app to either:
 - a Token Host-provisioned dedicated appchain (growth step), and/or
 - an external EVM chain for ecosystem alignment or other requirements.
@@ -1366,9 +1441,28 @@ Migration steps (conceptual):
 3) publish a new release where the destination deployment is `role=primary` and previous deployments are `role=legacy`,
 4) (optional) run an explicit state copy job that replays/copies selected legacy records into the new deployment.
 
-State copy MUST be explicit and MUST NOT be implied by simply publishing a new release. If state copy is performed:
+#### 11.8.1 State copy job (normative)
+
+State copy MUST be explicit and MUST NOT be implied by simply publishing a new release.
+
+A state copy job MUST be modeled and audited as a job type (e.g., `stateCopy`) with:
+- immutable inputs (source deployments, destination deployment, selected collections/records),
+- a defined snapshot boundary for reads (source chain block number + required confirmations),
+- batching parameters (max records per batch, max gas per batch),
+- an operator identity (who initiated and who paid gas, if applicable),
+- resumability (job can restart without duplicating destination records).
+
+State copy output MUST include an exportable, signed report artifact containing at minimum:
+- source and destination deployment identifiers (chainId + deployment entrypoint address),
+- snapshot block numbers used for each source chain,
+- counts of records attempted/copied/skipped/failed per collection,
+- a provenance map from `(sourceChainId, sourceDeploymentEntrypointAddress, collectionId, sourceRecordId)` -> `(destChainId, destDeploymentEntrypointAddress, collectionId, destRecordId)`,
+- failure reasons for any failed copies.
+- The destination release manifest SHOULD reference the report artifact by URL and digest (e.g., `migrations.stateCopyReports[]`).
+
+If state copy is performed:
 - copied records MUST be treated as new records with new IDs on the destination chain,
-- the UI MUST preserve provenance (e.g., “copied from <legacy chain>/<legacy deployment>/<legacy recordId>”),
+- the UI MUST preserve provenance using the “Copied from” language (Section 8.8),
 - access control and ownership MUST be validated on the destination chain at the time of copying (no blind imports).
 
 Cost note: migrating full historical state from a cheap chain to an expensive chain may be cost-prohibitive. Studio MUST surface this risk and SHOULD encourage migration strategies that preserve legacy data via UI aggregation where feasible.
@@ -1437,7 +1531,7 @@ The API MUST be versioned (e.g., `/v1`) and MUST be designed so that:
 ### 13.1 Authentication and sessions
 
 - Studio authentication MUST use secure sessions (httpOnly cookies preferred).
-- Session cookies SHOULD be scoped to `app.tokenhost.com` and `api.tokenhost.com` (not `.tokenhost.com`) to avoid leaking privileged cookies to hosted apps under `*.tokenhost.com`.
+- Session cookies SHOULD be scoped to `app.tokenhost.com` and `api.tokenhost.com` (not `.tokenhost.com`) to avoid leaking privileged cookies to hosted apps under `*.apps.tokenhost.com` (or any hosted-app domain).
 - Mutating endpoints MUST be CSRF-protected (SameSite + CSRF tokens or equivalent).
 
 Wallet signature login MUST be nonce-based and MUST include:
@@ -1528,10 +1622,10 @@ Webhook delivery MUST be signed (HMAC or equivalent) and retried with exponentia
 Hosted apps require public access to manifests and (optionally) schemas.
 
 Token Host MUST make release manifests publicly readable at stable URLs (hash-addressed), for example:
-- `GET https://<slug>.tokenhost.com/.well-known/tokenhost/manifest.json`
+- `GET https://<slug>.apps.tokenhost.com/.well-known/tokenhost/manifest.json`
 
 If a schema is intended to be public, Token Host MAY also publish it under:
-- `GET https://<slug>.tokenhost.com/.well-known/tokenhost/schema.json`
+- `GET https://<slug>.apps.tokenhost.com/.well-known/tokenhost/schema.json`
 
 Publishing these files MUST NOT expose private org data (only the schema and release metadata).
 
@@ -1652,7 +1746,7 @@ The system is considered Phase 1 complete when:
 - Schema validation rejects invalid schemas with actionable errors.
 - A build produces a deterministic manifest and artifacts.
 - A deployment to one public testnet succeeds and verifies contracts.
-- The app is published at `https://<slug>.tokenhost.com` and supports basic CRUD.
+- The app is published at `https://<slug>.apps.tokenhost.com` (or a custom domain) and supports basic CRUD.
 - A schema can require a native fee for create on a collection, and the generated UI/contract correctly enforces it.
 - A transfer-enabled collection can transfer record ownership via an on-chain transfer method and generated UI.
 - Admins can place a published app into a takedown/suspended state that stops serving the user-generated UI under Token Host-controlled domains.
@@ -1668,6 +1762,7 @@ The exact manifest schema is versioned, but a v1 example shape is:
 ```json
 {
   "manifestVersion": "1.0.0",
+  "thsVersion": "2025-12",
   "schemaVersion": "1.0.0",
   "schemaHash": "sha256:…",
   "generatorVersion": "0.1.0",
@@ -1682,17 +1777,36 @@ The exact manifest schema is versioned, but a v1 example shape is:
     "publishedAt": "2025-12-27T00:00:00Z"
   },
   "app": { "name": "Job Board", "slug": "job-board" },
-  "collections": [
-    { "name": "Candidate", "collectionId": "0x…" }
-  ],
+  "collections": [{ "name": "Candidate", "collectionId": "0x…" }],
+  "artifacts": {
+    "soliditySources": { "digest": "sha256:…", "url": "https://…/sources.tgz" },
+    "compiledContracts": { "digest": "sha256:…", "url": "https://…/compiled.tgz" }
+  },
   "deployments": [
     {
       "role": "primary",
       "chainId": 11155111,
       "chainName": "sepolia",
-      "appContractAddress": "0x…",
+      "deploymentMode": "single",
+      "deploymentEntrypointAddress": "0x…",
+      "adminAddress": "0x…",
+      "treasuryAddress": "0x…",
+      "contracts": [
+        {
+          "role": "app",
+          "address": "0x…",
+          "verified": true,
+          "bytecodeDigest": "sha256:…",
+          "abiDigest": "sha256:…"
+        }
+      ],
       "verified": true,
-      "blockNumber": 0
+      "blockNumber": 0,
+      "chainConfig": {
+        "url": "https://…/chain-config.json",
+        "digest": "sha256:…",
+        "chainConfigVersion": "1.0.0"
+      }
     },
     {
       "role": "legacy",
@@ -1700,14 +1814,18 @@ The exact manifest schema is versioned, but a v1 example shape is:
       "schemaHash": "sha256:…",
       "chainId": 11155111,
       "chainName": "sepolia",
-      "appContractAddress": "0x…",
+      "deploymentMode": "single",
+      "deploymentEntrypointAddress": "0x…",
+      "adminAddress": "0x…",
+      "treasuryAddress": null,
+      "contracts": [{ "role": "app", "address": "0x…", "verified": true }],
       "verified": true,
       "blockNumber": 0
     }
   ],
   "ui": {
     "bundleHash": "sha256:…",
-    "baseUrl": "https://job-board.tokenhost.com/",
+    "baseUrl": "https://job-board.apps.tokenhost.com/",
     "wellKnown": "/.well-known/tokenhost/manifest.json"
   },
   "features": {
@@ -1716,9 +1834,10 @@ The exact manifest schema is versioned, but a v1 example shape is:
     "uploads": true,
     "onChainIndexing": true
   },
-  "signatures": [
-    { "alg": "ed25519", "sig": "…" }
-  ]
+  "migrations": {
+    "stateCopyReports": [{ "url": "https://…/state-copy-report.json", "digest": "sha256:…" }]
+  },
+  "signatures": [{ "alg": "ed25519", "sig": "…" }]
 }
 ```
 
