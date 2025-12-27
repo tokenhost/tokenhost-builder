@@ -7,18 +7,15 @@
   "anvil": {
     "chainName": "Anvil",
     "rpcUrl": "http://127.0.0.1:8545",
-    "rpcWS": "ws://127.0.0.1:8545",
-    "privateKey": "0xac0974bec39a17e36ba4a6b4d238ff944bacb478cbed5efcae784d7bf4f2ff80"
+    "rpcWS": "ws://127.0.0.1:8545"
   },
   "hyperspace": {
     "chainName": "Hyperspace",
     "rpcUrl": "https://api.hyperspace.node.glif.io/rpc/v1",
-    "rpcWS": "wss://wss.hyperspace.node.glif.io/apigw/lotus/rpc/v1",
-    "privateKey": "0xa2bf6bcb85a5475a1a3dab1a0cede1b5bfee6263a63ed560795698d0447d7ba3"
+    "rpcWS": "wss://wss.hyperspace.node.glif.io/apigw/lotus/rpc/v1"
   },
   "sepolia": {
     "chainName": "Sepolia",
-    "rpcUrl": "https://endpoints.omniatech.io/v1/eth/sepolia/public",
-    "privateKey": "0xa2bf6bcb85a5475a1a3dab1a0cede1b5bfee6263a63ed560795698d0447d7ba3"
+    "rpcUrl": "https://endpoints.omniatech.io/v1/eth/sepolia/public"
   }
 }

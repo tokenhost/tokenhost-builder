@@ -1,7 +1,16 @@
 
+const authBaseUrl = (process.env.NEXT_PUBLIC_GOOGLE_AUTH_DOMAIN || process.env.REACT_APP_GOOGLE_AUTH_DOMAIN || '').replace(/\/$/, '');
+
+function authUrl(path) {
+  if (!authBaseUrl) {
+    return path;
+  }
+  return `${authBaseUrl}${path}`;
+}
+
 function fetchUserItems(collectionName) {
   return new Promise((resolve, reject) => {
-    fetch(`${process.env.REACT_APP_GOOGLE_AUTH_DOMAIN}/fetch-user-key`, {
+    fetch(authUrl('/fetch-user-key'), {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
@@ -22,7 +31,7 @@ function fetchUserItems(collectionName) {
 
 function fetchUserByAddress(address) {
   return new Promise((resolve, reject) => {
-    fetch(`${process.env.REACT_APP_GOOGLE_AUTH_DOMAIN}/fetch-user-by-address`, {
+    fetch(authUrl('/fetch-user-by-address'), {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',

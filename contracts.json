@@ -5,6 +5,7 @@
         "timestamp": "uint",
         "sender": "address",
         "message": "string",
+	"stake": "uint",
         "Hashtag": "Hashtag"
       },
       "initRules": {

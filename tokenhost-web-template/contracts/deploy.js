@@ -9,9 +9,15 @@ let network = process.argv.length > 2 ? process.argv[2] : "tokenhost";
 const rpcUrl = config.get(`${network}.rpcUrl`);
 const rpcWS = config.get(`${network}.rpcWS`);
 const chainName = config.get(`${network}.chainName`);
-const privateKey = config.get(`${network}.privateKey`);
+const networkEnvKey = `${network}`.toUpperCase();
+const envPrivateKey = process.env[`${networkEnvKey}_PRIVATE_KEY`] || process.env.PRIVATE_KEY;
+const privateKey = envPrivateKey || (config.has(`${network}.privateKey`) ? config.get(`${network}.privateKey`) : null);
 
 try {
+    if (!privateKey) {
+        throw new Error(`Missing private key for ${network}. Set ${networkEnvKey}_PRIVATE_KEY or PRIVATE_KEY.`);
+    }
+
     console.log(`Deploying contract to ${network} (${rpcUrl})...`);
 
     // Execute forge create and parse output
@@ -50,5 +56,4 @@ try {
 } catch (error) {
     console.error("Deployment failed:", error.message);
 }
-
 

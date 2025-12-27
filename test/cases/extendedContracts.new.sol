@@ -280,16 +280,16 @@ contract App {
 		}
 		FilComments_Topics_map[topic].FilComments_list.push(mynew);
 
-		if(!user_map[tx.origin].exists) {
-			user_map[tx.origin] = create_user_on_new_FilComments(mynew);
+		if(!user_map[msg.sender].exists) {
+			user_map[msg.sender] = create_user_on_new_FilComments(mynew);
 		}
-		user_map[tx.origin].FilComments_list.push(mynew);
-		user_map[tx.origin].FilComments_list_length += 1;
+		user_map[msg.sender].FilComments_list.push(mynew);
+		user_map[msg.sender].FilComments_list_length += 1;
 
 		FilComments_list.push(mynew);
 		FilComments_list_length += 1;
 
-		emit NewFilComments(tx.origin);
+		emit NewFilComments(msg.sender);
 
 		return mynew;
 	}
@@ -332,16 +332,16 @@ contract App {
 
 		unique_map_Topics[hash_Topics] = mynew;
 
-		if(!user_map[tx.origin].exists) {
-			user_map[tx.origin] = create_user_on_new_Topics(mynew);
+		if(!user_map[msg.sender].exists) {
+			user_map[msg.sender] = create_user_on_new_Topics(mynew);
 		}
-		user_map[tx.origin].Topics_list.push(mynew);
-		user_map[tx.origin].Topics_list_length += 1;
+		user_map[msg.sender].Topics_list.push(mynew);
+		user_map[msg.sender].Topics_list_length += 1;
 
 		Topics_list.push(mynew);
 		Topics_list_length += 1;
 
-		emit NewTopics(tx.origin);
+		emit NewTopics(msg.sender);
 
 		return mynew;
 	}

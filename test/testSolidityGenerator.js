@@ -35,7 +35,7 @@ const testContractsRaw = {
       "gets": ["name", "photo", "timestamp"]
     },
     "writeRules": {
-      "index": ["name"]
+      "unique": ["name"]
     }
   },
   "OtherContract": {
@@ -50,7 +50,7 @@ const testContractsRaw = {
       "gets": ["description"]
     },
     "writeRules": {
-      "index": []
+      "unique": []
     }
   }
 };
@@ -90,18 +90,17 @@ describe('Solidity Generator Test Suite', function() {
       const testCode = generateContractDefinition('Test', testContracts.Test);
       expect(testCode).to.include('contract Test_contract {');
       expect(testCode).to.include('constructor(');
-      expect(testCode).to.include('function getall() public view returns');
+      expect(testCode).to.include('function getAll() external view returns');
     });
   });
 
   describe('generateSolidityCode', function() {
     it('should generate full Solidity code with header, contract definitions, and the App contract', function() {
-      processFieldTypes(testContracts);
-      applyMemoryToStringFields(testContracts);
       const { contractReferences, fieldLookup } = processFieldTypes(testContracts);
+      applyMemoryToStringFields(testContracts);
       const solidityCode = generateSolidityCode(testContracts, contractReferences, fieldLookup);
-      expect(solidityCode).to.include('//SPDX-License-Identifier: UNLICENSED');
-      expect(solidityCode).to.include('pragma solidity ^0.8.2;');
+      expect(solidityCode).to.include('// SPDX-License-Identifier: UNLICENSED');
+      expect(solidityCode).to.include('pragma solidity ^0.8.20;');
       expect(solidityCode).to.include('contract Test_contract {');
       expect(solidityCode).to.include('contract OtherContract_contract {');
       expect(solidityCode).to.include('contract App {');
@@ -115,7 +114,8 @@ describe('Solidity Generator Test Suite', function() {
       const appCode = generateAppContract(testContracts, {}, {});
       expect(appCode).to.include('contract App {');
       expect(appCode).to.include('function get_Test_list_length()');
-      expect(appCode).to.include('struct Test_getter {');
+      expect(appCode).to.include('function get_first_Test_N');
+      expect(appCode).to.include('function get_last_Test_user_N');
     });
   });
 
@@ -124,9 +124,10 @@ describe('Solidity Generator Test Suite', function() {
       processFieldTypes(testContracts);
       applyMemoryToStringFields(testContracts);
       const newContractCode = generateNewContractFunction('Test', testContracts.Test, {}, {}, Object.keys(testContracts));
-      expect(newContractCode).to.include('event NewTest(address sender);');
+      expect(newContractCode).to.include('event NewTest(address indexed sender, address indexed contractAddress);');
       expect(newContractCode).to.include('function new_Test(');
-      expect(newContractCode).to.include('unique_map_Test');
+      expect(newContractCode).to.include('unique_map_name');
+      expect(newContractCode).to.include('get_unique_map_Test');
       expect(newContractCode).to.include('name');
       expect(newContractCode).to.include('photo');
     });
@@ -138,8 +139,8 @@ describe('Solidity Generator Test Suite', function() {
       applyMemoryToStringFields(testContracts);
       const firstGetter = generateFirstNGetter('Test', testContracts.Test);
       const lastGetter = generateLastNGetter('Test', testContracts.Test);
-      expect(firstGetter).to.include('function get_first_Test_N');
-      expect(lastGetter).to.include('function get_last_Test_N');
+      expect(firstGetter).to.equal('');
+      expect(lastGetter).to.equal('');
     });
   });
 
@@ -148,8 +149,7 @@ describe('Solidity Generator Test Suite', function() {
       processFieldTypes(testContracts);
       applyMemoryToStringFields(testContracts);
       const userFuncs = generateUserFunctions('Test', testContracts.Test);
-      expect(userFuncs).to.include('function get_Test_user_length(address user)');
-      expect(userFuncs).to.include('function get_last_Test_user_N(address user, uint256 count, uint256 offset)');
+      expect(userFuncs).to.equal('');
     });
 
     it('should generate reference mappings correctly', function() {
@@ -170,5 +170,3 @@ describe('Solidity Generator Test Suite', function() {
     });
   });
 });
-
-

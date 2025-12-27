@@ -409,16 +409,16 @@ function generateNewContractFunction(contractName, contract, contractReferences,
     });
   }
 
-  code += `\t\tif(!user_map[tx.origin].exists) {\n`;
-  code += `\t\t\tuser_map[tx.origin] = create_user_on_new_${contractName}(mynew);\n`;
+  code += `\t\tif(!user_map[msg.sender].exists) {\n`;
+  code += `\t\t\tuser_map[msg.sender] = create_user_on_new_${contractName}(mynew);\n`;
   code += `\t\t}\n`;
-  code += `\t\tuser_map[tx.origin].${contractName}_list.push(mynew);\n`;
-  code += `\t\tuser_map[tx.origin].${contractName}_list_length += 1;\n\n`;
+  code += `\t\tuser_map[msg.sender].${contractName}_list.push(mynew);\n`;
+  code += `\t\tuser_map[msg.sender].${contractName}_list_length += 1;\n\n`;
 
   code += `\t\t${contractName}_list.push(mynew);\n`;
   code += `\t\t// The length of ${contractName}_list is tracked by the array length\n\n`;
 
-  code += `\t\temit New${contractName}(tx.origin, mynew);\n\n`;
+  code += `\t\temit New${contractName}(msg.sender, mynew);\n\n`;
   code += `\t\treturn mynew;\n`;
   code += `\t}\n\n`;
 
@@ -477,5 +477,4 @@ export {
   generateUserInfo,
   generateNewContractFunction
 };
-
 

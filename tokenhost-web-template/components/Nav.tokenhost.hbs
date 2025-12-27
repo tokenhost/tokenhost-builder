@@ -4,6 +4,9 @@ import Router from 'next/router'
 
 import { generateKeys } from '../helpers/Web3Helper'
 
+const authBaseUrl = (process.env.NEXT_PUBLIC_GOOGLE_AUTH_DOMAIN || process.env.REACT_APP_GOOGLE_AUTH_DOMAIN || '').replace(/\/$/, '');
+const authUrl = (path) => (authBaseUrl ? `${authBaseUrl}${path}` : path);
+
 export default class TheNav extends Component {
   _isMounted = false
 
@@ -21,7 +24,7 @@ export default class TheNav extends Component {
   }
 
   handleSignOut = () => {
-    fetch(`${process.env.REACT_APP_GOOGLE_AUTH_DOMAIN}/logout`, {
+    fetch(authUrl('/logout'), {
       method: 'GET',
       headers: {
         'Content-Type': 'application/json',
@@ -40,7 +43,7 @@ export default class TheNav extends Component {
 
 
   createKey = (eth_account) => {
-    fetch(`${process.env.REACT_APP_GOOGLE_AUTH_DOMAIN}/fetch-user-key`, {
+    fetch(authUrl('/fetch-user-key'), {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
@@ -64,7 +67,7 @@ export default class TheNav extends Component {
       });
   }
   addAddressToUser = (eth_account) => {
-    fetch(`${process.env.REACT_APP_GOOGLE_AUTH_DOMAIN}/add-user-address`, {
+    fetch(authUrl('/add-user-address'), {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
@@ -85,7 +88,7 @@ export default class TheNav extends Component {
   }
 
   handleRouteChange = () => {
-    fetch(`${process.env.REACT_APP_GOOGLE_AUTH_DOMAIN}/check-auth`, {
+    fetch(authUrl('/check-auth'), {
       method: 'GET',
       headers: {
         'Content-Type': 'application/json',
@@ -109,7 +112,7 @@ export default class TheNav extends Component {
     
     Router.events.on('routeChangeStart', this.handleRouteChange)
 
-    fetch(`${process.env.REACT_APP_GOOGLE_AUTH_DOMAIN}/check-auth`, {
+    fetch(authUrl('/check-auth'), {
       method: 'GET',
       headers: {
         'Content-Type': 'application/json',

@@ -2,6 +2,10 @@
 
  - Read more at https://tokenhost.com
 
+## Overview
+
+Token Host Builder turns a simple JSON schema into a deployable on-chain app. You describe your data models in `contracts.json`, the generator builds Solidity contracts (an `App` contract plus per-model contracts), and a Next.js UI is rendered from Handlebars templates. The build pipeline compiles and deploys the contracts, updates the web3 helper with the deployed address, then outputs a ready-to-run site in `site/`.
+
 ## Setup:
 
 1. configure the json for your site in contracts.json using tokenhost.com or https://github.com/tokenhost/tokenhost-www or just use default example to make a Job site

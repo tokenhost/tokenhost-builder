@@ -1,16 +1,15 @@
 
-//SPDX-License-Identifier: UNLICENSED
-pragma solidity ^0.8.2;
-pragma experimental ABIEncoderV2;
+// SPDX-License-Identifier: UNLICENSED
+pragma solidity ^0.8.20;
 
 contract FilComments_contract {
 
-	uint timestamp;
-	address sender;
-	string comment;
-	string photo;
-	address topic;
-	uint likes;
+	uint public timestamp;
+	address public sender;
+	string public comment;
+	string public photo;
+	address public topic;
+	uint public likes;
 
 	constructor(string memory _comment, string memory _photo, address _topic, uint _likes) {
 		sender = tx.origin;
@@ -21,73 +20,8 @@ contract FilComments_contract {
 		likes = _likes;
 	}
 
-	function getall() public view returns (address, uint, address, string memory, string memory, address, uint) {
-		return (address(this), timestamp, sender, comment, photo, topic, likes);
-	}
-
-	function get_timestamp() public view returns (uint) {
-		return timestamp;
-	}
-	function get_sender() public view returns (address) {
-		return sender;
-	}
-	function get_comment() public view returns (string memory) {
-		return comment;
-	}
-	function get_photo() public view returns (string memory) {
-		return photo;
-	}
-	function get_topic() public view returns (address) {
-		return topic;
-	}
-	function get_likes() public view returns (uint) {
-		return likes;
-	}
-}
-
-contract Topics_contract {
-
-	uint timestamp;
-	address sender;
-	string name;
-	string description;
-
-	constructor(string memory _name, string memory _description) {
-		sender = tx.origin;
-		timestamp = block.timestamp;
-		name = _name;
-		description = _description;
-	}
-
-	function getall() public view returns (address, uint, address, string memory, string memory) {
-		return (address(this), timestamp, sender, name, description);
-	}
-
-	function get_timestamp() public view returns (uint) {
-		return timestamp;
-	}
-	function get_sender() public view returns (address) {
-		return sender;
-	}
-	function get_name() public view returns (string memory) {
-		return name;
-	}
-	function get_description() public view returns (string memory) {
-		return description;
-	}
-}
-
-contract App {
-
-	address[] FilComments_list;
-	uint256 FilComments_list_length;
-
-	function get_FilComments_list_length() public view returns (uint256) {
-		return FilComments_list_length;
-	}
-
-	struct FilComments_getter {
-		address _address;
+	struct FilCommentsData {
+		address self;
 		uint timestamp;
 		address sender;
 		string comment;
@@ -96,125 +30,146 @@ contract App {
 		uint likes;
 	}
 
-	function get_FilComments_N(uint256 index) public view returns (address, uint, address, string memory, string memory, address, uint) {
-		return FilComments_contract(FilComments_list[index]).getall();
+	function getAll() external view returns (FilCommentsData memory) {
+		return FilCommentsData({
+			self: address(this),
+			timestamp: timestamp,
+			sender: sender,
+			comment: comment,
+			photo: photo,
+			topic: topic,
+			likes: likes
+		});
 	}
 
-	function get_first_FilComments_N(uint256 count, uint256 offset) public view returns (FilComments_getter[] memory) {
-		FilComments_getter[] memory getters = new FilComments_getter[](count);
-		for (uint i = offset; i < count; i++) {
-			FilComments_contract myFilComments = FilComments_contract(FilComments_list[i + offset]);
-			getters[i - offset]._address = address(myFilComments);
-			getters[i - offset].timestamp = myFilComments.get_timestamp();
-			getters[i - offset].sender = myFilComments.get_sender();
-			getters[i - offset].comment = myFilComments.get_comment();
-			getters[i - offset].photo = myFilComments.get_photo();
-			getters[i - offset].topic = myFilComments.get_topic();
-			getters[i - offset].likes = myFilComments.get_likes();
-		}
-		return getters;
+}
+
+contract Topics_contract {
+
+	uint public timestamp;
+	address public sender;
+	string public name;
+	string public description;
+
+	constructor(string memory _name, string memory _description) {
+		sender = tx.origin;
+		timestamp = block.timestamp;
+		name = _name;
+		description = _description;
 	}
 
-	function get_last_FilComments_N(uint256 count, uint256 offset) public view returns (FilComments_getter[] memory) {
-		FilComments_getter[] memory getters = new FilComments_getter[](count);
-		for (uint i = 0; i < count; i++) {
-			FilComments_contract myFilComments = FilComments_contract(FilComments_list[FilComments_list_length - i - offset - 1]);
-			getters[i]._address = address(myFilComments);
-			getters[i].timestamp = myFilComments.get_timestamp();
-			getters[i].sender = myFilComments.get_sender();
-			getters[i].comment = myFilComments.get_comment();
-			getters[i].photo = myFilComments.get_photo();
-			getters[i].topic = myFilComments.get_topic();
-			getters[i].likes = myFilComments.get_likes();
-		}
-		return getters;
-	}
-
-	function get_FilComments_user_length(address user) public view returns (uint256) {
-		return user_map[user].FilComments_list_length;
-	}
-
-	function get_FilComments_user_N(address user, uint256 index) public view returns (address, uint, address, string memory, string memory, address, uint) {
-		return FilComments_contract(user_map[user].FilComments_list[index]).getall();
-	}
-
-	function get_last_FilComments_user_N(address user, uint256 count, uint256 offset) public view returns (FilComments_getter[] memory) {
-		FilComments_getter[] memory getters = new FilComments_getter[](count);
-		for (uint i = offset; i < count; i++) {
-			getters[i - offset]._address = user_map[user].FilComments_list[i + offset];
-			getters[i - offset].timestamp = FilComments_contract(user_map[user].FilComments_list[i + offset]).get_timestamp();
-			getters[i - offset].sender = FilComments_contract(user_map[user].FilComments_list[i + offset]).get_sender();
-			getters[i - offset].comment = FilComments_contract(user_map[user].FilComments_list[i + offset]).get_comment();
-			getters[i - offset].photo = FilComments_contract(user_map[user].FilComments_list[i + offset]).get_photo();
-			getters[i - offset].topic = FilComments_contract(user_map[user].FilComments_list[i + offset]).get_topic();
-			getters[i - offset].likes = FilComments_contract(user_map[user].FilComments_list[i + offset]).get_likes();
-		}
-		return getters;
-	}
-
-	address[] Topics_list;
-	uint256 Topics_list_length;
-
-	function get_Topics_list_length() public view returns (uint256) {
-		return Topics_list_length;
-	}
-
-	struct Topics_getter {
-		address _address;
+	struct TopicsData {
+		address self;
 		uint timestamp;
 		address sender;
 		string name;
 		string description;
 	}
 
-	function get_Topics_N(uint256 index) public view returns (address, uint, address, string memory, string memory) {
-		return Topics_contract(Topics_list[index]).getall();
+	function getAll() external view returns (TopicsData memory) {
+		return TopicsData({
+			self: address(this),
+			timestamp: timestamp,
+			sender: sender,
+			name: name,
+			description: description
+		});
 	}
 
-	function get_first_Topics_N(uint256 count, uint256 offset) public view returns (Topics_getter[] memory) {
-		Topics_getter[] memory getters = new Topics_getter[](count);
-		for (uint i = offset; i < count; i++) {
-			Topics_contract myTopics = Topics_contract(Topics_list[i + offset]);
-			getters[i - offset]._address = address(myTopics);
-			getters[i - offset].timestamp = myTopics.get_timestamp();
-			getters[i - offset].sender = myTopics.get_sender();
-			getters[i - offset].name = myTopics.get_name();
-			getters[i - offset].description = myTopics.get_description();
-		}
-		return getters;
+}
+
+contract App {
+
+	address[] public FilComments_list;
+
+	function get_FilComments_N(uint256 index) public view returns (FilComments_contract.FilCommentsData memory) {
+		return FilComments_contract(FilComments_list[index]).getAll();
 	}
 
-	function get_last_Topics_N(uint256 count, uint256 offset) public view returns (Topics_getter[] memory) {
-		Topics_getter[] memory getters = new Topics_getter[](count);
+	function get_first_FilComments_N(uint256 count, uint256 offset) public view returns (FilComments_contract.FilCommentsData[] memory) {
+		require(offset + count <= FilComments_list.length, "Offset + count out of bounds");
+		FilComments_contract.FilCommentsData[] memory results = new FilComments_contract.FilCommentsData[](count);
 		for (uint i = 0; i < count; i++) {
-			Topics_contract myTopics = Topics_contract(Topics_list[Topics_list_length - i - offset - 1]);
-			getters[i]._address = address(myTopics);
-			getters[i].timestamp = myTopics.get_timestamp();
-			getters[i].sender = myTopics.get_sender();
-			getters[i].name = myTopics.get_name();
-			getters[i].description = myTopics.get_description();
+			results[i] = FilComments_contract(FilComments_list[i + offset]).getAll();
 		}
-		return getters;
+		return results;
 	}
 
+	function get_last_FilComments_N(uint256 count, uint256 offset) public view returns (FilComments_contract.FilCommentsData[] memory) {
+		require(count + offset <= FilComments_list.length, "Count + offset out of bounds");
+		FilComments_contract.FilCommentsData[] memory results = new FilComments_contract.FilCommentsData[](count);
+		uint len = FilComments_list.length;
+		for (uint i = 0; i < count; i++) {
+			uint idx = len - i - offset - 1;
+			results[i] = FilComments_contract(FilComments_list[idx]).getAll();
+		}
+		return results;
+	}
+
+	function get_FilComments_list_length() public view returns (uint256) { return FilComments_list.length; }
+	function get_FilComments_user_length(address user) public view returns (uint256) {
+		return user_map[user].FilComments_list.length;
+	}
+
+	function get_FilComments_user_N(address user, uint256 index) public view returns (FilComments_contract.FilCommentsData memory) {
+		return FilComments_contract(user_map[user].FilComments_list[index]).getAll();
+	}
+
+	function get_last_FilComments_user_N(address user, uint256 count, uint256 offset) public view returns (FilComments_contract.FilCommentsData[] memory) {
+		require(count + offset <= user_map[user].FilComments_list.length, "Count + offset out of bounds");
+		FilComments_contract.FilCommentsData[] memory results = new FilComments_contract.FilCommentsData[](count);
+		uint len = user_map[user].FilComments_list.length;
+		for (uint i = 0; i < count; i++) {
+			uint idx = len - i - offset - 1;
+			results[i] = FilComments_contract(user_map[user].FilComments_list[idx]).getAll();
+		}
+		return results;
+	}
+
+	address[] public Topics_list;
+
+	function get_Topics_N(uint256 index) public view returns (Topics_contract.TopicsData memory) {
+		return Topics_contract(Topics_list[index]).getAll();
+	}
+
+	function get_first_Topics_N(uint256 count, uint256 offset) public view returns (Topics_contract.TopicsData[] memory) {
+		require(offset + count <= Topics_list.length, "Offset + count out of bounds");
+		Topics_contract.TopicsData[] memory results = new Topics_contract.TopicsData[](count);
+		for (uint i = 0; i < count; i++) {
+			results[i] = Topics_contract(Topics_list[i + offset]).getAll();
+		}
+		return results;
+	}
+
+	function get_last_Topics_N(uint256 count, uint256 offset) public view returns (Topics_contract.TopicsData[] memory) {
+		require(count + offset <= Topics_list.length, "Count + offset out of bounds");
+		Topics_contract.TopicsData[] memory results = new Topics_contract.TopicsData[](count);
+		uint len = Topics_list.length;
+		for (uint i = 0; i < count; i++) {
+			uint idx = len - i - offset - 1;
+			results[i] = Topics_contract(Topics_list[idx]).getAll();
+		}
+		return results;
+	}
+
+	function get_Topics_list_length() public view returns (uint256) { return Topics_list.length; }
 	function get_Topics_user_length(address user) public view returns (uint256) {
-		return user_map[user].Topics_list_length;
+		return user_map[user].Topics_list.length;
 	}
 
-	function get_Topics_user_N(address user, uint256 index) public view returns (address, uint, address, string memory, string memory) {
-		return Topics_contract(user_map[user].Topics_list[index]).getall();
+	function get_Topics_user_N(address user, uint256 index) public view returns (Topics_contract.TopicsData memory) {
+		return Topics_contract(user_map[user].Topics_list[index]).getAll();
 	}
 
-	function get_last_Topics_user_N(address user, uint256 count, uint256 offset) public view returns (Topics_getter[] memory) {
-		Topics_getter[] memory getters = new Topics_getter[](count);
-		for (uint i = offset; i < count; i++) {
-			getters[i - offset]._address = user_map[user].Topics_list[i + offset];
-			getters[i - offset].timestamp = Topics_contract(user_map[user].Topics_list[i + offset]).get_timestamp();
-			getters[i - offset].sender = Topics_contract(user_map[user].Topics_list[i + offset]).get_sender();
-			getters[i - offset].name = Topics_contract(user_map[user].Topics_list[i + offset]).get_name();
-			getters[i - offset].description = Topics_contract(user_map[user].Topics_list[i + offset]).get_description();
+	function get_last_Topics_user_N(address user, uint256 count, uint256 offset) public view returns (Topics_contract.TopicsData[] memory) {
+		require(count + offset <= user_map[user].Topics_list.length, "Count + offset out of bounds");
+		Topics_contract.TopicsData[] memory results = new Topics_contract.TopicsData[](count);
+		uint len = user_map[user].Topics_list.length;
+		for (uint i = 0; i < count; i++) {
+			uint idx = len - i - offset - 1;
+			results[i] = Topics_contract(user_map[user].Topics_list[idx]).getAll();
 		}
-		return getters;
+		return results;
 	}
 
 	struct FilComments_Topics {
@@ -227,19 +182,13 @@ contract App {
 		return FilComments_Topics_map[hash].FilComments_list.length;
 	}
 
-	function get_last_FilComments_Topics_map_N(address hash, uint256 count, uint256 offset) public view returns (FilComments_getter[] memory) {
-		FilComments_getter[] memory getters = new FilComments_getter[](count);
+	function get_last_FilComments_Topics_map_N(address hash, uint256 count, uint256 offset) public view returns (FilComments_contract.FilCommentsData[] memory) {
+		FilComments_contract.FilCommentsData[] memory results = new FilComments_contract.FilCommentsData[](count);
 		for (uint i = 0; i < count; i++) {
-			FilComments_contract myFilComments = FilComments_contract(FilComments_Topics_map[hash].FilComments_list[FilComments_Topics_map[hash].FilComments_list.length - i - offset - 1]);
-			getters[i]._address = address(myFilComments);
-			getters[i].timestamp = myFilComments.get_timestamp();
-			getters[i].sender = myFilComments.get_sender();
-			getters[i].comment = myFilComments.get_comment();
-			getters[i].photo = myFilComments.get_photo();
-			getters[i].topic = myFilComments.get_topic();
-			getters[i].likes = myFilComments.get_likes();
+			FilComments_contract instance = FilComments_contract(FilComments_Topics_map[hash].FilComments_list[FilComments_Topics_map[hash].FilComments_list.length - i - offset - 1]);
+			results[i] = instance.getAll();
 		}
-		return getters;
+		return results;
 	}
 
 	struct UserInfo {
@@ -251,21 +200,12 @@ contract App {
 		uint256 Topics_list_length;
 	}
 	mapping(address => UserInfo) public user_map;
-	address[] UserInfoList;
-	uint256 UserInfoListLength;
+	address[] public UserInfoList;
+	uint256 public UserInfoListLength;
 
-	event NewFilComments(address sender);
-
-	mapping(bytes32 => address) unique_map_FilComments;
-
-	function get_unique_map_FilComments(uint likes) public view returns (address) {
-		bytes32 hash_FilComments = keccak256(abi.encodePacked(likes));
-		return unique_map_FilComments[hash_FilComments];
-	}
+	event NewFilComments(address indexed sender, address indexed contractAddress);
 
 	function new_FilComments(string memory comment, string memory photo, address topic, uint likes) public returns (address) {
-		bytes32 hash_FilComments = keccak256(abi.encodePacked(likes));
-		require(unique_map_FilComments[hash_FilComments] == address(0));
 		address mynew = address(new FilComments_contract({
 			_comment : comment,
 			_photo : photo,
@@ -273,23 +213,21 @@ contract App {
 			_likes : likes
 		}));
 
-		unique_map_FilComments[hash_FilComments] = mynew;
-
 		if(!FilComments_Topics_map[topic].exists) {
 			FilComments_Topics_map[topic] = create_index_on_new_FilComments_Topics();
 		}
 		FilComments_Topics_map[topic].FilComments_list.push(mynew);
 
-		if(!user_map[tx.origin].exists) {
-			user_map[tx.origin] = create_user_on_new_FilComments(mynew);
+		if(!user_map[msg.sender].exists) {
+			user_map[msg.sender] = create_user_on_new_FilComments(mynew);
 		}
-		user_map[tx.origin].FilComments_list.push(mynew);
-		user_map[tx.origin].FilComments_list_length += 1;
+		user_map[msg.sender].FilComments_list.push(mynew);
+		user_map[msg.sender].FilComments_list_length += 1;
 
 		FilComments_list.push(mynew);
-		FilComments_list_length += 1;
+		// The length of FilComments_list is tracked by the array length
 
-		emit NewFilComments(tx.origin);
+		emit NewFilComments(msg.sender, mynew);
 
 		return mynew;
 	}
@@ -313,35 +251,24 @@ contract App {
 		return FilComments_Topics({exists: true, FilComments_list: tmp});
 	}
 
-	event NewTopics(address sender);
-
-	mapping(bytes32 => address) unique_map_Topics;
-
-	function get_unique_map_Topics(string memory name) public view returns (address) {
-		bytes32 hash_Topics = keccak256(abi.encodePacked(name));
-		return unique_map_Topics[hash_Topics];
-	}
+	event NewTopics(address indexed sender, address indexed contractAddress);
 
 	function new_Topics(string memory name, string memory description) public returns (address) {
-		bytes32 hash_Topics = keccak256(abi.encodePacked(name));
-		require(unique_map_Topics[hash_Topics] == address(0));
 		address mynew = address(new Topics_contract({
 			_name : name,
 			_description : description
 		}));
 
-		unique_map_Topics[hash_Topics] = mynew;
-
-		if(!user_map[tx.origin].exists) {
-			user_map[tx.origin] = create_user_on_new_Topics(mynew);
+		if(!user_map[msg.sender].exists) {
+			user_map[msg.sender] = create_user_on_new_Topics(mynew);
 		}
-		user_map[tx.origin].Topics_list.push(mynew);
-		user_map[tx.origin].Topics_list_length += 1;
+		user_map[msg.sender].Topics_list.push(mynew);
+		user_map[msg.sender].Topics_list_length += 1;
 
 		Topics_list.push(mynew);
-		Topics_list_length += 1;
+		// The length of Topics_list is tracked by the array length
 
-		emit NewTopics(tx.origin);
+		emit NewTopics(msg.sender, mynew);
 
 		return mynew;
 	}

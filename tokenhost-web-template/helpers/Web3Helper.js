@@ -5,9 +5,9 @@ const SignerProvider = require('ethjs-provider-signer')
 const EC = require('elliptic').ec
 const ec = new EC('secp256k1')
 
-export var w3 = new Web3('{{rpcUrl}}')
-export var w3ws = new Web3('{{rpcWS}}')
-const contract_address = '{{contract_address}}'
+export var w3 = new Web3('http://127.0.0.1:8545')
+export var w3ws = new Web3('ws://127.0.0.1:8545')
+const contract_address = '0x322813Fd9A801c5507c9de605d63CEA4f2CE6c44'
 let web3 = undefined; // Will hold the web3 instance
 let contract = undefined // hold instance
 
@@ -34,8 +34,8 @@ async function addChain(){
       await window.ethereum.request({
       method: "wallet_addEthereumChain",
       params: [{
-        rpcUrls: ['{{rpcUrl}}'],
-        chainName: '{{chainName}}',
+        rpcUrls: ['http://127.0.0.1:8545'],
+        chainName: 'Anvil',
         chainId: chainId
       }]
       });
@@ -132,7 +132,7 @@ function setupAccounts() {
 
     const account = w3.eth.accounts.privateKeyToAccount(privateKey)
 
-    var localprovider = new SignerProvider('{{rpcUrl}}', {
+    var localprovider = new SignerProvider('http://127.0.0.1:8545', {
       signTransaction: (rawTx, cb) => {
         w3.eth.accounts
           .signTransaction(rawTx, privateKey)

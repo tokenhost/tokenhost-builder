@@ -390,17 +390,17 @@ contract App {
         }
         Skeet_image_map[image].Skeet_list.push(mynew);
 
-        if (!user_map[tx.origin].exists) {
-            user_map[tx.origin] = create_user_on_new_Skeet(mynew);
+        if (!user_map[msg.sender].exists) {
+            user_map[msg.sender] = create_user_on_new_Skeet(mynew);
         }
-        user_map[tx.origin].Skeet_list.push(mynew);
+        user_map[msg.sender].Skeet_list.push(mynew);
 
-        user_map[tx.origin].Skeet_list_length += 1;
+        user_map[msg.sender].Skeet_list_length += 1;
 
         Skeet_list.push(mynew);
         Skeet_list_length += 1;
 
-        emit NewSkeet(tx.origin);
+        emit NewSkeet(msg.sender);
 
         return mynew;
     }
@@ -456,17 +456,17 @@ contract App {
             address(new Follows_contract({_alice: alice, _bob: bob}));
         unique_map_Follows[hash_Follows] = mynew;
 
-        if (!user_map[tx.origin].exists) {
-            user_map[tx.origin] = create_user_on_new_Follows(mynew);
+        if (!user_map[msg.sender].exists) {
+            user_map[msg.sender] = create_user_on_new_Follows(mynew);
         }
-        user_map[tx.origin].Follows_list.push(mynew);
+        user_map[msg.sender].Follows_list.push(mynew);
 
-        user_map[tx.origin].Follows_list_length += 1;
+        user_map[msg.sender].Follows_list_length += 1;
 
         Follows_list.push(mynew);
         Follows_list_length += 1;
 
-        emit NewFollows(tx.origin);
+        emit NewFollows(msg.sender);
 
         return mynew;
     }

@@ -1,9 +1,12 @@
 import React, { Component, Fragment, useEffect, useState } from 'react'
 
+const backendBaseUrl = (process.env.NEXT_PUBLIC_BACKEND_URL || process.env.REACT_APP_BACKEND_URL || '').replace(/\/$/, '');
+const backendUrl = (path) => (backendBaseUrl ? `${backendBaseUrl}${path}` : path);
+
 export default function ProfilePage() {
     const [signedUser, setSignedUser] = useState(null);
     useEffect(() => {
-        fetch(`${process.env.REACT_APP_BACKEND_URL}/check-auth`, {
+        fetch(backendUrl('/check-auth'), {
             method: 'GET',
             headers: {
                 'Content-Type': 'application/json',

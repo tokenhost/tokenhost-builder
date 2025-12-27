@@ -24,7 +24,7 @@ console.log('data',data)
               <>
   {{#each this_reverse_references }}
 
-                    <Link href={"/{{this}}{{../contract}}?address="+data['_address']} className="button is-warning has-text-white is-bold">
+                    <Link href={"/{{this}}{{../contract}}?address="+data.self} className="button is-warning has-text-white is-bold">
                       <span>View all {{this}} with same {{../contract}}</span>
                     </Link>
 
