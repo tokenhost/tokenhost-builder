@@ -1271,6 +1271,15 @@ If an indexer is enabled, the UI SHOULD still use chain events (or polling) as t
 
 To keep UX honest when the indexer lags:
 - Token Host-hosted indexer/gateway responses MUST include an `indexedToBlock` watermark (and MUST include the corresponding `chainId`).
+- In v1, Token Host-hosted indexer/gateway APIs SHOULD expose this metadata using a consistent JSON envelope shape:
+
+```json
+{
+  "data": { },
+  "meta": { "chainId": 1, "indexedToBlock": 12345678 }
+}
+```
+
 - When using the indexer as a list source, the UI MUST surface indexer freshness (e.g., “Indexer synced to block N”) and SHOULD surface lag relative to the observed head.
 - When a chain event arrives for block `B` and the indexer watermark is `< B`, the UI SHOULD NOT thrash by repeatedly refetching the same list query; it SHOULD instead show “Updates pending indexer sync” and MAY poll until the indexer watermark reaches `B` before refetching.
 
