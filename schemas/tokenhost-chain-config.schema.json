@@ -282,6 +282,59 @@
         }
       }
     },
+    "limits": {
+      "type": "object",
+      "description": "Suggested limits/caps for generated contracts and UIs on this chain.",
+      "additionalProperties": false,
+      "properties": {
+        "lists": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "maxLimit": {
+              "type": "integer",
+              "minimum": 1
+            },
+            "maxScanSteps": {
+              "type": "integer",
+              "minimum": 1
+            }
+          }
+        },
+        "multicall": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "maxCalls": {
+              "type": "integer",
+              "minimum": 0
+            },
+            "maxCalldataBytes": {
+              "type": "integer",
+              "minimum": 0
+            }
+          }
+        },
+        "realtime": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "recommendedPollingIntervalSeconds": {
+              "type": "number",
+              "minimum": 0
+            },
+            "recommendedDebounceMs": {
+              "type": "integer",
+              "minimum": 0
+            },
+            "maxActiveSubscriptions": {
+              "type": "integer",
+              "minimum": 0
+            }
+          }
+        }
+      }
+    },
     "rateLimits": {
       "type": "object",
       "description": "Coarse rate limit guidance for hosted/client usage (not a guarantee).",

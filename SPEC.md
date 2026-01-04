@@ -290,6 +290,7 @@ At minimum, the chain config artifact MUST include:
 - sequencer/proposer identity metadata for managed chains (at minimum, operator name; optionally key IDs),
 - RPC endpoints and explicit capability flags (archive, batching, trace/debug availability),
 - websocket/log-subscription capability where available (for real-time UIs; see Section 8.9),
+- recommended limits/caps for generated contracts and UIs where available (e.g., list page size and realtime polling intervals),
 - operational metadata (rate limits, status/SLO URL pointers where available),
 - explorer URLs (if applicable),
 - AA/sponsorship capability flags (if applicable),
@@ -854,6 +855,11 @@ To reduce RPC payload size, returning full records from list methods SHOULD be a
 
 Implementation note: list methods MUST cap `limit` to a safe maximum (configurable per deployment), and MUST cap scan steps (see above).
 
+Recommended defaults (non-normative):
+- If chain config provides `limits.lists.maxLimit` and/or `limits.lists.maxScanSteps`, the generator SHOULD use those values (or stricter).
+- Otherwise, a safe default is `maxLimit=50` and `maxScanSteps = min(1000, maxLimit * 20)`.
+- The UI SHOULD handle “short pages” (fewer than `limit` results) gracefully and SHOULD allow loading more using the next cursor (the smallest returned ID).
+
 ### 7.6 Update semantics
 
 Update operations are optional per collection (enabled when `updateRules.mutable` is non-empty).
@@ -963,6 +969,19 @@ Token Host MUST emit, per collection:
 
 `dataHash` and `changedFieldsHash` SHOULD be keccak256 of ABI-encoded values to allow indexers to detect mismatches without storing full payloads in events. Token Host MAY additionally emit field-level events for frequently queried fields.
 
+#### 7.9.1 Event indexing for narrow subscriptions (normative)
+
+To support real-time UIs without “event storms,” Token Host-generated contracts MUST structure events so that clients can subscribe narrowly using topic filters.
+
+In Solidity:
+- For `RecordCreated`, `RecordUpdated`, and `RecordDeleted`, the generator MUST mark `collectionId`, `recordId`, and `actor` as `indexed` event parameters.
+- For `RecordTransferred`, the generator MUST mark `collectionId`, `fromOwner`, and `toOwner` as `indexed` event parameters, and MUST include `recordId` as a non-indexed parameter in the event data.
+
+Rationale:
+- Collection-scoped pages can filter by `collectionId`.
+- Record detail pages can filter by `recordId` (for create/update/delete).
+- “My records” pages can filter membership changes by subscribing to `RecordTransferred` where `fromOwner==me` or `toOwner==me` and parsing `recordId` from event data.
+
 ### 7.10 Gas and scaling constraints
 
 Token Host MUST avoid unbounded loops in state-changing methods.
@@ -1003,11 +1022,11 @@ The exact Solidity signatures are generator-defined but MUST follow these rules:
 - All write functions MUST revert (not silently fail) on access violations and constraint violations.
 
 In addition to per-collection CRUD, the generated App contract MUST include a batching primitive:
-- `multicall(bytes[] calldata calls) external returns (bytes[] memory results)`
+  - `multicall(bytes[] calldata calls) external returns (bytes[] memory results)`
   - MUST execute each call against the same contract (no arbitrary external calls),
   - MUST preserve `_msgSender()` for access checks (delegatecall-based pattern),
   - MUST revert the entire batch if any call fails (atomicity),
-  - MUST cap the number of calls per batch to a safe maximum.
+  - MUST cap the number of calls per batch to a safe maximum (recommended source: `limits.multicall.maxCalls` in chain config, or a conservative generator default).
 
 For v1, `multicall` SHOULD be non-payable. Paid create operations (those requiring a native fee) SHOULD be executed as single direct calls (not inside multicall) unless a future multicall-with-value design is introduced.
 
@@ -1211,18 +1230,29 @@ Token Host-generated apps SHOULD feel real-time by responding to on-chain events
 
 #### 8.9.1 Data freshness model (normative)
 
-- Generated apps MUST treat chain state as authoritative and MUST respect finality guidance from the selected chain config (e.g., “recommended confirmations”).
+- Generated apps MUST treat chain state as authoritative and MUST respect finality guidance from the selected chain config (e.g., `finality.recommendedConfirmations`).
+- Generated apps MUST distinguish:
+  - an **observed head** (latest block the client has seen), and
+  - a **safe head** (observed head minus confirmations, or a chain-provided `safe`/`finalized` tag when available).
+- By default, generated apps SHOULD render “live” updates based on events quickly, but MUST avoid presenting unconfirmed changes as final. The UI SHOULD label new/changed rows as “pending” until they reach the safe head.
 - Generated apps MUST assume that websocket subscriptions can disconnect and MUST implement reconnection + resync logic.
-- Generated apps MUST handle reorgs correctly when the underlying client library surfaces removed logs (or when receipts disappear).
+- Generated apps MUST handle reorgs correctly when the underlying client library surfaces removed logs (or when receipts disappear). Where “removed logs” are not available, the UI MUST tolerate inconsistencies by verifying record state on-chain at the safe head.
 
 #### 8.9.2 Subscription behavior (normative)
 
-When the selected chain config includes an RPC endpoint that supports websocket log subscriptions (`eth_subscribe`) (recommended signal: `rpc.endpoints[].capabilities.subscriptions=true` on a `wss://` endpoint), the generated app SHOULD:
-- subscribe to `RecordCreated`, `RecordUpdated`, `RecordDeleted`, and `RecordTransferred` events for the active deployment entrypoint contract(s),
-- on each relevant event, invalidate/refetch any affected views (list pages, record details, “my records”, reverse reference lists),
-- debounce refreshes under high event rates (to avoid thrashing).
+When the selected chain config includes an RPC endpoint that supports websocket log subscriptions (`eth_subscribe`) (recommended signal: `rpc.endpoints[].capabilities.subscriptions=true` on a `wss://` endpoint), the generated app SHOULD subscribe to events **as narrowly as possible** to avoid event storms.
 
-If websocket log subscriptions are not available, the generated app MUST fall back to polling (e.g., periodic block number checks + targeted refetches).
+Normative requirements:
+- Subscriptions MUST be scoped to the active deployment entrypoint contract address(es) (primary + any legacy deployments being actively read in the current UI context).
+- Subscriptions MUST use topic filters over `indexed` event parameters where feasible (see Section 7.9.1), so that only the currently viewed collection(s) and/or record(s) are subscribed.
+- The UI SHOULD NOT subscribe to `RecordUpdated` for an entire collection unless the current screen requires it. Preferred patterns:
+  - **Collection list pages**: subscribe to `RecordCreated` and `RecordDeleted` for that collection (and optionally `RecordTransferred` if ownership membership is displayed).
+  - **Record detail pages**: subscribe to `RecordUpdated` and `RecordDeleted` for that `(collectionId, recordId)`.
+  - **“My records” pages**: subscribe to `RecordCreated` filtered by `actor==me` and `RecordTransferred` filtered by `fromOwner==me` or `toOwner==me`, and refresh membership lists on demand.
+- Subscriptions MUST be attached only while a view is active and MUST be cleaned up on navigation (unsubscribe) to avoid accumulating subscriptions.
+- The UI MUST debounce refresh/invalidation work under high event rates (recommended default: 250ms, or `limits.realtime.recommendedDebounceMs` if present in chain config).
+
+If websocket log subscriptions are not available, the generated app MUST fall back to polling (e.g., periodic block number checks + targeted refetches). Polling SHOULD use a conservative default interval (e.g., 10s) or `limits.realtime.recommendedPollingIntervalSeconds` when present in chain config.
 
 #### 8.9.3 UX semantics for “live views” (normative)
 
@@ -1233,9 +1263,14 @@ Real-time updates change what “page 2” means. Token Host does **not** provid
 - Record detail pages SHOULD refresh in place when the record is updated or transferred (subject to finality display).
 - The UI SHOULD show a “Live” indicator and SHOULD expose a user-facing refresh control.
 
-#### 8.9.4 Integration with indexers (non-normative)
+#### 8.9.4 Integration with indexers (normative)
 
-If an indexer is enabled, the UI may still use chain events as the realtime trigger, then re-query the indexer for lists and use on-chain reads for detail verification and fallback. The UI should surface indexer lag where feasible.
+If an indexer is enabled, the UI SHOULD still use chain events (or polling) as the realtime trigger, then re-query the indexer for list/search views and use on-chain reads for detail verification and fallback.
+
+To keep UX honest when the indexer lags:
+- Token Host-hosted indexer/gateway responses SHOULD include an `indexedToBlock` watermark per chain.
+- When using the indexer as a list source, the UI MUST surface indexer freshness (e.g., “Indexer synced to block N”) and SHOULD surface lag relative to the observed head.
+- When a chain event arrives for block `B` and the indexer watermark is `< B`, the UI SHOULD NOT thrash by repeatedly refetching the same list query; it SHOULD instead show “Updates pending indexer sync” and MAY poll until the indexer watermark reaches `B` before refetching.
 
 ---
 
