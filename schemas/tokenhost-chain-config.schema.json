@@ -330,6 +330,8 @@
             "maxActiveSubscriptions": {
               "type": "integer",
               "minimum": 0
+              ,
+              "description": "Recommended maximum number of concurrent websocket subscriptions a generated UI should maintain for this chain."
             }
           }
         }

@@ -1234,7 +1234,8 @@ Token Host-generated apps SHOULD feel real-time by responding to on-chain events
 - Generated apps MUST distinguish:
   - an **observed head** (latest block the client has seen), and
   - a **safe head** (observed head minus confirmations, or a chain-provided `safe`/`finalized` tag when available).
-- By default, generated apps SHOULD render “live” updates based on events quickly, but MUST avoid presenting unconfirmed changes as final. The UI SHOULD label new/changed rows as “pending” until they reach the safe head.
+- By default, generated apps SHOULD use events as **refresh triggers** and SHOULD refetch list/detail state at the safe head rather than applying unfinalized event payloads directly. The UI MAY render optimistic/pending states for user-submitted transactions, but MUST reconcile them to chain state at the safe head.
+- If the UI renders unconfirmed changes (optimistic or observed-head updates), it MUST label them as **Pending** and MUST treat them as non-final until they reach the safe head.
 - Generated apps MUST assume that websocket subscriptions can disconnect and MUST implement reconnection + resync logic.
 - Generated apps MUST handle reorgs correctly when the underlying client library surfaces removed logs (or when receipts disappear). Where “removed logs” are not available, the UI MUST tolerate inconsistencies by verifying record state on-chain at the safe head.
 
@@ -1245,12 +1246,13 @@ When the selected chain config includes an RPC endpoint that supports websocket 
 Normative requirements:
 - Subscriptions MUST be scoped to the active deployment entrypoint contract address(es) (primary + any legacy deployments being actively read in the current UI context).
 - Subscriptions MUST use topic filters over `indexed` event parameters where feasible (see Section 7.9.1), so that only the currently viewed collection(s) and/or record(s) are subscribed.
-- The UI SHOULD NOT subscribe to `RecordUpdated` for an entire collection unless the current screen requires it. Preferred patterns:
-  - **Collection list pages**: subscribe to `RecordCreated` and `RecordDeleted` for that collection (and optionally `RecordTransferred` if ownership membership is displayed).
+- In v1, the UI MUST NOT subscribe to `RecordUpdated` for an entire collection. Preferred patterns:
+  - **Collection list pages**: subscribe to `RecordCreated` and `RecordDeleted` for that collection. (Row-level updates on list pages are refreshed on user demand or via periodic refresh; they are not pushed by default.)
   - **Record detail pages**: subscribe to `RecordUpdated` and `RecordDeleted` for that `(collectionId, recordId)`.
   - **“My records” pages**: subscribe to `RecordCreated` filtered by `actor==me` and `RecordTransferred` filtered by `fromOwner==me` or `toOwner==me`, and refresh membership lists on demand.
 - Subscriptions MUST be attached only while a view is active and MUST be cleaned up on navigation (unsubscribe) to avoid accumulating subscriptions.
 - The UI MUST debounce refresh/invalidation work under high event rates (recommended default: 250ms, or `limits.realtime.recommendedDebounceMs` if present in chain config).
+- The UI MUST cap concurrent websocket subscriptions. If `limits.realtime.maxActiveSubscriptions` is present in chain config, the UI MUST NOT exceed it; otherwise, the UI SHOULD keep active subscriptions under 8. If subscription caps are exceeded or the provider errors, the UI MUST degrade by unsubscribing from the least-critical subscriptions (e.g., broad list subscriptions) and relying on polling.
 
 If websocket log subscriptions are not available, the generated app MUST fall back to polling (e.g., periodic block number checks + targeted refetches). Polling SHOULD use a conservative default interval (e.g., 10s) or `limits.realtime.recommendedPollingIntervalSeconds` when present in chain config.
 
@@ -1268,7 +1270,7 @@ Real-time updates change what “page 2” means. Token Host does **not** provid
 If an indexer is enabled, the UI SHOULD still use chain events (or polling) as the realtime trigger, then re-query the indexer for list/search views and use on-chain reads for detail verification and fallback.
 
 To keep UX honest when the indexer lags:
-- Token Host-hosted indexer/gateway responses SHOULD include an `indexedToBlock` watermark per chain.
+- Token Host-hosted indexer/gateway responses MUST include an `indexedToBlock` watermark (and MUST include the corresponding `chainId`).
 - When using the indexer as a list source, the UI MUST surface indexer freshness (e.g., “Indexer synced to block N”) and SHOULD surface lag relative to the observed head.
 - When a chain event arrives for block `B` and the indexer watermark is `< B`, the UI SHOULD NOT thrash by repeatedly refetching the same list query; it SHOULD instead show “Updates pending indexer sync” and MAY poll until the indexer watermark reaches `B` before refetching.
 
