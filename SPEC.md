@@ -1,9 +1,9 @@
-# Token Host Platform Specification (Draft v0.6)
+# Token Host Platform Specification (Draft v0.7)
 
 Status: Draft (spec-driven design)  
 Owner: Token Host  
 Domain: `tokenhost.com`  
-Last updated: 2025-12-27  
+Last updated: 2026-01-04  
 Scope: Production system. All existing repos are legacy prototypes and are not binding.
 
 This document defines the intended production design of the Token Host platform: a managed schema-to-dapp builder that generates and deploys smart contracts, generates a hosted UI, optionally provisions indexing, and publishes apps under a dedicated hosted-app origin (default `*.apps.tokenhost.com`, plus optional custom domains).
@@ -106,6 +106,13 @@ Token Host’s managed-chain model is designed to support a deliberate, staged r
 - Token Host Chain and Token Host-provisioned appchains MAY begin with a centralized operator (sequencer + ops) for performance and DX.
 - The system MUST be designed so that decentralization can increase over time without changing application schemas or contract semantics (only the chain environment changes).
 - Studio MUST represent chain “trust posture” clearly (e.g., managed vs external vs decentralized) and MUST avoid implying decentralization where it does not exist.
+
+### 2.10 Real-time UX via events
+
+Token Host apps are intended to feel “alive” despite being backed by blockchain state.
+
+- Generated apps SHOULD use chain events and (where available) websocket subscriptions to trigger refreshes and keep list/detail pages up to date.
+- Real-time UX MUST NOT change correctness semantics: contracts remain authoritative, and reorg/finality behavior MUST be respected (see Sections 4.5.5 and 8.9).
 
 ---
 
@@ -282,10 +289,13 @@ At minimum, the chain config artifact MUST include:
 - data availability / settlement metadata for rollups (L1 origin chain, bridge entry points, DA mode/provider where applicable),
 - sequencer/proposer identity metadata for managed chains (at minimum, operator name; optionally key IDs),
 - RPC endpoints and explicit capability flags (archive, batching, trace/debug availability),
+- websocket/log-subscription capability where available (for real-time UIs; see Section 8.9),
 - operational metadata (rate limits, status/SLO URL pointers where available),
 - explorer URLs (if applicable),
 - AA/sponsorship capability flags (if applicable),
 - issuer identity and signatures.
+
+For real-time UIs, chain configs SHOULD include at least one `wss://` RPC endpoint and SHOULD mark it with `rpc.endpoints[].capabilities.subscriptions=true` when `eth_subscribe` log subscriptions are supported.
 
 #### 4.5.6 Chain and appchain lifecycle
 
@@ -771,7 +781,8 @@ For each collection `C`, the generated contract maintains:
 - `recordsC: mapping(uint256 => RecordC)` storing system fields and user fields
 - `activeCountC: uint256` count of non-deleted records (O(1) reads)
 - If on-chain listing/enumeration is enabled, the contract MUST be able to enumerate records deterministically. In v1, because IDs are sequential, enumeration MAY be derived from `nextIdC` (range `1..nextIdC-1`) and does not strictly require storing an `allIdsC` array. If `allIdsC: uint256[]` is stored, it MUST be append-only and MUST reflect created IDs.
-- If soft delete is enabled, the contract MUST maintain an **active set**:
+- If soft delete is enabled, records MUST include an `isDeleted` flag and the contract MUST maintain `activeCountC` accurately.
+- The contract MAY additionally maintain an **active set** to accelerate “browse active records” views without scanning tombstones:
   - `activeIdsC: uint256[]` list of active (non-deleted) record IDs
   - `activePosC: mapping(uint256 => uint256)` mapping record ID to position+1 in `activeIdsC` (0 means “not active”), enabling O(1) removal via swap-and-pop.
 
@@ -828,15 +839,20 @@ To distinguish “never created” from “created but empty values”, Token Ho
 List operations MUST be paginated and MUST avoid oversized responses.
 
 For each collection `C`, the generator MUST emit a paginated ID listing method:
-- `listIdsC(offset, limit, includeDeleted=false)` returns up to `limit` record IDs (`uint256[]`).
+- `listIdsC(cursorIdExclusive, limit, includeDeleted=false)` returns up to `limit` record IDs (`uint256[]`) in descending `id` order (newest-first).
 
 Semantics:
-- If `includeDeleted=false`, `offset` MUST be interpreted as an index into `activeIdsC` and the function MUST run in O(`limit`) without scanning tombstones.
-- If `includeDeleted=true`, `offset` MUST be interpreted as a 0-based index into the full created ID range (`recordId = offset + 1`), and the function MAY return deleted records.
+- `cursorIdExclusive` is an *exclusive* upper bound. If `cursorIdExclusive==0`, the listing starts from `nextIdC` (i.e., “from the newest record”).
+- The function MUST scan downward from `min(cursorIdExclusive, nextIdC)` and return record IDs in descending order.
+- If `includeDeleted=false`, the function MUST skip deleted records.
+- The function MUST be bounded. The generator MUST enforce a maximum scan budget per call (`maxScanSteps`) so listings cannot become unbounded due to tombstones.
+  - If the scan budget is exhausted before `limit` results are found, the function MUST return the results it has found (which MAY be fewer than `limit`).
+
+This listing intentionally models a **live view** over a changing dataset (see Section 8.9). Page boundaries may shift as new records are created, deleted, or restored.
 
 To reduce RPC payload size, returning full records from list methods SHOULD be avoided. If the generator emits a list-of-records convenience method (e.g., `listSummariesC`), it MUST be bounded, paginated, and MUST return only system fields plus a schema-configured subset of “summary fields” (recommended default: `visibilityRules.gets`).
 
-Implementation note: list methods MUST cap `limit` to a safe maximum (configurable per deployment).
+Implementation note: list methods MUST cap `limit` to a safe maximum (configurable per deployment), and MUST cap scan steps (see above).
 
 ### 7.6 Update semantics
 
@@ -1094,7 +1110,7 @@ For each collection, Token Host MUST generate:
 - (if enabled) delete UI with confirmation,
 - (if enabled) transfer UI (set new owner) with confirmation.
 
-List pages MUST avoid oversized on-chain reads. Without an indexer, the generated UI SHOULD render list pages by calling `listIdsC` and then fetching details via `multicall(getC)` or `listSummariesC` when available.
+List pages MUST avoid oversized on-chain reads. Without an indexer, the generated UI SHOULD render list pages by calling `listIdsC` and then fetching details via `multicall(getC)` or `listSummariesC` when available. Pagination SHOULD be cursor-based using `cursorIdExclusive` (e.g., pass the smallest ID from the prior page as the next cursor).
 
 For unique fields, the UI SHOULD offer:
 - “lookup by unique field” page (e.g., `/candidate/by-handle/<handle>`), backed by on-chain unique mapping or indexer query.
@@ -1188,6 +1204,38 @@ Recommended default English copy (illustrative):
 - “Legacy chain (read-only): <chainName> (<chainId>)”
 - “Copy record: Create a new record on the primary chain based on this legacy record. The new record will have a new ID.”
 - “Copied from <chainName> (<chainId>) / <deploymentEntrypointAddress> / <collection>#<recordId>”
+
+### 8.9 Real-time updates (events + websockets)
+
+Token Host-generated apps SHOULD feel real-time by responding to on-chain events.
+
+#### 8.9.1 Data freshness model (normative)
+
+- Generated apps MUST treat chain state as authoritative and MUST respect finality guidance from the selected chain config (e.g., “recommended confirmations”).
+- Generated apps MUST assume that websocket subscriptions can disconnect and MUST implement reconnection + resync logic.
+- Generated apps MUST handle reorgs correctly when the underlying client library surfaces removed logs (or when receipts disappear).
+
+#### 8.9.2 Subscription behavior (normative)
+
+When the selected chain config includes an RPC endpoint that supports websocket log subscriptions (`eth_subscribe`) (recommended signal: `rpc.endpoints[].capabilities.subscriptions=true` on a `wss://` endpoint), the generated app SHOULD:
+- subscribe to `RecordCreated`, `RecordUpdated`, `RecordDeleted`, and `RecordTransferred` events for the active deployment entrypoint contract(s),
+- on each relevant event, invalidate/refetch any affected views (list pages, record details, “my records”, reverse reference lists),
+- debounce refreshes under high event rates (to avoid thrashing).
+
+If websocket log subscriptions are not available, the generated app MUST fall back to polling (e.g., periodic block number checks + targeted refetches).
+
+#### 8.9.3 UX semantics for “live views” (normative)
+
+Real-time updates change what “page 2” means. Token Host does **not** provide snapshot isolation for list pages by default.
+
+- The generated UI MUST treat list views as **live**: results MAY change over time as new events arrive.
+- To avoid disruptive UI jumps, when a user is not on the “top” of a list (e.g., page > 1 or scrolled down in an infinite list), the UI SHOULD avoid inserting/removing rows automatically and SHOULD instead display an “Updates available” affordance that the user can click to refresh.
+- Record detail pages SHOULD refresh in place when the record is updated or transferred (subject to finality display).
+- The UI SHOULD show a “Live” indicator and SHOULD expose a user-facing refresh control.
+
+#### 8.9.4 Integration with indexers (non-normative)
+
+If an indexer is enabled, the UI may still use chain events as the realtime trigger, then re-query the indexer for lists and use on-chain reads for detail verification and fallback. The UI should surface indexer lag where feasible.
 
 ---
 
@@ -1747,6 +1795,7 @@ The system is considered Phase 1 complete when:
 - A build produces a deterministic manifest and artifacts.
 - A deployment to one public testnet succeeds and verifies contracts.
 - The app is published at `https://<slug>.apps.tokenhost.com` (or a custom domain) and supports basic CRUD.
+- When the chain supports websocket log subscriptions, the published app reflects on-chain changes in near-real-time (event-driven refresh with safe fallbacks).
 - A schema can require a native fee for create on a collection, and the generated UI/contract correctly enforces it.
 - A transfer-enabled collection can transfer record ownership via an on-chain transfer method and generated UI.
 - Admins can place a published app into a takedown/suspended state that stops serving the user-generated UI under Token Host-controlled domains.

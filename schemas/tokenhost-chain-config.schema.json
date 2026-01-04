@@ -265,6 +265,10 @@
                   "batching": {
                     "type": "boolean"
                   },
+                  "subscriptions": {
+                    "type": "boolean",
+                    "description": "Supports websocket-style JSON-RPC subscriptions (e.g., eth_subscribe for logs)."
+                  },
                   "trace": {
                     "type": "boolean"
                   },
