@@ -86,7 +86,7 @@ console.log("pageNumber", pageNumber)
           data.map((data, index) => (
             
             {{#if reference_contract}}
-              <View key={index} data={data} reference_contract={ "{{reference_contract}}" }/>
+              <View key={index} data={data} reference_contract={ "{{reference_contract}}" } reference_field={ "{{reference_field}}" }/>
             {{else}}
               <View key={index} data={data} />
             {{/if}}

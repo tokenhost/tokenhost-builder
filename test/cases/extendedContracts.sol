@@ -11,8 +11,8 @@ contract FilComments_contract {
 	address public topic;
 	uint public likes;
 
-	constructor(string memory _comment, string memory _photo, address _topic, uint _likes) {
-		sender = tx.origin;
+	constructor(address _sender, string memory _comment, string memory _photo, address _topic, uint _likes) {
+		sender = _sender;
 		timestamp = block.timestamp;
 		comment = _comment;
 		photo = _photo;
@@ -51,8 +51,8 @@ contract Topics_contract {
 	string public name;
 	string public description;
 
-	constructor(string memory _name, string memory _description) {
-		sender = tx.origin;
+	constructor(address _sender, string memory _name, string memory _description) {
+		sender = _sender;
 		timestamp = block.timestamp;
 		name = _name;
 		description = _description;
@@ -207,6 +207,7 @@ contract App {
 
 	function new_FilComments(string memory comment, string memory photo, address topic, uint likes) public returns (address) {
 		address mynew = address(new FilComments_contract({
+			_sender : msg.sender,
 			_comment : comment,
 			_photo : photo,
 			_topic : topic,
@@ -255,6 +256,7 @@ contract App {
 
 	function new_Topics(string memory name, string memory description) public returns (address) {
 		address mynew = address(new Topics_contract({
+			_sender : msg.sender,
 			_name : name,
 			_description : description
 		}));

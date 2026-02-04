@@ -1,87 +1,165 @@
-Plan
+# Token Host Builder: Spec-to-Code Gap Plan (Authoritative)
 
-1) Document scope and remediation steps for the Token Host builder.
-2) Remove committed secrets; switch to environment-based config; add example env values.
-3) Fix template/runtime issues (auth env vars, bad imports, reverse-reference link, Web3 helper signer/provider).
-4) Align generator tests with current Solidity output and behavior.
+This file is the authoritative backlog for bringing this repository in-line with `SPEC.md`.
+If `AGENTS.md` conflicts with `SPEC.md`, treat `SPEC.md` as canonical and update this file.
 
-Productized Builder Steps (Detailed Roadmap)
+## Repo snapshot (current reality)
 
-1) Foundation: schema spec + validation + migration tooling.
-   - Opinionated stack: TypeScript, Node 20 LTS, pnpm workspaces, turborepo, ESLint + Prettier.
-   - Schema: JSON Schema draft 2020-12 with `schemaVersion`, `app`, `contracts[]`, `fields`, `types`, `rules`.
-   - Validation: Ajv + custom lint rules (reserved names, circular refs, uniqueness rules, type constraints).
-   - Migrations: `migrations/NNN-name.ts` with up/down transforms and a `th migrate` CLI.
-   - Builder parity: schema supports UI-driven creation (contract list, fields, types, unique flag, references).
-   - Monorepo layout:
-     - packages/schema, packages/generator, packages/contracts, packages/templates,
-       packages/cli, packages/deployer, packages/indexer, packages/docs, apps/example.
-   - Done when: schema validates, migrations run, example app passes validation.
-   - Docs: schema reference, lint rules, migration guide, versioning policy.
+Spec-aligned (new) pipeline:
+- Input: THS (Token Host Schema) JSON (validated + linted), e.g. `apps/example/job-board.schema.json`.
+- Schema/validation: `packages/schema` (JSON Schema + Ajv validation, semantic lints, RFC8785+sha256 hashing, legacy importer).
+- Contracts generator: `packages/generator` (single-contract, mapping-based CRUD `App.sol`, Solidity 0.8.24).
+- CLI: `packages/cli` (`th init|validate|import-legacy|generate|build|deploy|verify(stub)|doctor`).
+- Build output: `th build <schema> --out <dir>` writes `contracts/App.sol`, `compiled/App.json`, `schema.json`, `manifest.json`.
+- Deploy: `th deploy <buildDir> --chain anvil|sepolia` (anvil deploy works; sepolia verify still TBD).
 
-2) Core generator: contracts + UI generation, tests, and reproducible artifacts.
-   - Contract strategy: default to single App contract with structs + events (avoid per-record contracts).
-   - Solidity: pin to 0.8.24, compile with Foundry + solc, deterministic formatting.
-   - Artifacts: `artifacts/manifest.json` with schema version, compiler version, chain outputs.
-   - UI: Next.js 14 with `output: export`, template system with theming + overrides.
-   - Preview pipeline: generate a runnable preview app from a saved schema without deploy.
-   - Generator APIs: generateContracts(), generateUI(), writeArtifacts(), buildManifest().
-   - Tests: golden snapshots for contracts/UI, compile smoke tests, basic contract unit tests.
-   - Done when: `th generate` emits artifacts + UI and tests pass on CI.
-   - Docs: generation workflow, customization hooks, output structure.
+Legacy (kept temporarily; deprecated):
+- Input: legacy `contracts.json` shape (`contracts{}` with `fields`, `initRules`, `readRules`, `writeRules`).
+- Generator: `solidityGenerator.js` generates an `App` contract + per-record child contracts (one contract deployed per record).
+- UI: Handlebars templates in `tokenhost-web-template/` and generator script `handlebar.cjs` that writes a Next.js app into `site/`.
+- Build/deploy: `build.sh` compiles via `solcjs`, generates UI, then deploys via `tokenhost-web-template/contracts/deploy.js` (Foundry `forge create`).
 
-3) Chain adapter/deployer: per-chain RPC/IDs, verification, and env-driven overrides.
-   - SDK: viem or ethers v6 (opinionated pick: viem for typed clients + speed).
-   - Chain registry: `chains.json` with RPC, chainId, explorer API, confirmations, gas policy.
-   - Deployment flow: `th deploy --chain sepolia --signer env` with dry-run support.
-   - Verification: Etherscan + Sourcify adapters, auto-verify after deploy.
-   - Done when: deploy + verify works for local + one public testnet.
-   - Docs: chain config reference, env var map, verification guide.
+Tests:
+- `pnpm test` passes (legacy generator golden tests + THS lint tests + CRUD generator compile smoke test).
 
-4) Indexing integration: optional subgraph/indexer for search, filters, and pagination at scale.
-   - Adapter interface: generateIndexer(), deployIndexer(), queryAdapter().
-   - Default adapter: The Graph subgraph (events-first indexing); optional Subsquid adapter.
-   - UI data source switch: on-chain fallback when indexer absent.
-   - Done when: sample app can filter/search via indexer and fallback on-chain.
-   - Docs: indexing setup, query patterns, scaling notes.
+## Phase 0 (NOW): Remediation of current snapshot (stability + security)
 
-5) CLI and template marketplace: scaffold, generate, build, and deploy with presets and variants.
-   - CLI (opinionated): `th init`, `th validate`, `th generate`, `th build`, `th deploy`,
-     `th verify`, `th indexer`, `th migrate`, `th doctor`.
-   - Optional UI builder: `th studio` launches a local schema editor that writes validated JSON.
-   - Template registry: local + remote (GitHub) with semantic versioning and schema compatibility.
-   - Presets: minimal, social feed, marketplace, registry.
-   - Done when: new app can be created and deployed via CLI only.
-   - Docs: CLI usage, template authoring guide, preset catalog.
+Goal: make the current builder reproducible, safe-by-default, and testable before deeper rewrites.
 
-6) CI/CD with preview deployments: lint + test + generate + deploy in CI, artifact publishing.
-   - CI pipelines: lint + test + generate, contract compile, UI build, snapshot diff.
-   - Preview deploys: per-PR deploy to testnet + preview site (Vercel/Netlify).
-   - Artifact publishing: GitHub Releases or S3 with manifest + checksums.
-   - Build status: job queue + build logs and webhook callbacks for managed workflows.
-   - Done when: PR produces preview links and main merges produce versioned releases.
-   - Docs: GitHub Actions templates, release checklist.
+- Secrets/env hygiene
+  - Remove tracked secrets/config from git (e.g. `tokenhost-web-template/.env.local`).
+  - Switch all secrets to env-based config; add `.env.example` files (root + template) with placeholder values.
+- Build determinism + tooling cleanup
+  - Make `build.sh` idempotent (remove `yarn add sass` during build; pin tool versions; fail fast with actionable errors).
+  - Pick a single package manager (SPEC target: Node 20 + pnpm) and remove dual lockfile drift.
+  - Stop committing generated artifacts that are not source-of-truth (define what is source vs output).
+- Template/runtime correctness fixes (known pain points)
+  - Auth env vars: normalize to `NEXT_PUBLIC_*` where needed; avoid `REACT_APP_*` leakage.
+  - Fix broken imports / runtime errors in generated `site/` output (validate `next dev` works after `th/build`).
+  - Reverse-reference UX: fix link generation and query pages for reference lookups.
+  - Web3 helper: fix signer/provider separation and initialization (remove “sneaky place” init; handle chain mismatch cleanly).
+- Generator correctness fixes (current architecture)
+  - Remove `tx.origin` usage from generated contracts (SPEC 7.2 forbids it).
+  - Fix `UserInfo` tracking bugs (owner/list bookkeeping).
+  - Unique mapping: namespace by collection + field; support multiple unique fields per collection; fix collisions (see TODOs in `solidityGenerator.js`).
+- Tests
+  - Make tests runnable (add missing deps; ensure `npm test`/`pnpm test` passes).
+  - Align golden Solidity outputs with actual generator output (or vice versa) and add a compile smoke test.
 
-7) Security hardening + audits: threat modeling, automated scans, and on-chain invariants.
-   - Security tooling: Slither, Semgrep, npm audit, Foundry fuzz/property tests.
-   - Invariants: uniqueness enforcement, reference integrity, access rules, event consistency.
-   - Audit prep: documented threat model, test coverage report, dependency SBOM.
-   - Done when: automated checks are CI-gated and a third-party audit is feasible.
-   - Docs: security checklist, audit prep guide, incident response.
+Phase 0 progress (done):
+- Removed tracked `.env.local`; added `.env.example` (root + template).
+- Removed committed build artifacts (`out/`, `cache/`); added `.gitignore` for generated dirs (`out`, `cache`, `artifacts`, `dist`, `.next`).
+- Removed `tx.origin` from legacy generator output (uses `msg.sender` / `_msgSender()` instead).
+- Fixed legacy template env var usage (`NEXT_PUBLIC_*` instead of `REACT_APP_*`).
+- Fixed legacy reverse-reference link correctness for non-name-matching reference fields (via field lookup in `handlebar.cjs`).
+- Fixed legacy Web3 helper initialization (no more “sneaky place”; contract is always initialized; MetaMask connect rebinds signer cleanly).
+- Tests pass under pnpm; added CRUD compile smoke test + THS lint tests.
 
-8) Managed service MVP: hosted schema editor, build/deploy pipeline, optional indexer, static hosting, custom domains.
-   - Architecture: multi-tenant API + build workers + artifact storage + job queue.
-   - UX flow: schema -> validate -> preview -> deploy -> publish -> manage domains.
-   - Schema library: per-user app list, version history, and export (JSON + full app bundle).
-   - Subdomain provisioning: `app-name.example.com` with build status and CDN hosting.
-   - Auth: email + OAuth + wallet signature login (nonce-based); never store private keys.
-   - Key handling: BYO wallet by default, optional managed keys with strict guardrails.
-   - Asset storage: signed uploads for logos/avatars/assets; optional IPFS pinning.
-   - Observability: build logs, error tracking, usage metrics.
-   - Docs: hosted service quickstart, domain setup, billing basics.
+## Phase 1: Adopt THS (Token Host Schema) as input (SPEC 6)
 
-9) Enterprise hardening: BYO RPC/keys/indexer, compliance controls, usage quotas, SSO/org features.
-   - Enterprise features: RBAC, audit logs, SAML/SCIM, VPC deploys, data retention.
-   - Compliance: SOC2-ready controls, logging, and policy docs.
-   - Done when: enterprise deployment playbook and security posture are documented.
-   - Docs: enterprise deployment guide, compliance pack, SLA template.
+Goal: replace the legacy `contracts.json` format with a versioned, validated THS document.
+
+- Implement THS root structure: `thsVersion`, `schemaVersion`, `app`, `collections[]`, `metadata` (SPEC 6.1-6.3).
+- Add JSON Schema (draft 2020-12) for THS + Ajv validation; add semantic lint rules (reserved names, uniqueness, circular refs, type constraints).
+- Implement `schemaHash` per SPEC 6.1 (RFC 8785 canonicalization + SHA-256).
+- Provide a migration path:
+  - Converter: legacy `contracts.json` -> THS (best-effort) so existing examples still generate.
+  - Migrations framework: `migrations/NNN-name.ts` with up/down transforms + CLI hook (`th migrate`).
+
+Phase 1 progress (done):
+- THS JSON Schema (draft 2020-12) + Ajv structural validation implemented (`packages/schema`).
+- Semantic lint rules implemented (`packages/schema/src/lint.ts`).
+- RFC8785+sha256 `schemaHash` implemented (`computeSchemaHash`).
+- Best-effort legacy importer implemented (`th import-legacy`).
+
+Remaining:
+- Schema migrations framework (registry + `th migrate` implementation + versioned transforms).
+
+## Phase 2: Spec-aligned contract generator (SPEC 7)
+
+Goal: make generated contracts match the CRUD builder model in `SPEC.md`.
+
+- Replace per-record child contracts with record structs stored in mapping(s) (single-contract mode first; modular mode later if needed).
+- Implement system fields + semantics:
+  - create/update/delete/transfer rules, access control, paid creates, reference enforcement, optimistic concurrency (as applicable).
+  - required fields enforced on-chain (SPEC 7.3); remove UI-only “required” drift.
+- Implement pagination and indexes:
+  - `listIdsC(cursorIdExclusive, limit, includeDeleted)` with bounded scan (SPEC 7.5).
+  - Optional on-chain indexes gated by `app.features.onChainIndexing` (SPEC 7.8).
+  - Unique/equality/reference reverse indexes with correct key derivation (SPEC 7.8.1).
+- Implement event model + multicall:
+  - `RecordCreated/Updated/Deleted/Transferred` with indexed topics and deterministic hashes (SPEC 7.9-7.14).
+  - `multicall(bytes[] calls)` with safe semantics (SPEC 7.11).
+- Metadata/self-description and error model:
+  - expose schema hash/version/slug + collection ids (SPEC 7.12, 7.16).
+  - use custom errors + error catalog support (SPEC 7.15).
+
+Phase 2 progress (done/partial):
+- Mapping-based single-contract CRUD generator implemented (`packages/generator`) with `multicall`, events, soft delete, unique indexes, and optional reverse reference indexes.
+- Solidity pinned to 0.8.24; compile smoke test added.
+
+Remaining (not exhaustive):
+- Harden error model (required-field errors, access mode errors, withdraw errors) + optional error catalog.
+- Reference enforcement (`enforce=true`) and richer access modes (allowlist/role/delegation).
+- UI contract surface parity checks vs SPEC 7 (naming/ABIs, optional list summaries, etc.).
+
+## Phase 3: Spec-aligned UI generator (SPEC 8 + Appendix B)
+
+Goal: generated UI matches standard routes, works without Token Host login, and is compatible with the new contracts.
+
+- Implement standard routes (Appendix B) and stable naming across builds for a given schema version.
+- Update runtime stack (pick one: viem or ethers v6) and remove legacy `web3` patterns where they block spec compliance.
+- Support:
+  - paid creates UX (fee display + correct `msg.value`),
+  - transfers (if enabled),
+  - websocket-driven event refresh with safe fallback polling (SPEC 16 acceptance criteria).
+- Schema-driven theming and per-collection UI overrides (SPEC 6.2, 8.*).
+- Export bundle that can be self-hosted (SPEC 16).
+
+## Phase 4: Build/deploy artifacts + manifest (SPEC 11 + Appendix A)
+
+Goal: deterministic builds that output a release manifest and reproducible artifacts.
+
+- Pin toolchain (SPEC target: Node 20.x, solc 0.8.24) and generate deterministic artifacts.
+- Emit a release manifest conforming to `schemas/tokenhost-release-manifest.schema.json`.
+- Bundle and digest artifacts (`sources.tgz`, `compiled.tgz`, UI bundle hash).
+- Chain config:
+  - consume a signed chain config artifact (`schemas/tokenhost-chain-config.schema.json`) or define a compatible `chains.json` source of truth,
+  - deploy to local + one public testnet (Sepolia recommended) and verify contracts.
+
+Phase 4 progress (done/partial):
+- `th build` compiles via solc-js 0.8.24 and emits a manifest that validates against `schemas/tokenhost-release-manifest.schema.json`.
+- Artifact digests use SPEC 11.6.1 directory digest shape (`version: 1, files[]`) and RFC8785+sha256 hashing.
+- `th deploy` deploys to anvil/sepolia via viem and updates the manifest with real addresses + block number.
+
+Remaining:
+- Package artifacts (`sources.tgz`, `compiled.tgz`, UI bundle) and record/serve URLs.
+- Chain config artifact integration + digest recording.
+- Real `th verify` (Etherscan/Sourcify) and end-to-end Sepolia verified deploy.
+
+## Phase 5: CLI (SPEC 12)
+
+Goal: replace ad-hoc scripts with a coherent CLI that runs locally and in CI.
+
+- Implement minimal `th` commands:
+  - `th init`, `th validate`, `th generate`, `th build`, `th deploy`, `th verify`, `th doctor`.
+- Add `th migrate` and stubs for chain migration/indexer hooks as needed.
+
+Phase 5 progress (done/partial):
+- Implemented: `th init`, `th validate`, `th import-legacy`, `th generate` (contracts only), `th build`, `th deploy`, `th verify` (stub), `th doctor`.
+
+Remaining:
+- `th generate` UI generation (SPEC 8), `th publish` (if/when in scope), real `th verify`.
+- `th migrate` implementation + `migrate-chain` implementation (currently stubs).
+
+## Out of scope for this repo (unless we explicitly pull it in)
+
+- Managed platform API / Studio backend (SPEC 13).
+- Hosted observability/audit services (SPEC 14) beyond local/CI logging.
+- Compliance / enterprise controls (SPEC 15) beyond baseline secure engineering practices.
+
+## CEO decision points (blocking choices)
+
+- Contract architecture: stay “per-record contracts” (legacy) vs move to mapping-based CRUD per SPEC (recommended for v1).
+- SDK choice for runtime + deploy tooling: viem vs ethers v6 (spec allows either; pick one).
+- Back-compat strategy: support legacy `contracts.json` indefinitely vs one-time migration to THS.

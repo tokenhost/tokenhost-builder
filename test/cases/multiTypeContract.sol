@@ -11,8 +11,8 @@ contract MultiType_contract {
 	address public owner;
 	address public refContract;
 
-	constructor(uint _id, bool _active, string memory _description, string memory _image, address _refContract) {
-		owner = tx.origin;
+	constructor(address _owner, uint _id, bool _active, string memory _description, string memory _image, address _refContract) {
+		owner = _owner;
 		id = _id;
 		active = _active;
 		description = _description;
@@ -200,6 +200,7 @@ contract App {
 
 	function new_MultiType(uint id, bool active, string memory description, string memory image, address refContract) public returns (address) {
 		address mynew = address(new MultiType_contract({
+			_owner : msg.sender,
 			_id : id,
 			_active : active,
 			_description : description,

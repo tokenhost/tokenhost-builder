@@ -1,6 +1,13 @@
 node_modules
 site
 tokenhost-web-template/config
+out
+cache
+artifacts
+dist
+.next
+.turbo
+coverage
 .env
 .env.local
 .env.*.local

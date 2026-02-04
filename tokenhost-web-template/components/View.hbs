@@ -9,8 +9,13 @@ export default (props) => {
 
   function reference_contract_link(){
     if(props.reference_contract){
+      const referenceField = props.reference_field || props.reference_contract;
+      const address = data ? data[referenceField] : null;
+      if(!address){
+        return (<></>);
+      }
       return (
-                    <Link href={"/{{contract}}{{reference_contract}}?address="+data[props.reference_contract]} className="button is-warning has-text-white is-bold">
+                    <Link href={"/{{contract}}{{reference_contract}}?address="+address} className="button is-warning has-text-white is-bold">
                       <span>View all {{contract}} with same {{reference_contract}}</span>
                     </Link>
       ) 
@@ -19,7 +24,6 @@ export default (props) => {
     }
   }
   function reverse_reference_contract_link(){
-console.log('data',data)
       return (
               <>
   {{#each this_reverse_references }}

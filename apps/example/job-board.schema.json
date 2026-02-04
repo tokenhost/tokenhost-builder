@@ -1,0 +1,45 @@
+{
+  "thsVersion": "2025-12",
+  "schemaVersion": "0.1.0",
+  "app": {
+    "name": "Job Board",
+    "slug": "job-board",
+    "features": {
+      "uploads": true,
+      "onChainIndexing": true
+    }
+  },
+  "collections": [
+    {
+      "name": "Candidate",
+      "fields": [
+        { "name": "handle", "type": "string", "required": true },
+        { "name": "bio", "type": "string" },
+        { "name": "photo", "type": "image" }
+      ],
+      "createRules": { "required": ["handle"], "access": "public" },
+      "visibilityRules": { "gets": ["handle", "bio", "photo"], "access": "public" },
+      "updateRules": { "mutable": ["bio", "photo"], "access": "owner" },
+      "deleteRules": { "softDelete": true, "access": "owner" },
+      "indexes": { "unique": [{ "field": "handle", "scope": "allTime" }], "index": [] }
+    },
+    {
+      "name": "JobPosting",
+      "fields": [
+        { "name": "title", "type": "string", "required": true },
+        { "name": "description", "type": "string" },
+        { "name": "salary", "type": "decimal", "decimals": 2 }
+      ],
+      "createRules": {
+        "required": ["title"],
+        "payment": { "asset": "native", "amountWei": "10000000000000000" },
+        "access": "public"
+      },
+      "visibilityRules": { "gets": ["title", "description", "salary"], "access": "public" },
+      "updateRules": { "mutable": ["description", "salary"], "access": "owner" },
+      "deleteRules": { "softDelete": true, "access": "owner" },
+      "indexes": { "unique": [], "index": [] }
+    }
+  ]
+}
+

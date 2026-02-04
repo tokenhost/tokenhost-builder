@@ -6,14 +6,14 @@ import { contract, w3 , getMetamaskAddress} from '../../helpers/Web3Helper'
 export default function Send(props) {
 
     {{#if reference_contract}}
-      const {{reference_contract}}_address = props.{{reference_contract}}_address
+      const {{reference_field}}_address = props.{{reference_field}}_address
     {{/if}}
 
   {{#each contract_data.initRules.passIn}}
 
 
-    {{#if (eq this ../reference_contract)}}
-      const [{{this}}, set{{this}}] = useState({{../reference_contract}}_address) {{! loop over the pass in elements contract_data.initRules.passIn}}
+    {{#if (eq this ../reference_field)}}
+      const [{{this}}, set{{this}}] = useState({{../reference_field}}_address) {{! loop over the pass in elements contract_data.initRules.passIn}}
     {{else}}
       const [{{this}}, set{{this}}] = useState("") {{! loop over the pass in elements contract_data.initRules.passIn}}
     {{/if}}
@@ -76,7 +76,7 @@ export default function Send(props) {
             .then(() => {
               setSendStatus('')
                 {{#each contract_data.initRules.passIn}}
-                  {{#if (eq this ../reference_contract)}}
+                  {{#if (eq this ../reference_field)}}
                   {{else}}
                       set{{this}}("")
                   {{/if}}
@@ -94,11 +94,11 @@ export default function Send(props) {
         {{#each contract_data.initRules.passIn}}
 
 
-        {{#if (eq this ../reference_contract)}}
+        {{#if (eq this ../reference_field)}}
 
             <input type="hidden"
               name="{{this}}"
-              value={ {{../reference_contract}}_address    }
+              value={ {{../reference_field}}_address    }
             />
         {{else}}
 

@@ -2,6 +2,7 @@
 function make_contract_references(contracts){
   var contract_references = {}
   var reverse_contract_references = {}
+  var field_lookup = {}
   //convert image to string:
   for (const ContractName in contracts) {
     const contract = contracts[ContractName]
@@ -19,13 +20,17 @@ function make_contract_references(contracts){
         if(!reverse_contract_references[type]){
           reverse_contract_references[type] = []
         }
+        if(!field_lookup[ContractName]){
+          field_lookup[ContractName] = {}
+        }
         contract_references[ContractName].push(type)
+        field_lookup[ContractName][type] = field
         reverse_contract_references[type].push(ContractName)
       }
 
     }
   }
-  return [contract_references, reverse_contract_references]
+  return [contract_references, reverse_contract_references, field_lookup]
 }
 
 
@@ -34,7 +39,7 @@ const Handlebars = require('handlebars')
 const fs = require('fs')
 let contracts = JSON.parse(fs.readFileSync('contracts.json'))
 
-const [contract_references, reverse_contract_references] = make_contract_references(contracts.contracts);
+const [contract_references, reverse_contract_references, field_lookup] = make_contract_references(contracts.contracts);
 
 let index_template = fs.readFileSync(
   'tokenhost-web-template/pages/index.hbs',
@@ -123,9 +128,10 @@ let PagerTemplate = Handlebars.compile(
 
 for (var contract in contracts.contracts) {
   const contract_data = contracts.contracts[contract]
-  var reference_contract = contract_references[contract];
+  var reference_contract = contract_references[contract]?.[0];
+  var reference_field = undefined;
   if(reference_contract){
-    reference_contract = reference_contract.toString();
+    reference_field = (field_lookup[contract] && field_lookup[contract][reference_contract]) || reference_contract;
   }
 
   fs.writeFileSync(`site/pages/${contract}.js`, page_template({ contract }))
@@ -140,7 +146,7 @@ for (var contract in contracts.contracts) {
   )
   fs.writeFileSync(
     `site/components/${contract}/Index.js`,
-    IndexTemplate({contract, contract_data, reference_contract }),
+    IndexTemplate({contract, contract_data, reference_contract, reference_field }),
   )
 
 
@@ -153,7 +159,7 @@ for (var contract in contracts.contracts) {
   }
   fs.writeFileSync(
     `site/components/${contract}/View.js`,
-    ViewTemplate({ contract, contract_data, reference_contract, this_reverse_references }),
+    ViewTemplate({ contract, contract_data, reference_contract, reference_field, this_reverse_references }),
   )
 
   Handlebars.unregisterHelper('checkFieldIsImage')
@@ -166,27 +172,28 @@ for (var contract in contracts.contracts) {
 
 //contracts that reference other contracts
 for (parent_contract in contract_references) {
-    const reference_contract = contract_references[parent_contract];
-    const filename = `${parent_contract}${reference_contract}`
+    const refs = contract_references[parent_contract] || [];
     const contract_data = contracts.contracts[parent_contract]
-    fs.writeFileSync(
-      `site/pages/${filename}.js`,
-      UniqueTemplate({parent_contract, reference_contract }),
-    )
+    refs.forEach((reference_contract) => {
+      const reference_field = (field_lookup[parent_contract] && field_lookup[parent_contract][reference_contract]) || reference_contract;
+      const filename = `${parent_contract}${reference_contract}`
 
-    const componentfilename = `${parent_contract}/Index${reference_contract}`
+      fs.writeFileSync(
+        `site/pages/${filename}.js`,
+        UniqueTemplate({parent_contract, reference_contract, reference_field }),
+      )
 
-    fs.writeFileSync(
-      `site/components/${componentfilename}.js`,
-      UniqueTemplateIndex({parent_contract, reference_contract }),
-   )
+      const componentfilename = `${parent_contract}/Index${reference_contract}`
 
+      fs.writeFileSync(
+        `site/components/${componentfilename}.js`,
+        UniqueTemplateIndex({parent_contract, reference_contract }),
+     )
 
-  fs.writeFileSync(
-    `site/components/${parent_contract}/AddIndex.js`,
-    AddTemplate({ contract:parent_contract, reference_contract:reference_contract, contract_data, all_contracts:contracts.contracts }),
-  )
-
+      fs.writeFileSync(
+        `site/components/${parent_contract}/AddIndex${reference_contract}.js`,
+        AddTemplate({ contract:parent_contract, reference_contract, reference_field, contract_data, all_contracts:contracts.contracts }),
+      )
+    })
 
 }
-

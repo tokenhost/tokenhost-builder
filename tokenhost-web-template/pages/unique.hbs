@@ -1,7 +1,7 @@
 import React, { Component, useEffect, useState } from 'react'
 import Index from '../components/{{parent_contract}}/Index{{reference_contract}}'
 import { useRouter } from 'next/router'
-import Add from '../components/{{parent_contract}}/AddIndex'
+import Add from '../components/{{parent_contract}}/AddIndex{{reference_contract}}'
 
 import { setupAccounts } from '../helpers/Web3Helper'
 
@@ -25,10 +25,9 @@ export default (props) => {
   }
   return (
     <div className="container">
-    <Add {{reference_contract}}_address={address} />
+    <Add {{reference_field}}_address={address} />
       <Index address={address}/>
     </div>
   )
 }
-
 
