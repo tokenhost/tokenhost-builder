@@ -17,7 +17,7 @@ import {
   type ThsSchema
 } from '@tokenhost/schema';
 
-import { createPublicClient, createWalletClient, http, isAddress, isHex, keccak256, toBytes, type Address, type Hex } from 'viem';
+import { createPublicClient, createWalletClient, encodeAbiParameters, http, isAddress, isHex, keccak256, toBytes, type Address, type Hex } from 'viem';
 import { privateKeyToAccount } from 'viem/accounts';
 import { anvil, sepolia } from 'viem/chains';
 
@@ -267,6 +267,59 @@ function resolveRpcUrl(chainName: KnownChainName, chain: any, override?: string)
   throw new Error(`No RPC URL configured. Provide --rpc or set ${envKeyForChain(chainName, 'RPC_URL')} / TH_RPC_URL.`);
 }
 
+function buildChainConfigArtifact(args: { chainName: KnownChainName; chain: any; rpcUrl: string }): any {
+  const now = new Date().toISOString();
+  const isLocal = args.chainName === 'anvil';
+
+  const chainConfig: any = {
+    chainConfigVersion: '1.0.0',
+    chainId: args.chain.id,
+    name: String(args.chain?.name ?? args.chainName),
+    type: 'external-evm',
+    nativeCurrency: {
+      name: String(args.chain?.nativeCurrency?.name ?? 'Native'),
+      symbol: String(args.chain?.nativeCurrency?.symbol ?? 'NATIVE'),
+      decimals: Number(args.chain?.nativeCurrency?.decimals ?? 18)
+    },
+    trust: isLocal ? { posture: 'external', notes: 'Local dev chain' } : { posture: 'external' },
+    finality: {
+      model: isLocal ? 'instant' : 'probabilistic',
+      recommendedConfirmations: isLocal ? 0 : 2,
+      typicalSeconds: isLocal ? 1 : 12
+    },
+    rpc: {
+      endpoints: [
+        {
+          url: args.rpcUrl,
+          kind: 'public',
+          priority: 0,
+          capabilities: {
+            batching: true,
+            subscriptions: args.rpcUrl.startsWith('ws') || args.rpcUrl.startsWith('wss')
+          }
+        }
+      ]
+    },
+    issuer: {
+      name: 'Token Host (local)',
+      issuedAt: now
+    },
+    signatures: [{ alg: 'none', sig: 'UNSIGNED' }]
+  };
+
+  if (args.chainName === 'sepolia') {
+    chainConfig.explorers = [
+      {
+        name: 'Etherscan',
+        url: 'https://sepolia.etherscan.io',
+        apiUrl: 'https://api-sepolia.etherscan.io/api'
+      }
+    ];
+  }
+
+  return chainConfig;
+}
+
 const ANVIL_DEFAULT_PRIVATE_KEY: Hex = '0xac0974bec39a17e36ba4a6b4d238ff944bacb478cbed5efcae784d7bf4f2ff80';
 
 function normalizePrivateKey(privateKey: string): Hex {
@@ -323,6 +376,19 @@ function validateManifest(manifest: any): { ok: boolean; errors: unknown } {
   addFormats(ajv);
   const validate = ajv.compile(manifestSchema as any);
   const ok = Boolean(validate(manifest));
+  return { ok, errors: validate.errors };
+}
+
+function loadChainConfigSchema(): any {
+  return loadRepoSchema('schemas/tokenhost-chain-config.schema.json');
+}
+
+function validateChainConfig(chainConfig: any): { ok: boolean; errors: unknown } {
+  const chainSchema = loadChainConfigSchema();
+  const ajv = new Ajv2020({ allErrors: true, strict: false });
+  addFormats(ajv);
+  const validate = ajv.compile(chainSchema as any);
+  const ok = Boolean(validate(chainConfig));
   return { ok, errors: validate.errors };
 }
 
@@ -848,6 +914,28 @@ program
         blockNumber: Number(receipt.blockNumber ?? 0n)
       };
 
+      // Emit a chain config artifact and reference it from this deployment.
+      const chainConfig = buildChainConfigArtifact({ chainName, chain, rpcUrl });
+      const chainSigningKey = loadManifestSigningKey();
+      if (chainSigningKey) {
+        chainConfig.signatures = [signManifest(chainConfig, chainSigningKey)];
+      }
+      const chainCfgValidation = validateChainConfig(chainConfig);
+      if (!chainCfgValidation.ok) {
+        throw new Error(`Generated chain config did not validate:\n${JSON.stringify(chainCfgValidation.errors, null, 2)}`);
+      }
+
+      const chainConfigDir = path.join(resolvedBuildDir, 'chain-config');
+      ensureDir(chainConfigDir);
+      const chainConfigPath = path.join(chainConfigDir, `${chainName}.json`);
+      fs.writeFileSync(chainConfigPath, JSON.stringify(chainConfig, null, 2));
+      const chainConfigDigest = computeSchemaHash(chainConfig);
+      (deployment as any).chainConfig = {
+        url: toFileUrl(chainConfigPath),
+        digest: chainConfigDigest,
+        chainConfigVersion: chainConfig.chainConfigVersion
+      };
+
       // Replace existing deployment entry for (role, chainId) if it exists; otherwise append.
       manifest.deployments = Array.isArray(manifest.deployments) ? manifest.deployments : [];
       const zeroAddress = '0x0000000000000000000000000000000000000000';
@@ -898,20 +986,40 @@ program
 program
   .command('verify')
   .argument('<buildDir>', 'Directory created by `th build` (contains manifest.json)')
-  .description('Verify deployed contracts on explorers (stub)')
+  .description('Verify deployed contracts on explorers (Etherscan + Sourcify)')
   .option('--chain <name>', 'Chain name (anvil|sepolia)', 'sepolia')
-  .option('--set-verified', 'Mark deployment verified in manifest (manual override)', false)
-  .action((buildDir: string, opts: { chain: string; setVerified: boolean }) => {
+  .option('--rpc <url>', 'RPC URL override (used by verifier tooling)')
+  .option('--verifier <v>', 'Verifier to use (etherscan|sourcify|both)', 'both')
+  .option('--etherscan-api-key <key>', 'Etherscan API key override')
+  .option('--no-watch', 'Do not wait for verification results')
+  .action((buildDir: string, opts: { chain: string; rpc?: string; verifier: string; etherscanApiKey?: string; watch: boolean }) => {
     const resolvedBuildDir = path.resolve(buildDir);
     const manifestPath = path.join(resolvedBuildDir, 'manifest.json');
+    const compiledPath = path.join(resolvedBuildDir, 'compiled', 'App.json');
+    const sourcePath = path.join(resolvedBuildDir, 'contracts', 'App.sol');
+
     if (!fs.existsSync(manifestPath)) {
       console.error(`Missing manifest.json in ${resolvedBuildDir}. Run \`th build\` first.`);
       process.exitCode = 1;
       return;
     }
+    if (!fs.existsSync(compiledPath)) {
+      console.error(`Missing compiled/App.json in ${resolvedBuildDir}. Run \`th build\` first.`);
+      process.exitCode = 1;
+      return;
+    }
+    if (!fs.existsSync(sourcePath)) {
+      console.error(`Missing contracts/App.sol in ${resolvedBuildDir}. Run \`th build\` first.`);
+      process.exitCode = 1;
+      return;
+    }
 
     const manifest = readJsonFile(manifestPath) as any;
-    const { chain } = resolveKnownChain(opts.chain);
+    const compiled = readJsonFile(compiledPath) as any;
+    const source = fs.readFileSync(sourcePath, 'utf-8');
+
+    const { chainName, chain } = resolveKnownChain(opts.chain);
+    const rpcUrl = resolveRpcUrl(chainName, chain, opts.rpc);
 
     const deployments = Array.isArray(manifest.deployments) ? manifest.deployments : [];
     const target = deployments.find((d: any) => d && d.role === 'primary' && d.chainId === chain.id);
@@ -921,25 +1029,154 @@ program
       return;
     }
 
-    if (opts.setVerified) {
-      target.verified = true;
-      if (Array.isArray(target.contracts)) {
-        for (const c of target.contracts) c.verified = true;
-      }
-      const validation = validateManifest(manifest);
-      if (!validation.ok) {
-        console.error(`Updated manifest failed validation:\n${JSON.stringify(validation.errors, null, 2)}`);
-        process.exitCode = 1;
-        return;
-      }
-      fs.writeFileSync(manifestPath, JSON.stringify(manifest, null, 2));
-      console.log(`Marked verified in ${manifestPath}`);
+    const addr = String(target.deploymentEntrypointAddress || '');
+    const zeroAddress = '0x0000000000000000000000000000000000000000';
+    if (addr.toLowerCase() === zeroAddress) {
+      console.error('deploymentEntrypointAddress is 0x0. Run `th deploy` first.');
+      process.exitCode = 1;
+      return;
+    }
+    const contractAddress = normalizeAddress(addr, 'deploymentEntrypointAddress');
+
+    const verifier = String(opts.verifier || 'both').toLowerCase();
+    const wantEtherscan = verifier === 'both' || verifier === 'etherscan';
+    const wantSourcify = verifier === 'both' || verifier === 'sourcify';
+
+    const etherscanKey = (() => {
+      if (!wantEtherscan) return null;
+      if (opts.etherscanApiKey) return opts.etherscanApiKey;
+      return process.env[envKeyForChain(chainName, 'ETHERSCAN_API_KEY')] || process.env.ETHERSCAN_API_KEY || null;
+    })();
+
+    if (wantEtherscan && !etherscanKey) {
+      console.error(`Missing Etherscan API key. Set ${envKeyForChain(chainName, 'ETHERSCAN_API_KEY')} or ETHERSCAN_API_KEY (or pass --etherscan-api-key).`);
+      process.exitCode = 1;
       return;
     }
 
-    console.log('Explorer verification is not implemented yet.');
-    console.log('For now, verify manually and re-run:');
-    console.log(`  th verify ${resolvedBuildDir} --chain ${opts.chain} --set-verified`);
+    // Encode constructor args if needed.
+    const ctorInputs = findConstructorInputs(compiled?.abi);
+    const ctorArgsEncoded = (() => {
+      if (ctorInputs.length === 0) return null;
+      if (ctorInputs.length === 2) {
+        const adminAddress = normalizeAddress(String(target.adminAddress || ''), 'adminAddress');
+        const treasuryAddress = normalizeAddress(String(target.treasuryAddress || ''), 'treasuryAddress');
+        const params = ctorInputs.map((i: any) => ({ type: String(i.type) }));
+        return encodeAbiParameters(params as any, [adminAddress, treasuryAddress] as any);
+      }
+      throw new Error(`Unsupported constructor arity for verification (${ctorInputs.length}).`);
+    })();
+
+    const verifyRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'tokenhost-verify-'));
+    const foundryToml = [
+      '[profile.default]',
+      'src = "contracts"',
+      'out = "out"',
+      'libs = ["lib"]',
+      'solc_version = "0.8.24"',
+      'optimizer = true',
+      'optimizer_runs = 200',
+      ''
+    ].join('\n');
+
+    let etherscanOk = false;
+    let sourcifyOk = false;
+
+    function runForge(args: string[]): boolean {
+      const res = spawnSync('forge', args, { stdio: 'inherit' });
+      return res.status === 0;
+    }
+
+    try {
+      ensureDir(path.join(verifyRoot, 'contracts'));
+      fs.writeFileSync(path.join(verifyRoot, 'contracts', 'App.sol'), source);
+      fs.writeFileSync(path.join(verifyRoot, 'foundry.toml'), foundryToml);
+
+      const contractId = 'contracts/App.sol:App';
+      const commonArgs: string[] = [
+        'verify-contract',
+        '--root',
+        verifyRoot,
+        '--chain',
+        String(chain.id),
+        '--rpc-url',
+        rpcUrl,
+        '--compiler-version',
+        '0.8.24',
+        '--num-of-optimizations',
+        '200'
+      ];
+
+      if (opts.watch) commonArgs.push('--watch');
+      if (ctorArgsEncoded) commonArgs.push('--constructor-args', ctorArgsEncoded);
+
+      if (wantEtherscan) {
+        console.log(`Verifying on Etherscan (${chainName})...`);
+        etherscanOk = runForge([
+          ...commonArgs,
+          '--verifier',
+          'etherscan',
+          '--etherscan-api-key',
+          String(etherscanKey),
+          contractAddress,
+          contractId
+        ]);
+      }
+
+      if (wantSourcify) {
+        console.log(`Verifying on Sourcify (${chainName})...`);
+        sourcifyOk = runForge([...commonArgs, '--verifier', 'sourcify', contractAddress, contractId]);
+      }
+    } catch (e: any) {
+      console.error(String(e?.message ?? e));
+      process.exitCode = 1;
+      return;
+    } finally {
+      fs.rmSync(verifyRoot, { recursive: true, force: true });
+    }
+
+    const verified = (wantEtherscan ? etherscanOk : true) && (wantSourcify ? sourcifyOk : true);
+
+    // Update manifest verification flags.
+    target.verified = verified;
+    if (Array.isArray(target.contracts)) {
+      for (const c of target.contracts) c.verified = verified;
+    }
+
+    manifest.extensions = manifest.extensions ?? {};
+    manifest.extensions.verification = {
+      ...(manifest.extensions.verification ?? {}),
+      [String(chain.id)]: {
+        at: new Date().toISOString(),
+        etherscan: wantEtherscan ? { ok: etherscanOk } : { ok: null },
+        sourcify: wantSourcify ? { ok: sourcifyOk } : { ok: null }
+      }
+    };
+
+    // Re-sign manifest after mutating verification status.
+    const signingKey = loadManifestSigningKey();
+    if (signingKey) {
+      manifest.signatures = [signManifest(manifest, signingKey)];
+    } else {
+      manifest.signatures = [{ alg: 'none', sig: 'UNSIGNED' }];
+    }
+
+    const validation = validateManifest(manifest);
+    if (!validation.ok) {
+      console.error(`Updated manifest failed validation:\n${JSON.stringify(validation.errors, null, 2)}`);
+      process.exitCode = 1;
+      return;
+    }
+
+    fs.writeFileSync(manifestPath, JSON.stringify(manifest, null, 2));
+
+    if (!verified) {
+      console.error('Verification did not fully succeed.');
+      process.exitCode = 1;
+      return;
+    }
+
+    console.log(`Verified and updated ${manifestPath}`);
   });
 
 program
