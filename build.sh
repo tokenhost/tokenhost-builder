@@ -12,12 +12,10 @@ cp App_sol_App.abi App_sol_App.json
 
 rm -rf site
 cp -r tokenhost-web-template site
-(
-cd site
-yarn
-yarn add sass #todo automate this
-
-)
+	(
+	cd site
+	yarn
+	)
 
 
 node handlebar.cjs

@@ -131,8 +131,26 @@ function generateContractDefinition(contractName, contract) {
   }
   contractCode += `\n`;
 
+  // Auto fields that were previously implemented via tx.origin inside the child
+  // contract must be set by the App (caller) to avoid using tx.origin and to
+  // preserve the originating caller address.
+  const auto = contract.initRules?.auto || {};
+  const callerAutoFields = Object.entries(auto)
+    .filter(([, expr]) => expr === 'tx.origin' || expr === 'msg.sender' || expr === '_msgSender()')
+    .map(([field]) => field)
+    // Avoid collisions if a field is also listed in passIn.
+    .filter(field => !contract.initRules.passIn.includes(field));
+
   // Build the constructor parameters based on initRules.passIn.
   // Use "string memory" for strings (or images) instead of "image memory".
+  const callerAutoParams = callerAutoFields
+    .map(field => {
+      const fieldType = contract.fields[field];
+      const type = (fieldType === 'string' || fieldType === 'image') ? 'string memory' : contract.fields_types[field];
+      return `${type} _${field}`;
+    })
+    .join(', ');
+
   const passInParams = contract.initRules.passIn
     .map(field => {
       let type;
@@ -145,12 +163,20 @@ function generateContractDefinition(contractName, contract) {
     })
     .join(', ');
 
-  contractCode += `\tconstructor(${passInParams}) {\n`;
+  const ctorParams = [callerAutoParams, passInParams].filter(Boolean).join(', ');
+  contractCode += `\tconstructor(${ctorParams}) {\n`;
 
   // Initialize auto-assigned fields.
   for (const autoField in contract.initRules.auto) {
     const value = contract.initRules.auto[autoField];
-    contractCode += `\t\t${autoField} = ${value};\n`;
+    if (callerAutoFields.includes(autoField)) {
+      contractCode += `\t\t${autoField} = _${autoField};\n`;
+    } else if (value === 'tx.origin') {
+      // Defensive fallback: never emit tx.origin even if the schema still has it.
+      contractCode += `\t\t${autoField} = msg.sender;\n`;
+    } else {
+      contractCode += `\t\t${autoField} = ${value};\n`;
+    }
   }
   // Assign pass-in parameters to state variables.
   contract.initRules.passIn.forEach(field => {
@@ -385,9 +411,17 @@ function generateNewContractFunction(contractName, contract, contractReferences,
 
   // Instantiate the new contract.
   code += `\t\taddress mynew = address(new ${contractName}_contract({\n`;
-  code += contract.initRules.passIn
-    .map(field => `\t\t\t_${field} : ${field}`)
-    .join(',\n');
+  const auto = contract.initRules?.auto || {};
+  const callerAutoFields = Object.entries(auto)
+    .filter(([, expr]) => expr === 'tx.origin' || expr === 'msg.sender' || expr === '_msgSender()')
+    .map(([field]) => field)
+    .filter(field => !contract.initRules.passIn.includes(field));
+
+  const ctorArgs = [
+    ...callerAutoFields.map(field => `\t\t\t_${field} : msg.sender`),
+    ...contract.initRules.passIn.map(field => `\t\t\t_${field} : ${field}`)
+  ];
+  code += ctorArgs.join(',\n');
   code += `\n\t\t}));\n\n`;
 
   // --- UPDATE UNIQUE INDEX MAPPINGS ---
@@ -446,9 +480,8 @@ function generateNewContractFunction(contractName, contract, contractReferences,
   return code;
 }
 
-// Main execution: load contracts from the provided file (or default to "contracts.json"),
-// process field types, and generate the Solidity code.
-(function main() {
+// Main execution: only run when invoked directly (avoid side effects during tests/imports).
+function main() {
   try {
     const args = process.argv.slice(2);
     const jsonFile = args[0] || 'contracts.json';
@@ -460,8 +493,15 @@ function generateNewContractFunction(contractName, contract, contractReferences,
     console.log(solidityCode);
   } catch (error) {
     console.error('Error generating Solidity code:', error);
+    process.exitCode = 1;
   }
-})();
+}
+
+// Node ESM equivalent of "require.main === module"
+import { pathToFileURL } from 'url';
+import path from 'path';
+const isMain = import.meta.url === pathToFileURL(path.resolve(process.argv[1] || '')).href;
+if (isMain) main();
 
 export {
   loadContracts,
@@ -477,4 +517,3 @@ export {
   generateUserInfo,
   generateNewContractFunction
 };
-

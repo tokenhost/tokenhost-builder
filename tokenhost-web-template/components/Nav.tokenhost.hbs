@@ -4,7 +4,7 @@ import Router from 'next/router'
 
 import { generateKeys } from '../helpers/Web3Helper'
 
-const authBaseUrl = (process.env.NEXT_PUBLIC_GOOGLE_AUTH_DOMAIN || process.env.REACT_APP_GOOGLE_AUTH_DOMAIN || '').replace(/\/$/, '');
+const authBaseUrl = (process.env.NEXT_PUBLIC_GOOGLE_AUTH_DOMAIN || '').replace(/\/$/, '');
 const authUrl = (path) => (authBaseUrl ? `${authBaseUrl}${path}` : path);
 
 export default class TheNav extends Component {

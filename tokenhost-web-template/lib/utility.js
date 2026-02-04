@@ -1,5 +1,5 @@
 
-const authBaseUrl = (process.env.NEXT_PUBLIC_GOOGLE_AUTH_DOMAIN || process.env.REACT_APP_GOOGLE_AUTH_DOMAIN || '').replace(/\/$/, '');
+const authBaseUrl = (process.env.NEXT_PUBLIC_GOOGLE_AUTH_DOMAIN || '').replace(/\/$/, '');
 
 function authUrl(path) {
   if (!authBaseUrl) {
