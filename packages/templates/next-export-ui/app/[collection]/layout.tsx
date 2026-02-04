@@ -1,6 +1,6 @@
 import Link from 'next/link';
 
-import { ths } from '../../src/generated/ths';
+import { ths } from '../../src/lib/ths';
 
 export const dynamicParams = false;
 

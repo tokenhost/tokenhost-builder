@@ -1,7 +1,76 @@
-import { ths } from '../generated/ths';
+import { ths as thsConst } from '../generated/ths';
 
-export type ThsCollection = (typeof ths.collections)[number];
-export type ThsField = ThsCollection['fields'][number];
+// Keep UI types schema-agnostic. The generated `ths` const is per-schema and would otherwise
+// narrow unions (e.g. a schema without `uint256` fields would make `field.type === 'uint256'`
+// a type error during `next build`).
+export type FieldType =
+  | 'string'
+  | 'uint256'
+  | 'int256'
+  | 'decimal'
+  | 'bool'
+  | 'address'
+  | 'bytes32'
+  | 'image'
+  | 'reference'
+  | 'externalReference';
+
+export type Access = 'public' | 'owner' | 'allowlist' | 'role';
+
+export interface ThsField {
+  name: string;
+  type: FieldType;
+  required?: boolean;
+  decimals?: number;
+  default?: unknown;
+  validation?: Record<string, unknown>;
+  ui?: Record<string, unknown>;
+}
+
+export interface PaymentRule {
+  asset?: 'native';
+  amountWei: string;
+}
+
+export interface ThsCollection {
+  name: string;
+  plural?: string;
+  fields: ThsField[];
+  createRules: {
+    required: string[];
+    payment?: PaymentRule;
+    access: Access;
+  };
+  updateRules: {
+    mutable: string[];
+    access: Access;
+    optimisticConcurrency?: boolean;
+  };
+  deleteRules: {
+    softDelete: boolean;
+    access: Access;
+  };
+  transferRules?: {
+    access: Access;
+  };
+  relations?: Array<Record<string, unknown>>;
+  indexes?: Record<string, unknown>;
+  ui?: Record<string, unknown>;
+}
+
+export interface ThsSchema {
+  thsVersion: string;
+  schemaVersion: string;
+  app: {
+    name: string;
+    slug: string;
+    features?: Record<string, unknown>;
+  };
+  collections: ThsCollection[];
+  metadata?: Record<string, unknown>;
+}
+
+export const ths = thsConst as unknown as ThsSchema;
 
 export function getCollection(name: string): ThsCollection | null {
   return (ths.collections as any[]).find((c) => c && c.name === name) ?? null;

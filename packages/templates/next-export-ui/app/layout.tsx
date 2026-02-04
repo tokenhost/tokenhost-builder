@@ -3,7 +3,7 @@ import './globals.css';
 import React from 'react';
 
 import ConnectButton from '../src/components/ConnectButton';
-import { ths } from '../src/generated/ths';
+import { ths } from '../src/lib/ths';
 
 export const metadata = {
   title: `${ths.app.name} - Token Host`,
