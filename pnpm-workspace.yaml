@@ -1,5 +1,4 @@
 packages:
   - "packages/*"
   - "apps/*"
-  - "tokenhost-web-template"
-
+  # Legacy template (deprecated pipeline). Kept in-repo but excluded from workspace installs/CI.
