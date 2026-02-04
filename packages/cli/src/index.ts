@@ -12,6 +12,8 @@ import {
   computeSchemaHash,
   importLegacyContractsJson,
   lintThs,
+  listThsMigrations,
+  migrateThsSchema,
   validateThsStructural,
   type Issue,
   type ThsSchema
@@ -1182,10 +1184,71 @@ program
 program
   .command('migrate')
   .argument('<schema>', 'Path to THS schema JSON file')
-  .description('Apply schema migrations locally (stub)')
-  .action(() => {
-    console.error('th migrate is not implemented yet (no migrations registry wired).');
-    process.exitCode = 1;
+  .description('Apply local THS schema migrations')
+  .option('--list', 'List known migrations and exit', false)
+  .option('--down', 'Apply down migrations (revert)', false)
+  .option('--steps <n>', 'Number of migrations to apply (default: all for up; 1 for down)')
+  .option('--in-place', 'Overwrite the input schema file', false)
+  .option('--out <file>', 'Write migrated schema JSON to a file (defaults to stdout)')
+  .action((schemaPath: string, opts: { list: boolean; down: boolean; steps?: string; inPlace: boolean; out?: string }) => {
+    if (opts.list) {
+      const migrations = listThsMigrations();
+      for (const m of migrations) {
+        console.log(`${m.id} - ${m.description}`);
+      }
+      return;
+    }
+
+    if (opts.inPlace && opts.out) {
+      console.error('ERROR: --in-place and --out are mutually exclusive.');
+      process.exitCode = 1;
+      return;
+    }
+
+    const input = readJsonFile(schemaPath);
+    const structural = validateThsStructural(input);
+    if (!structural.ok) {
+      console.error(formatIssues(structural.issues));
+      process.exitCode = 1;
+      return;
+    }
+
+    const schema = structural.data!;
+
+    const steps = (() => {
+      if (typeof opts.steps !== 'string' || opts.steps.trim() === '') return undefined;
+      const n = Number(opts.steps);
+      if (!Number.isFinite(n) || n < 0) throw new Error('Invalid --steps value. Expected a non-negative number.');
+      return Math.floor(n);
+    })();
+
+    const direction = opts.down ? 'down' : 'up';
+    const effectiveSteps = steps ?? (direction === 'down' ? 1 : undefined);
+
+    const res = migrateThsSchema(schema, { direction, steps: effectiveSteps });
+    const migrated = res.schema;
+
+    // Ensure the migrated schema still validates and lints cleanly.
+    const lintIssues = lintThs(migrated);
+    const errors = lintIssues.filter((i) => i.severity === 'error');
+    if (errors.length > 0) {
+      console.error(formatIssues(lintIssues));
+      process.exitCode = 1;
+      return;
+    }
+
+    const outJson = JSON.stringify(migrated, null, 2);
+    if (opts.inPlace) {
+      fs.writeFileSync(schemaPath, outJson);
+    } else if (opts.out) {
+      ensureDir(path.dirname(opts.out));
+      fs.writeFileSync(opts.out, outJson);
+    } else {
+      console.log(outJson);
+    }
+
+    const appliedMsg = res.appliedNow.length > 0 ? res.appliedNow.join(', ') : '(none)';
+    console.error(`migrations (${direction}) applied: ${appliedMsg}`);
   });
 
 program
