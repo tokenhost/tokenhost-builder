@@ -1,0 +1,10 @@
+{
+  "deployments": [
+    {
+      "role": "primary",
+      "chainId": 31337,
+      "deploymentEntrypointAddress": "0x0000000000000000000000000000000000000000"
+    }
+  ]
+}
+
