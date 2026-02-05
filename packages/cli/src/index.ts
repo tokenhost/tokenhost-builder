@@ -1021,7 +1021,8 @@ program
   .option('--verifier <v>', 'Verifier to use (etherscan|sourcify|both)', 'both')
   .option('--etherscan-api-key <key>', 'Etherscan API key override')
   .option('--no-watch', 'Do not wait for verification results')
-  .action((buildDir: string, opts: { chain: string; rpc?: string; verifier: string; etherscanApiKey?: string; watch: boolean }) => {
+  .option('--dry-run', 'Print forge commands and exit', false)
+  .action((buildDir: string, opts: { chain: string; rpc?: string; verifier: string; etherscanApiKey?: string; watch: boolean; dryRun: boolean }) => {
     const resolvedBuildDir = path.resolve(buildDir);
     const manifestPath = path.join(resolvedBuildDir, 'manifest.json');
     const compiledPath = path.join(resolvedBuildDir, 'compiled', 'App.json');
@@ -1093,8 +1094,25 @@ program
         const params = ctorInputs.map((i: any) => ({ type: String(i.type) }));
         return encodeAbiParameters(params as any, [adminAddress, treasuryAddress] as any);
       }
-      throw new Error(`Unsupported constructor arity for verification (${ctorInputs.length}).`);
+      const inputs = ctorInputs
+        .map((i: any) => `${String(i.type ?? '')}${i.name ? ` ${String(i.name)}` : ''}`)
+        .join(', ');
+      throw new Error(
+        `Unsupported constructor for verification. ` +
+          `Expected 0 inputs, or 2 inputs (adminAddress, treasuryAddress), got ${ctorInputs.length}: ${inputs || '(unknown)'}.`
+      );
     })();
+
+    // Foundry is required for verification (but allow --dry-run without forge installed).
+    if (!opts.dryRun) {
+      const forgeVersion = spawnSync('forge', ['--version'], { encoding: 'utf-8' });
+      if (forgeVersion.error && (forgeVersion.error as any).code === 'ENOENT') {
+        console.error('Missing Foundry: `forge` not found on PATH.');
+        console.error('Install Foundry from https://book.getfoundry.sh/getting-started/installation and retry.');
+        process.exitCode = 1;
+        return;
+      }
+    }
 
     const verifyRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'tokenhost-verify-'));
     const foundryToml = [
@@ -1111,10 +1129,30 @@ program
     let etherscanOk = false;
     let sourcifyOk = false;
 
-    function runForge(args: string[]): boolean {
-      const res = spawnSync('forge', args, { stdio: 'inherit' });
-      return res.status === 0;
+    function tail(s: string, maxChars = 8000): string {
+      if (!s) return '';
+      return s.length <= maxChars ? s : s.slice(s.length - maxChars);
     }
+
+    function cmdString(cmd: string, args: string[]): string {
+      return [cmd, ...args].map((a) => (/\s/.test(a) ? JSON.stringify(a) : a)).join(' ');
+    }
+
+    function runForge(args: string[]): { ok: boolean; status: number | null; cmd: string; stdout: string; stderr: string } {
+      const cmd = cmdString('forge', args);
+      const res = spawnSync('forge', args, { encoding: 'utf-8' });
+      const stdout = res.stdout ?? '';
+      const stderr = res.stderr ?? '';
+      if (stdout) process.stdout.write(stdout);
+      if (stderr) process.stderr.write(stderr);
+      if (res.error && (res.error as any).code === 'ENOENT') {
+        return { ok: false, status: null, cmd, stdout: '', stderr: 'forge not found (ENOENT)' };
+      }
+      return { ok: res.status === 0, status: res.status ?? null, cmd, stdout, stderr };
+    }
+
+    let etherscanResult: ReturnType<typeof runForge> | null = null;
+    let sourcifyResult: ReturnType<typeof runForge> | null = null;
 
     try {
       ensureDir(path.join(verifyRoot, 'contracts'));
@@ -1140,8 +1178,7 @@ program
       if (ctorArgsEncoded) commonArgs.push('--constructor-args', ctorArgsEncoded);
 
       if (wantEtherscan) {
-        console.log(`Verifying on Etherscan (${chainName})...`);
-        etherscanOk = runForge([
+        const args = [
           ...commonArgs,
           '--verifier',
           'etherscan',
@@ -1149,13 +1186,32 @@ program
           String(etherscanKey),
           contractAddress,
           contractId
-        ]);
+        ];
+        if (opts.dryRun) {
+          console.log(cmdString('forge', args));
+        } else {
+          console.log(`Verifying on Etherscan (${chainName})...`);
+          etherscanResult = runForge(args);
+          etherscanOk = etherscanResult.ok;
+        }
       }
 
       if (wantSourcify) {
-        console.log(`Verifying on Sourcify (${chainName})...`);
-        sourcifyOk = runForge([...commonArgs, '--verifier', 'sourcify', contractAddress, contractId]);
+        const args = [...commonArgs, '--verifier', 'sourcify', contractAddress, contractId];
+        if (opts.dryRun) {
+          console.log(cmdString('forge', args));
+        } else {
+          console.log(`Verifying on Sourcify (${chainName})...`);
+          sourcifyResult = runForge(args);
+          sourcifyOk = sourcifyResult.ok;
+        }
       }
+
+      if (opts.dryRun) {
+        console.log('Dry run complete (no manifest changes written).');
+        return;
+      }
+
     } catch (e: any) {
       console.error(String(e?.message ?? e));
       process.exitCode = 1;
@@ -1177,8 +1233,24 @@ program
       ...(manifest.extensions.verification ?? {}),
       [String(chain.id)]: {
         at: new Date().toISOString(),
-        etherscan: wantEtherscan ? { ok: etherscanOk } : { ok: null },
-        sourcify: wantSourcify ? { ok: sourcifyOk } : { ok: null }
+        etherscan: wantEtherscan
+          ? {
+              ok: etherscanOk,
+              status: etherscanResult?.status ?? null,
+              cmd: etherscanResult?.cmd ?? null,
+              stdoutTail: tail(etherscanResult?.stdout ?? ''),
+              stderrTail: tail(etherscanResult?.stderr ?? '')
+            }
+          : { ok: null },
+        sourcify: wantSourcify
+          ? {
+              ok: sourcifyOk,
+              status: sourcifyResult?.status ?? null,
+              cmd: sourcifyResult?.cmd ?? null,
+              stdoutTail: tail(sourcifyResult?.stdout ?? ''),
+              stderrTail: tail(sourcifyResult?.stderr ?? '')
+            }
+          : { ok: null }
       }
     };
 
