@@ -41,45 +41,105 @@ export function makeWalletClient(chain: Chain): any {
   });
 }
 
+function extractErrorCode(e: any): string | number | null {
+  const codes = [
+    e?.code,
+    e?.cause?.code,
+    e?.cause?.cause?.code,
+    e?.data?.code,
+    e?.cause?.data?.code,
+    e?.cause?.cause?.data?.code
+  ];
+
+  for (const c of codes) {
+    if (c === undefined || c === null) continue;
+    return c;
+  }
+  return null;
+}
+
+function extractErrorMessage(e: any): string {
+  const parts = [
+    e?.shortMessage,
+    e?.message,
+    e?.cause?.message,
+    e?.cause?.cause?.message
+  ]
+    .filter(Boolean)
+    .map(String);
+
+  if (parts.length > 0) return parts.join(' | ');
+  try {
+    return JSON.stringify(e);
+  } catch {
+    return String(e ?? '');
+  }
+}
+
+function isUserRejected(e: any): boolean {
+  const code = extractErrorCode(e);
+  const msg = extractErrorMessage(e);
+  return String(code) === '4001' || /user rejected|rejected the request/i.test(msg);
+}
+
 export async function requestWalletAddress(chain: Chain): Promise<`0x${string}`> {
   const wallet = makeWalletClient(chain);
+
+  // Connect first. Some wallets behave better if the dapp is already connected before switching networks.
+  let addr: `0x${string}` | undefined;
+  try {
+    const addrs = await wallet.requestAddresses();
+    addr = addrs?.[0];
+  } catch (e: any) {
+    if (isUserRejected(e)) {
+      throw new Error('Wallet connection was rejected. Please approve the wallet connection prompt and retry.');
+    }
+    throw new Error(`Wallet connection failed. ${extractErrorMessage(e)}`);
+  }
+
+  if (!addr) throw new Error('No wallet address returned.');
+
   const currentChainId = await wallet.getChainId();
   if (currentChainId !== chain.id) {
+    const rpcUrl = resolveRpcUrl(chain);
+    const manualHint = rpcUrl
+      ? `In MetaMask, add/switch to "${chain.name}" (chainId ${chain.id}) with RPC URL ${rpcUrl}.`
+      : `Switch networks in your wallet to chainId ${chain.id}.`;
+
     try {
       await wallet.switchChain({ id: chain.id });
-    } catch (e: any) {
-      const code = e?.cause?.code ?? e?.code ?? null;
-      const msg = String(e?.shortMessage ?? e?.message ?? e ?? '');
-
-      // MetaMask uses 4902 for "Unrecognized chain" when switching to a chain that hasn't been added.
-      const looksUnrecognized =
-        String(code) === '4902' ||
-        /4902/.test(msg) ||
-        /unrecognized chain|unknown chain|not added/i.test(msg);
-
-      if (looksUnrecognized) {
-        try {
-          // Attempt to add the chain to the wallet, then retry the switch.
-          await wallet.addChain({ chain });
-          await wallet.switchChain({ id: chain.id });
-        } catch (e2: any) {
-          const msg2 = String(e2?.shortMessage ?? e2?.message ?? e2 ?? '');
-          throw new Error(
-            `Wrong network. Wallet is on chainId ${currentChainId} but this app's primary deployment is chainId ${chain.id}. ` +
-              `We tried to add/switch the chain automatically but it failed. ` +
-              `Add/switch networks in your wallet and retry. ${msg2 ? `(${msg2})` : ''}`
-          );
-        }
+    } catch (e1: any) {
+      if (isUserRejected(e1)) {
+        throw new Error(
+          `Wrong network. Wallet is on chainId ${currentChainId} but this app's primary deployment is chainId ${chain.id}. ` +
+            `You rejected the network switch request. Please approve it and retry.`
+        );
       }
 
-      throw new Error(
-        `Wrong network. Wallet is on chainId ${currentChainId} but this app's primary deployment is chainId ${chain.id}. ` +
-          `Switch networks in your wallet and retry. ${msg ? `(${msg})` : ''}`
-      );
+      // Many wallets don't reliably surface the "unknown chain" code/message.
+      // Try add+switch as a best-effort fallback.
+      try {
+        await wallet.addChain({ chain });
+      } catch (eAdd: any) {
+        if (isUserRejected(eAdd)) {
+          throw new Error(
+            `Wrong network. Wallet is on chainId ${currentChainId} but this app's primary deployment is chainId ${chain.id}. ` +
+              `You rejected the request to add the network. ${manualHint}`
+          );
+        }
+        // Ignore other addChain errors and still retry switching; the chain may already exist.
+      }
+
+      try {
+        await wallet.switchChain({ id: chain.id });
+      } catch (e2: any) {
+        throw new Error(
+          `Wrong network. Wallet is on chainId ${currentChainId} but this app's primary deployment is chainId ${chain.id}. ` +
+            `Automatic network switch failed. ${manualHint} (${extractErrorMessage(e2)})`
+        );
+      }
     }
   }
-  const addrs = await wallet.requestAddresses();
-  const addr = addrs?.[0];
-  if (!addr) throw new Error('No wallet address returned.');
+
   return addr;
 }
