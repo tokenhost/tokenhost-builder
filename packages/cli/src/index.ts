@@ -2166,7 +2166,17 @@ program
     function listLocalConfigs(root: string): string[] {
       const out: string[] = [];
       const stack = [root];
-      const skipDirs = new Set(['.git', 'node_modules', '.next', 'dist', 'out', 'artifacts', 'cache']);
+      const skipDirs = new Set([
+        '.git',
+        'node_modules',
+        '.next',
+        'dist',
+        'out',
+        'artifacts',
+        'cache',
+        'packages',
+        'schemas'
+      ]);
 
       while (stack.length > 0) {
         const dir = stack.pop()!;
