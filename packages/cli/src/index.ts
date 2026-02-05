@@ -585,7 +585,19 @@ async function ensureAnvilRunning(rpcUrl: string, opts?: { start: boolean; expec
   throw new Error(`Timed out waiting for anvil at ${rpcUrl} to become ready.`);
 }
 
-function startUiSiteServer(args: { buildDir: string; host: string; port: number }): { server: nodeHttp.Server; url: string } {
+type FaucetConfig = {
+  enabled: boolean;
+  rpcUrl: string;
+  chainId: number;
+  targetWei: bigint;
+};
+
+function startUiSiteServer(args: {
+  buildDir: string;
+  host: string;
+  port: number;
+  faucet?: FaucetConfig | null;
+}): { server: nodeHttp.Server; url: string } {
   const resolvedBuildDir = path.resolve(args.buildDir);
   const uiSiteDir = path.join(resolvedBuildDir, 'ui-site');
 
@@ -600,6 +612,9 @@ function startUiSiteServer(args: { buildDir: string; host: string; port: number 
   const host = String(args.host || '127.0.0.1');
   const port = args.port;
   const rootAbs = path.resolve(uiSiteDir);
+  const faucet = args.faucet ?? null;
+  const faucetPath = '/__tokenhost/faucet';
+  const faucetTargetEth = faucet?.targetWei ? Number(faucet.targetWei / 10n ** 18n) : 10;
 
   function contentTypeForPath(filePath: string): string {
     const ext = path.extname(filePath).toLowerCase();
@@ -646,13 +661,38 @@ function startUiSiteServer(args: { buildDir: string; host: string; port: number 
     res.end(text);
   }
 
+  function sendJson(res: nodeHttp.ServerResponse, status: number, value: unknown) {
+    res.statusCode = status;
+    res.setHeader('Content-Type', 'application/json; charset=utf-8');
+    res.setHeader('Cache-Control', 'no-store');
+    res.end(JSON.stringify(value));
+  }
+
+  function toHexQuantity(n: bigint): string {
+    if (n < 0n) throw new Error('Negative quantity not allowed.');
+    return `0x${n.toString(16)}`;
+  }
+
+  function readBody(req: nodeHttp.IncomingMessage, maxBytes = 1024 * 1024): Promise<string> {
+    return new Promise((resolve, reject) => {
+      let raw = '';
+      let total = 0;
+      req.on('data', (chunk: Buffer) => {
+        total += chunk.length;
+        if (total > maxBytes) {
+          reject(new Error('Request body too large.'));
+          req.destroy();
+          return;
+        }
+        raw += chunk.toString('utf-8');
+      });
+      req.on('end', () => resolve(raw));
+      req.on('error', reject);
+    });
+  }
+
   const server = nodeHttp.createServer((req, res) => {
     if (!req.url) return sendText(res, 400, 'Bad Request');
-
-    if (req.method && req.method !== 'GET' && req.method !== 'HEAD') {
-      res.setHeader('Allow', 'GET, HEAD');
-      return sendText(res, 405, 'Method Not Allowed');
-    }
 
     let pathname = '/';
     try {
@@ -665,6 +705,78 @@ function startUiSiteServer(args: { buildDir: string; host: string; port: number 
       pathname = decodeURIComponent(pathname);
     } catch {
       return sendText(res, 400, 'Bad Request');
+    }
+
+    if (pathname === faucetPath) {
+      (async () => {
+        const enabled = Boolean(faucet?.enabled && faucet.rpcUrl && faucet.chainId === anvil.id);
+        if (req.method === 'GET' || req.method === 'HEAD') {
+          return sendJson(res, 200, {
+            ok: true,
+            enabled,
+            chainId: faucet?.chainId ?? null,
+            targetEthDefault: faucetTargetEth,
+            reason: enabled ? null : faucet ? 'disabled' : 'not-configured'
+          });
+        }
+
+        if (req.method !== 'POST') {
+          res.setHeader('Allow', 'GET, HEAD, POST');
+          return sendText(res, 405, 'Method Not Allowed');
+        }
+
+        if (!enabled) {
+          return sendJson(res, 400, { ok: false, error: 'Faucet is disabled.' });
+        }
+
+        try {
+          const raw = await readBody(req);
+          const parsed = raw.trim() ? JSON.parse(raw) : null;
+          const addr = normalizeAddress(String(parsed?.address ?? ''), 'address');
+
+          const rpcChainId = await tryGetRpcChainId(faucet!.rpcUrl, 1000);
+          if (rpcChainId === null) {
+            return sendJson(res, 503, { ok: false, error: `RPC not reachable at ${faucet!.rpcUrl}. Start anvil and retry.` });
+          }
+          if (rpcChainId !== faucet!.chainId) {
+            return sendJson(res, 409, {
+              ok: false,
+              error: `RPC chainId mismatch. RPC=${rpcChainId} expected=${faucet!.chainId}.`
+            });
+          }
+
+          const oldHex = (await rpcRequest(faucet!.rpcUrl, 'eth_getBalance', [addr, 'latest'], 2000)) as string;
+          const oldWei = BigInt(oldHex);
+          const targetWei = faucet!.targetWei;
+
+          let didSet = false;
+          if (oldWei < targetWei) {
+            await rpcRequest(faucet!.rpcUrl, 'anvil_setBalance', [addr, toHexQuantity(targetWei)], 2000);
+            didSet = true;
+          }
+
+          const newHex = (await rpcRequest(faucet!.rpcUrl, 'eth_getBalance', [addr, 'latest'], 2000)) as string;
+          const newWei = BigInt(newHex);
+
+          return sendJson(res, 200, {
+            ok: true,
+            address: addr,
+            chainId: faucet!.chainId,
+            targetWei: toHexQuantity(targetWei),
+            oldBalanceWei: toHexQuantity(oldWei),
+            newBalanceWei: toHexQuantity(newWei),
+            didSet
+          });
+        } catch (e: any) {
+          return sendJson(res, 400, { ok: false, error: String(e?.message ?? e) });
+        }
+      })();
+      return;
+    }
+
+    if (req.method && req.method !== 'GET' && req.method !== 'HEAD') {
+      res.setHeader('Allow', 'GET, HEAD');
+      return sendText(res, 405, 'Method Not Allowed');
     }
 
     if (!pathname.startsWith('/')) pathname = `/${pathname}`;
@@ -1378,6 +1490,7 @@ program
   .option('--no-start-anvil', 'Do not start anvil automatically (anvil chain only)')
   .option('--no-deploy', 'Skip deployment (UI will show Not deployed)')
   .option('--no-preview', 'Skip preview server')
+  .option('--no-faucet', 'Disable local faucet endpoint in preview server')
   .action(
     async (
       schemaArg: string | undefined,
@@ -1396,6 +1509,7 @@ program
         startAnvil: boolean;
         deploy: boolean;
         preview: boolean;
+        faucet: boolean;
       }
     ) => {
       let rl: ReadlineInterface | null = null;
@@ -1490,6 +1604,9 @@ program
           } else {
             console.log(`  - preview:  SKIP`);
           }
+          if (opts.preview) {
+            console.log(`  - faucet:   ${opts.faucet && chainName === 'anvil' ? 'ENABLED' : 'SKIP'}`);
+          }
           return;
         }
 
@@ -1532,7 +1649,21 @@ program
 
         if (opts.preview) {
           console.log('');
-          const { server, url } = startUiSiteServer({ buildDir: outDir, host, port });
+          const faucetEnabled = Boolean(opts.faucet && chainName === 'anvil');
+          const faucetTargetWei = 10n * 10n ** 18n;
+          const { server, url } = startUiSiteServer({
+            buildDir: outDir,
+            host,
+            port,
+            faucet: faucetEnabled
+              ? {
+                  enabled: true,
+                  rpcUrl,
+                  chainId: chain.id,
+                  targetWei: faucetTargetWei
+                }
+              : null
+          });
           console.log('');
           console.log(`Ready: ${url}`);
           console.log('Press Ctrl+C to stop.');
@@ -1585,14 +1716,35 @@ program
   .description('Serve the generated static UI locally (no Python required)')
   .option('--port <n>', 'Port to listen on', '3000')
   .option('--host <host>', 'Host to bind (default: 127.0.0.1)', '127.0.0.1')
+  .option('--rpc <url>', 'RPC URL override (used for auto-deploy and faucet)')
   .option('--no-deploy', 'Do not auto-deploy when the manifest has a placeholder 0x0 address')
   .option('--no-start-anvil', 'Do not start anvil automatically (anvil chain only)')
-  .action(async (buildDir: string, opts: { port: string; host: string; deploy: boolean; startAnvil: boolean }) => {
+  .option('--no-faucet', 'Disable local faucet endpoint')
+  .action(async (buildDir: string, opts: { port: string; host: string; rpc?: string; deploy: boolean; startAnvil: boolean; faucet: boolean }) => {
     let anvilChild: ReturnType<typeof spawn> | null = null;
     try {
       const resolvedBuildDir = path.resolve(buildDir);
       const manifestPath = path.join(resolvedBuildDir, 'manifest.json');
       const zeroAddress = '0x0000000000000000000000000000000000000000';
+      const faucetTargetWei = 10n * 10n ** 18n;
+      let faucetConfig: FaucetConfig | null = null;
+
+      // Enable faucet when previewing an anvil build (chainId 31337) and the user hasn't disabled it.
+      if (opts.faucet && fs.existsSync(manifestPath)) {
+        try {
+          const manifest = readJsonFile(manifestPath) as any;
+          const deployments = Array.isArray(manifest?.deployments) ? manifest.deployments : [];
+          const d = deployments.find((x: any) => x && x.role === 'primary') ?? deployments[0] ?? null;
+          const chainId = Number(d?.chainId ?? NaN);
+          if (chainId === anvil.id) {
+            const { chainName, chain } = resolveKnownChain('anvil');
+            const rpcUrl = resolveRpcUrl(chainName, chain, opts.rpc);
+            faucetConfig = { enabled: true, rpcUrl, chainId, targetWei: faucetTargetWei };
+          }
+        } catch {
+          // Ignore manifest parsing issues; serving static UI still works.
+        }
+      }
 
       // If the manifest is still at the placeholder address, auto-deploy on anvil by default.
       if (opts.deploy && fs.existsSync(manifestPath)) {
@@ -1606,11 +1758,11 @@ program
           const chainNameFromId = chainId === anvil.id ? ('anvil' as const) : chainId === sepolia.id ? ('sepolia' as const) : null;
           if (chainNameFromId === 'anvil') {
             const { chainName, chain } = resolveKnownChain('anvil');
-            const rpcUrl = resolveRpcUrl(chainName, chain, undefined);
+            const rpcUrl = resolveRpcUrl(chainName, chain, opts.rpc);
             console.log(`Manifest is not deployed (0x0). Deploying automatically to ${chainName}...`);
             const ensured = await ensureAnvilRunning(rpcUrl, { start: Boolean(opts.startAnvil), expectedChainId: chain.id });
             anvilChild = ensured.child;
-            await deployBuildDir(resolvedBuildDir, { chain: 'anvil', role: 'primary' });
+            await deployBuildDir(resolvedBuildDir, { chain: 'anvil', rpc: opts.rpc, role: 'primary' });
             console.log('Auto-deploy complete.');
             console.log('');
           }
@@ -1618,7 +1770,7 @@ program
       }
 
       const port = Number(opts.port);
-      const { server } = startUiSiteServer({ buildDir: resolvedBuildDir, host: opts.host, port });
+      const { server } = startUiSiteServer({ buildDir: resolvedBuildDir, host: opts.host, port, faucet: faucetConfig });
 
       const cleanup = () => {
         try {

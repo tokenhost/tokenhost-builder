@@ -23,6 +23,7 @@ pnpm th dev apps/example/job-board.schema.json
 
 # Open http://127.0.0.1:3000/
 # MetaMask: approve switching/adding the Anvil network (chainId 31337).
+# Use the "Get test ETH" button (local faucet) if your wallet needs funds.
 ```
 
 Environment examples:
