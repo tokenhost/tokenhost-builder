@@ -14,4 +14,9 @@ Contract test env vars:
 - `TH_RPC_URL` (optional)
 - `TH_TEST_PRIVATE_KEY` (optional, defaults to anvil account #0 key)
 
+UI smoke test env vars:
+- `TH_UI_BASE_URL` (optional; when set, `ui/smoke.mjs` performs live route and manifest checks)
+
+When `TH_UI_BASE_URL` is not set, `ui/smoke.mjs` runs static scaffold checks only.
+
 These tests are schema-driven and intended to be expanded further for app-specific assertions.
