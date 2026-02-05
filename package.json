@@ -32,7 +32,7 @@
     "@tokenhost/schema": "workspace:*",
     "@types/node": "^25.2.0",
     "chai": "^5.1.1",
-    "mocha": "^10.7.3",
+    "mocha": "^11.7.5",
     "tsup": "^8.5.1",
     "tsx": "^4.21.0",
     "typescript": "^5.9.3"
