@@ -31,7 +31,7 @@
     "@tokenhost/generator": "workspace:*",
     "@tokenhost/schema": "workspace:*",
     "@types/node": "^25.2.0",
-    "chai": "^5.1.1",
+    "chai": "^6.2.2",
     "mocha": "^11.7.5",
     "tsup": "^8.5.1",
     "tsx": "^4.21.0",
