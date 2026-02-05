@@ -1585,16 +1585,63 @@ program
   .description('Serve the generated static UI locally (no Python required)')
   .option('--port <n>', 'Port to listen on', '3000')
   .option('--host <host>', 'Host to bind (default: 127.0.0.1)', '127.0.0.1')
-  .action((buildDir: string, opts: { port: string; host: string }) => {
+  .option('--no-deploy', 'Do not auto-deploy when the manifest has a placeholder 0x0 address')
+  .option('--no-start-anvil', 'Do not start anvil automatically (anvil chain only)')
+  .action(async (buildDir: string, opts: { port: string; host: string; deploy: boolean; startAnvil: boolean }) => {
+    let anvilChild: ReturnType<typeof spawn> | null = null;
     try {
+      const resolvedBuildDir = path.resolve(buildDir);
+      const manifestPath = path.join(resolvedBuildDir, 'manifest.json');
+      const zeroAddress = '0x0000000000000000000000000000000000000000';
+
+      // If the manifest is still at the placeholder address, auto-deploy on anvil by default.
+      if (opts.deploy && fs.existsSync(manifestPath)) {
+        const manifest = readJsonFile(manifestPath) as any;
+        const deployments = Array.isArray(manifest?.deployments) ? manifest.deployments : [];
+        const d = deployments.find((x: any) => x && x.role === 'primary') ?? deployments[0] ?? null;
+        const addr = String(d?.deploymentEntrypointAddress ?? '');
+        const chainId = Number(d?.chainId ?? NaN);
+
+        if (addr && addr.toLowerCase() === zeroAddress && Number.isFinite(chainId)) {
+          const chainNameFromId = chainId === anvil.id ? ('anvil' as const) : chainId === sepolia.id ? ('sepolia' as const) : null;
+          if (chainNameFromId === 'anvil') {
+            const { chainName, chain } = resolveKnownChain('anvil');
+            const rpcUrl = resolveRpcUrl(chainName, chain, undefined);
+            console.log(`Manifest is not deployed (0x0). Deploying automatically to ${chainName}...`);
+            const ensured = await ensureAnvilRunning(rpcUrl, { start: Boolean(opts.startAnvil), expectedChainId: chain.id });
+            anvilChild = ensured.child;
+            await deployBuildDir(resolvedBuildDir, { chain: 'anvil', role: 'primary' });
+            console.log('Auto-deploy complete.');
+            console.log('');
+          }
+        }
+      }
+
       const port = Number(opts.port);
-      const { server } = startUiSiteServer({ buildDir, host: opts.host, port });
-      process.on('SIGINT', () => {
-        server.close(() => process.exit(0));
-      });
+      const { server } = startUiSiteServer({ buildDir: resolvedBuildDir, host: opts.host, port });
+
+      const cleanup = () => {
+        try {
+          server.close(() => {});
+        } catch {}
+        if (anvilChild) {
+          try {
+            anvilChild.kill('SIGTERM');
+          } catch {}
+        }
+        process.exit(0);
+      };
+
+      process.on('SIGINT', cleanup);
+      process.on('SIGTERM', cleanup);
     } catch (e: any) {
       console.error(String(e?.message ?? e));
       process.exitCode = 1;
+      if (anvilChild) {
+        try {
+          anvilChild.kill('SIGTERM');
+        } catch {}
+      }
     }
   });
 
