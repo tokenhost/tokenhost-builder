@@ -8,7 +8,7 @@ export function resolveRpcUrl(chain: Chain, override?: string): string | null {
   return null;
 }
 
-export function makePublicClient(chain: Chain, rpcUrl?: string) {
+export function makePublicClient(chain: Chain, rpcUrl?: string): any {
   // Prefer explicit HTTP RPC for reads so chain mismatch in the user's wallet
   // doesn't silently read from the wrong network.
   const url = resolveRpcUrl(chain, rpcUrl);
@@ -31,7 +31,7 @@ export function makePublicClient(chain: Chain, rpcUrl?: string) {
   throw new Error(`No RPC URL available for chainId ${chain.id}. Provide ?rpc=https://...`);
 }
 
-export function makeWalletClient(chain: Chain) {
+export function makeWalletClient(chain: Chain): any {
   const eth = (globalThis as any).ethereum as any;
   if (!eth) throw new Error('No injected wallet found (window.ethereum).');
 
