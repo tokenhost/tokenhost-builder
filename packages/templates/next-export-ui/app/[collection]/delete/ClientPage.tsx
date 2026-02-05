@@ -4,7 +4,7 @@ import React, { useEffect, useMemo, useState } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 
 import { fetchAppAbi } from '../../../src/lib/abi';
-import { fnDelete, fnGet } from '../../../src/lib/app';
+import { assertAbiFunction, fnDelete, fnGet } from '../../../src/lib/app';
 import { chainFromId } from '../../../src/lib/chains';
 import { makePublicClient, makeWalletClient, requestWalletAddress } from '../../../src/lib/clients';
 import { shortAddress } from '../../../src/lib/format';
@@ -85,6 +85,7 @@ export default function DeleteRecordPage(props: { params: { collection: string }
     if (!publicClient || !abi || !appAddress || id === null) return;
     setError(null);
     try {
+      assertAbiFunction(abi, fnGet(collectionName), collectionName);
       const r = await publicClient.readContract({
         address: appAddress,
         abi,
@@ -114,6 +115,7 @@ export default function DeleteRecordPage(props: { params: { collection: string }
       const account = await requestWalletAddress(chain);
       const walletClient = makeWalletClient(chain);
 
+      assertAbiFunction(abi, fnDelete(collectionName), collectionName);
       setStatus('Sending delete…');
       const hash = await walletClient.writeContract({
         address: appAddress,

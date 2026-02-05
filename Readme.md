@@ -37,3 +37,25 @@ pnpm legacy:build
 # or
 pnpm legacy:build-run
 ```
+
+## Testing
+
+Fast local suite (no local chain required):
+
+```bash
+pnpm test
+pnpm typecheck
+```
+
+Local integration suite (requires `anvil` on PATH):
+
+```bash
+pnpm test:integration
+```
+
+## CI
+
+PRs run two required jobs:
+
+- `static`: install + unit/CLI/template tests + typecheck
+- `integration-local`: install + Foundry + local Anvil integration tests (`th preview`/deploy/faucet paths)
