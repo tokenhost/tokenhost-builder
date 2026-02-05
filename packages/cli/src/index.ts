@@ -120,9 +120,13 @@ function addGeneratedUiTestScaffold(uiDir: string, templateDir: string) {
   const pkg = JSON.parse(fs.readFileSync(packageJsonPath, 'utf-8'));
   const scripts = { ...(pkg.scripts || {}) };
   scripts.test = scripts.test || 'pnpm run test:contract && pnpm run test:ui';
-  scripts['test:contract'] = scripts['test:contract'] || 'node tests/contract/smoke.mjs';
+  scripts['test:contract'] = scripts['test:contract'] || 'node tests/contract/integration.mjs';
   scripts['test:ui'] = scripts['test:ui'] || 'node tests/ui/smoke.mjs';
   pkg.scripts = scripts;
+  const devDependencies = { ...(pkg.devDependencies || {}) };
+  devDependencies.solc = devDependencies.solc || '0.8.24';
+  devDependencies.web3 = devDependencies.web3 || '^1.3.5';
+  pkg.devDependencies = devDependencies;
   fs.writeFileSync(packageJsonPath, JSON.stringify(pkg, null, 2) + '\n');
 }
 
