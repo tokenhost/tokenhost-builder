@@ -82,6 +82,51 @@ function isUserRejected(e: any): boolean {
   return String(code) === '4001' || /user rejected|rejected the request/i.test(msg);
 }
 
+export async function ensureWalletChain(chain: Chain): Promise<void> {
+  const wallet = makeWalletClient(chain);
+  const currentChainId = await wallet.getChainId();
+  if (currentChainId === chain.id) return;
+
+  const rpcUrl = resolveRpcUrl(chain);
+  const manualHint = rpcUrl
+    ? `In MetaMask, add/switch to "${chain.name}" (chainId ${chain.id}) with RPC URL ${rpcUrl}.`
+    : `Switch networks in your wallet to chainId ${chain.id}.`;
+
+  try {
+    await wallet.switchChain({ id: chain.id });
+  } catch (e1: any) {
+    if (isUserRejected(e1)) {
+      throw new Error(
+        `Wrong network. Wallet is on chainId ${currentChainId} but this app's primary deployment is chainId ${chain.id}. ` +
+          `You rejected the network switch request. Please approve it and retry.`
+      );
+    }
+
+    // Many wallets don't reliably surface the "unknown chain" code/message.
+    // Try add+switch as a best-effort fallback.
+    try {
+      await wallet.addChain({ chain });
+    } catch (eAdd: any) {
+      if (isUserRejected(eAdd)) {
+        throw new Error(
+          `Wrong network. Wallet is on chainId ${currentChainId} but this app's primary deployment is chainId ${chain.id}. ` +
+            `You rejected the request to add the network. ${manualHint}`
+        );
+      }
+      // Ignore other addChain errors and still retry switching; the chain may already exist.
+    }
+
+    try {
+      await wallet.switchChain({ id: chain.id });
+    } catch (e2: any) {
+      throw new Error(
+        `Wrong network. Wallet is on chainId ${currentChainId} but this app's primary deployment is chainId ${chain.id}. ` +
+          `Automatic network switch failed. ${manualHint} (${extractErrorMessage(e2)})`
+      );
+    }
+  }
+}
+
 export async function requestWalletAddress(chain: Chain): Promise<`0x${string}`> {
   const wallet = makeWalletClient(chain);
 
@@ -98,48 +143,7 @@ export async function requestWalletAddress(chain: Chain): Promise<`0x${string}`>
   }
 
   if (!addr) throw new Error('No wallet address returned.');
-
-  const currentChainId = await wallet.getChainId();
-  if (currentChainId !== chain.id) {
-    const rpcUrl = resolveRpcUrl(chain);
-    const manualHint = rpcUrl
-      ? `In MetaMask, add/switch to "${chain.name}" (chainId ${chain.id}) with RPC URL ${rpcUrl}.`
-      : `Switch networks in your wallet to chainId ${chain.id}.`;
-
-    try {
-      await wallet.switchChain({ id: chain.id });
-    } catch (e1: any) {
-      if (isUserRejected(e1)) {
-        throw new Error(
-          `Wrong network. Wallet is on chainId ${currentChainId} but this app's primary deployment is chainId ${chain.id}. ` +
-            `You rejected the network switch request. Please approve it and retry.`
-        );
-      }
-
-      // Many wallets don't reliably surface the "unknown chain" code/message.
-      // Try add+switch as a best-effort fallback.
-      try {
-        await wallet.addChain({ chain });
-      } catch (eAdd: any) {
-        if (isUserRejected(eAdd)) {
-          throw new Error(
-            `Wrong network. Wallet is on chainId ${currentChainId} but this app's primary deployment is chainId ${chain.id}. ` +
-              `You rejected the request to add the network. ${manualHint}`
-          );
-        }
-        // Ignore other addChain errors and still retry switching; the chain may already exist.
-      }
-
-      try {
-        await wallet.switchChain({ id: chain.id });
-      } catch (e2: any) {
-        throw new Error(
-          `Wrong network. Wallet is on chainId ${currentChainId} but this app's primary deployment is chainId ${chain.id}. ` +
-            `Automatic network switch failed. ${manualHint} (${extractErrorMessage(e2)})`
-        );
-      }
-    }
-  }
+  await ensureWalletChain(chain);
 
   return addr;
 }

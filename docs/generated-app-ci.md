@@ -35,5 +35,6 @@ This repo validates generated-app test scaffolds and canonical job-board behavio
 - generated contract scaffold execution
 - generated UI scaffold execution against live preview
 - end-to-end canonical job-board flow
+- presence of shared theme token source and network-status UX components in generated output
 
 These checks back the required `integration-local` CI job in this repository.

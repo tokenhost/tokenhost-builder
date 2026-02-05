@@ -6,8 +6,8 @@ export default function HomePage() {
   return (
     <div className="grid">
       <div className="card">
-        <h2>Collections</h2>
-        <div className="muted">
+        <h2 className="displayTitle">Collections</h2>
+        <div className="muted lead">
           This app is a static export UI that reads <span className="badge">/.well-known/tokenhost/manifest.json</span> at runtime.
         </div>
       </div>

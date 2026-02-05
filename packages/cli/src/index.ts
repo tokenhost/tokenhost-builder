@@ -272,8 +272,99 @@ function validateStudioFormState(formState: any): {
   };
 }
 
+type SharedThemeTokens = {
+  colors: {
+    bg: string;
+    bgAlt: string;
+    panel: string;
+    panelStrong: string;
+    border: string;
+    text: string;
+    muted: string;
+    primary: string;
+    primaryStrong: string;
+    accent: string;
+    success: string;
+    danger: string;
+  };
+  radius: { sm: string; md: string; lg: string };
+  spacing: { xs: string; sm: string; md: string; lg: string; xl: string };
+  typography: { display: string; body: string; mono: string };
+  motion: { fast: string; base: string };
+};
+
+function defaultSharedThemeTokens(): SharedThemeTokens {
+  return {
+    colors: {
+      bg: '#06122b',
+      bgAlt: '#0a1f45',
+      panel: '#0f2958cc',
+      panelStrong: '#103062',
+      border: '#7eb8ff55',
+      text: '#f3f8ff',
+      muted: '#b6caea',
+      primary: '#4cb1f7',
+      primaryStrong: '#1e8fe0',
+      accent: '#ffc700',
+      success: '#12c26d',
+      danger: '#ff5f63'
+    },
+    radius: { sm: '10px', md: '14px', lg: '20px' },
+    spacing: { xs: '6px', sm: '10px', md: '16px', lg: '24px', xl: '36px' },
+    typography: {
+      display: '"Montserrat", "Avenir Next", "Segoe UI", sans-serif',
+      body: '"Inter", "Segoe UI", sans-serif',
+      mono: 'ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace'
+    },
+    motion: { fast: '120ms', base: '180ms' }
+  };
+}
+
+function loadSharedThemeTokens(): SharedThemeTokens {
+  try {
+    const templateDir = resolveNextExportUiTemplateDir();
+    const tokenPath = path.join(templateDir, 'src', 'theme', 'tokens.json');
+    if (!fs.existsSync(tokenPath)) return defaultSharedThemeTokens();
+    return JSON.parse(fs.readFileSync(tokenPath, 'utf-8')) as SharedThemeTokens;
+  } catch {
+    return defaultSharedThemeTokens();
+  }
+}
+
+function renderStudioThemeCssVars(tokens: SharedThemeTokens): string {
+  return [
+    `--th-bg:${tokens.colors.bg}`,
+    `--th-bg-alt:${tokens.colors.bgAlt}`,
+    `--th-panel:${tokens.colors.panel}`,
+    `--th-panel-strong:${tokens.colors.panelStrong}`,
+    `--th-border:${tokens.colors.border}`,
+    `--th-text:${tokens.colors.text}`,
+    `--th-muted:${tokens.colors.muted}`,
+    `--th-primary:${tokens.colors.primary}`,
+    `--th-primary-strong:${tokens.colors.primaryStrong}`,
+    `--th-accent:${tokens.colors.accent}`,
+    `--th-success:${tokens.colors.success}`,
+    `--th-danger:${tokens.colors.danger}`,
+    `--th-radius-sm:${tokens.radius.sm}`,
+    `--th-radius-md:${tokens.radius.md}`,
+    `--th-radius-lg:${tokens.radius.lg}`,
+    `--th-space-xs:${tokens.spacing.xs}`,
+    `--th-space-sm:${tokens.spacing.sm}`,
+    `--th-space-md:${tokens.spacing.md}`,
+    `--th-space-lg:${tokens.spacing.lg}`,
+    `--th-space-xl:${tokens.spacing.xl}`,
+    `--th-font-display:${tokens.typography.display}`,
+    `--th-font-body:${tokens.typography.body}`,
+    `--th-font-mono:${tokens.typography.mono}`,
+    `--th-motion-fast:${tokens.motion.fast}`,
+    `--th-motion-base:${tokens.motion.base}`
+  ].join(';');
+}
+
 function renderStudioHtml(): string {
   // Keep this local-first and dependency-free for fast startup in any repo clone.
+  const themeTokens = loadSharedThemeTokens();
+  const cssVars = renderStudioThemeCssVars(themeTokens);
   return `<!doctype html>
 <html lang="en">
 <head>
@@ -281,35 +372,35 @@ function renderStudioHtml(): string {
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <title>Token Host Studio (Local)</title>
   <style>
-    :root { color-scheme: light; --bg:#0b1220; --panel:#111a2b; --muted:#9db0cc; --text:#edf3ff; --ok:#2bb673; --err:#f25f5c; --warn:#f2c14e; }
+    :root { color-scheme: light; ${cssVars}; --ok:var(--th-success); --err:var(--th-danger); --warn:var(--th-accent); }
     * { box-sizing: border-box; }
-    body { margin:0; font-family: ui-sans-serif,system-ui,-apple-system,Segoe UI,Roboto,Helvetica,Arial,sans-serif; background: radial-gradient(circle at 10% 10%, #1f3559, #0b1220 55%); color: var(--text); }
+    body { margin:0; font-family: var(--th-font-body); background: radial-gradient(circle at 8% 0%, #255bb688, transparent 42%), radial-gradient(circle at 88% 0%, #50b9fa66, transparent 36%), linear-gradient(155deg, var(--th-bg) 20%, var(--th-bg-alt) 100%); color: var(--th-text); }
     .wrap { max-width: 1400px; margin: 0 auto; padding: 20px; }
     .row { display:grid; grid-template-columns: 1.6fr 1fr; gap: 14px; }
-    .panel { background: linear-gradient(180deg, rgba(255,255,255,0.03), rgba(0,0,0,0.12)); border:1px solid rgba(255,255,255,0.12); border-radius: 14px; padding: 14px; }
-    .title { margin:0 0 10px 0; font-size: 18px; font-weight: 700; }
-    .muted { color: var(--muted); font-size: 13px; }
-    textarea { width:100%; min-height: 120px; border-radius: 10px; border:1px solid rgba(255,255,255,0.18); background: #0a1426; color: #eaf2ff; padding: 10px; font-family: ui-monospace,SFMono-Regular,Menlo,Monaco,Consolas,monospace; font-size: 13px; line-height: 1.35; }
-    input[type=text], input[type=number], select { width: 100%; border-radius: 8px; border:1px solid rgba(255,255,255,0.18); background:#0a1426; color:#eaf2ff; padding: 8px; }
-    label { display: block; font-size: 12px; color: var(--muted); margin-bottom: 4px; }
+    .panel { background: linear-gradient(180deg, #0f2958cf, #0d234bd4); border:1px solid var(--th-border); border-radius: var(--th-radius-lg); padding: var(--th-space-md); box-shadow: 0 8px 32px #02122f4d; }
+    .title { margin:0 0 10px 0; font-size: 22px; font-family: var(--th-font-display); font-weight: 700; }
+    .muted { color: var(--th-muted); font-size: 13px; }
+    textarea { width:100%; min-height: 120px; border-radius: var(--th-radius-sm); border:1px solid var(--th-border); background: #071b3f; color: var(--th-text); padding: 10px; font-family: var(--th-font-mono); font-size: 13px; line-height: 1.35; }
+    input[type=text], input[type=number], select { width: 100%; border-radius: var(--th-radius-sm); border:1px solid var(--th-border); background:#071b3f; color:var(--th-text); padding: 8px; }
+    label { display: block; font-size: 12px; color: var(--th-muted); margin-bottom: 4px; }
     .grid2 { display:grid; grid-template-columns: 1fr 1fr; gap:8px; }
     .grid3 { display:grid; grid-template-columns: 1fr 1fr 1fr; gap:8px; }
-    .card { border:1px solid rgba(255,255,255,0.12); border-radius: 10px; padding: 8px; margin-top: 8px; background: rgba(0,0,0,0.2); }
+    .card { border:1px solid var(--th-border); border-radius: var(--th-radius-sm); padding: 8px; margin-top: 8px; background: #0a2a5888; }
     .sectionTitle { font-size: 14px; font-weight: 700; margin-top: 10px; }
     .stack { display:flex; flex-direction:column; gap:8px; }
     .toolbar { display:flex; gap:8px; flex-wrap:wrap; margin-bottom:10px; }
     .configList { display:flex; flex-direction:column; gap:8px; max-height:260px; overflow:auto; }
-    .configRow { display:grid; grid-template-columns: 1fr auto; gap:8px; align-items:center; border:1px solid rgba(255,255,255,0.12); border-radius:8px; padding:8px; background: rgba(0,0,0,0.2); }
-    .configPath { font-family: ui-monospace,SFMono-Regular,Menlo,Monaco,Consolas,monospace; font-size:12px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
-    button { border:1px solid rgba(255,255,255,0.2); color:#fff; background:#1e3357; border-radius:8px; padding:8px 10px; cursor:pointer; }
-    button:hover { filter: brightness(1.08); }
+    .configRow { display:grid; grid-template-columns: 1fr auto; gap:8px; align-items:center; border:1px solid var(--th-border); border-radius: var(--th-radius-sm); padding:8px; background: #0a2a5888; }
+    .configPath { font-family: var(--th-font-mono); font-size:12px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+    button { border:1px solid var(--th-border); color:var(--th-text); background:#15407f; border-radius: var(--th-radius-sm); padding:8px 10px; cursor:pointer; transition: transform var(--th-motion-fast) ease, background var(--th-motion-base) ease; font-weight: 600; }
+    button:hover { background:#1a4f9d; }
     .pill { display:inline-block; padding: 2px 8px; border-radius:999px; font-size: 12px; border:1px solid transparent; }
-    .ok { color:#d8ffe9; background: rgba(43,182,115,.2); border-color: rgba(43,182,115,.45);}
-    .err { color:#ffd6d6; background: rgba(242,95,92,.2); border-color: rgba(242,95,92,.45);}
-    .warn { color:#fff6d5; background: rgba(242,193,78,.2); border-color: rgba(242,193,78,.45);}
+    .ok { color:#d8ffe9; background: color-mix(in srgb, var(--th-success) 24%, transparent); border-color: color-mix(in srgb, var(--th-success) 45%, transparent);}
+    .err { color:#ffd6d6; background: color-mix(in srgb, var(--th-danger) 24%, transparent); border-color: color-mix(in srgb, var(--th-danger) 45%, transparent);}
+    .warn { color:#fff6d5; background: color-mix(in srgb, var(--th-accent) 24%, transparent); border-color: color-mix(in srgb, var(--th-accent) 45%, transparent);}
     ul { margin: 8px 0 0 18px; padding:0; }
     li { margin: 2px 0; }
-    pre { white-space: pre-wrap; word-break: break-word; background:#0a1426; border:1px solid rgba(255,255,255,0.1); border-radius: 8px; padding: 10px; max-height: 280px; overflow:auto; }
+    pre { white-space: pre-wrap; word-break: break-word; background:#071b3f; border:1px solid var(--th-border); border-radius: var(--th-radius-sm); padding: 10px; max-height: 280px; overflow:auto; }
   </style>
 </head>
 <body>

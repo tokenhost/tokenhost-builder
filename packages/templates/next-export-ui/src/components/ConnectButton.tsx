@@ -2,7 +2,10 @@
 
 import React, { useEffect, useMemo, useState } from 'react';
 
+import { chainFromId } from '../lib/chains';
+import { requestWalletAddress } from '../lib/clients';
 import { shortAddress } from '../lib/format';
+import { fetchManifest, getPrimaryDeployment } from '../lib/manifest';
 
 function hasInjectedWallet(): boolean {
   return typeof (globalThis as any).ethereum !== 'undefined';
@@ -10,6 +13,8 @@ function hasInjectedWallet(): boolean {
 
 export default function ConnectButton() {
   const [account, setAccount] = useState<string | null>(null);
+  const [targetChainId, setTargetChainId] = useState<number | null>(null);
+  const [status, setStatus] = useState<string | null>(null);
 
   const canConnect = useMemo(() => hasInjectedWallet(), []);
 
@@ -23,17 +28,41 @@ export default function ConnectButton() {
     }
   }, []);
 
-  async function connect() {
-    const eth = (globalThis as any).ethereum as any;
-    if (!eth) return;
+  useEffect(() => {
+    let cancelled = false;
+    void (async () => {
+      try {
+        const manifest = await fetchManifest();
+        const deployment = getPrimaryDeployment(manifest);
+        const chainId = Number(deployment?.chainId ?? NaN);
+        if (!cancelled && Number.isFinite(chainId)) {
+          setTargetChainId(chainId);
+        }
+      } catch {
+        // ignore best-effort chain hint.
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
-    const accounts = (await eth.request({ method: 'eth_requestAccounts' })) as string[];
-    const a = accounts?.[0] ?? null;
-    setAccount(a);
+  async function connect() {
+    if (!canConnect) return;
     try {
-      if (a) localStorage.setItem('TH_ACCOUNT', a);
-    } catch {
-      // ignore
+      setStatus('Connecting wallet...');
+      const target = targetChainId && Number.isFinite(targetChainId) ? chainFromId(targetChainId) : null;
+      const a = target ? await requestWalletAddress(target) : null;
+      const accountAddr = a ?? null;
+      setAccount(accountAddr);
+      setStatus(null);
+      try {
+        if (accountAddr) localStorage.setItem('TH_ACCOUNT', accountAddr);
+      } catch {
+        // ignore
+      }
+    } catch (e: any) {
+      setStatus(String(e?.message ?? e));
     }
   }
 
@@ -53,15 +82,22 @@ export default function ConnectButton() {
 
   if (!account) {
     return (
-      <button className="btn primary" onClick={() => void connect()}>
-        Connect
-      </button>
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 6, alignItems: 'flex-end' }}>
+        <button className="btn primary" onClick={() => void connect()}>
+          Connect wallet
+        </button>
+        {targetChainId ? <span className="badge">target chain {targetChainId}</span> : null}
+        {status ? <span className="badge">{status}</span> : null}
+      </div>
     );
   }
 
   return (
-    <button className="btn" onClick={() => disconnect()} title={account}>
-      {shortAddress(account)}
-    </button>
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 6, alignItems: 'flex-end' }}>
+      <button className="btn" onClick={() => disconnect()} title={account}>
+        {shortAddress(account)}
+      </button>
+      {targetChainId ? <span className="badge">chain {targetChainId}</span> : null}
+    </div>
   );
 }

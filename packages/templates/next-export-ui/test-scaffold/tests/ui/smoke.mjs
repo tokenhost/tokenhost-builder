@@ -76,7 +76,9 @@ for (const relPath of [
   'app/page.tsx',
   'app/[collection]/layout.tsx',
   'app/[collection]/page.tsx',
-  'app/[collection]/new/page.tsx'
+  'app/[collection]/new/page.tsx',
+  'src/theme/tokens.json',
+  'src/components/NetworkStatus.tsx'
 ]) {
   mustExist(root, relPath);
 }

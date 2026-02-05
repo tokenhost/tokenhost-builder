@@ -68,11 +68,17 @@ describe('th generate (UI template)', function () {
 
     expect(fs.existsSync(path.join(outDir, 'ui', 'package.json'))).to.equal(true);
     expect(fs.existsSync(path.join(outDir, 'ui', 'app', 'page.tsx'))).to.equal(true);
+    expect(fs.existsSync(path.join(outDir, 'ui', 'src', 'theme', 'tokens.json'))).to.equal(true);
+    expect(fs.existsSync(path.join(outDir, 'ui', 'src', 'components', 'NetworkStatus.tsx'))).to.equal(true);
     expect(fs.existsSync(path.join(outDir, 'ui', 'tests'))).to.equal(false);
 
     const generatedThs = fs.readFileSync(path.join(outDir, 'ui', 'src', 'generated', 'ths.ts'), 'utf-8');
     expect(generatedThs).to.include('export const ths =');
     expect(generatedThs).to.include('"slug": "ui-test-app"');
+
+    const layoutSource = fs.readFileSync(path.join(outDir, 'ui', 'app', 'layout.tsx'), 'utf-8');
+    expect(layoutSource).to.include('NetworkStatus');
+    expect(layoutSource).to.include('rootStyleVars');
   });
 
   it('generated UI builds (next export)', function () {

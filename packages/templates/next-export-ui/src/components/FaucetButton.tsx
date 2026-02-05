@@ -43,6 +43,7 @@ export default function FaucetButton() {
   const [enabled, setEnabled] = useState(false);
   const [busy, setBusy] = useState(false);
   const [note, setNote] = useState<string | null>(null);
+  const [reason, setReason] = useState<string | null>(null);
   const targetEthRef = useRef<number>(10);
   const noteTimerRef = useRef<number | null>(null);
 
@@ -56,19 +57,37 @@ export default function FaucetButton() {
         const manifest = await fetchManifest();
         const deployment = getPrimaryDeployment(manifest);
         const chainId = Number(deployment?.chainId ?? NaN);
-        if (!Number.isFinite(chainId) || chainId !== 31337) return;
+        if (!Number.isFinite(chainId) || chainId !== 31337) {
+          if (!cancelled) {
+            setEnabled(false);
+            setReason('Faucet is available only for local anvil (chainId 31337).');
+          }
+          return;
+        }
 
         const status = await tryFetchFaucetStatus();
-        if (!status?.ok || !status.enabled) return;
+        if (!status?.ok || !status.enabled) {
+          if (!cancelled) {
+            setEnabled(true);
+            setReason('Faucet endpoint unavailable. Start preview via `th up` or `th preview`.');
+          }
+          return;
+        }
 
         const targetEth = Number(status.targetEthDefault ?? 10);
         if (Number.isFinite(targetEth) && targetEth > 0) {
           targetEthRef.current = targetEth;
         }
 
-        if (!cancelled) setEnabled(true);
+        if (!cancelled) {
+          setEnabled(true);
+          setReason(null);
+        }
       } catch {
-        // ignore
+        if (!cancelled) {
+          setEnabled(true);
+          setReason('Faucet endpoint unavailable. Start preview via `th up` or `th preview`.');
+        }
       }
     })();
     return () => {
@@ -136,9 +155,10 @@ export default function FaucetButton() {
 
   return (
     <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
-      <button className="btn" onClick={() => void requestFaucet()} disabled={busy} title="Local faucet (anvil)">
+      <button className="btn" onClick={() => void requestFaucet()} disabled={busy || Boolean(reason)} title="Local faucet (anvil)">
         {busy ? 'Funding…' : 'Get test ETH'}
       </button>
+      {reason ? <span className="badge">{reason}</span> : null}
       {note ? (
         <span className="badge" title={note} style={{ maxWidth: 240, overflow: 'hidden', textOverflow: 'ellipsis' }}>
           {note}

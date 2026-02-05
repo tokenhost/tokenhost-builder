@@ -25,6 +25,7 @@ Execution backlog and current gap-tracking is in `AGENTS.md`.
 - Rollout decision doc: `docs/generated-app-test-rollout.md`
 - Generated app CI details: `docs/generated-app-ci.md`
 - Release acceptance checklist: `docs/release-checklist.md`
+- UI redesign system notes: `docs/ui-redesign-system.md`
 
 ## Builder CI baseline
 
