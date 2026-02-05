@@ -15,9 +15,8 @@ export function fnListIds(collectionName: string): string {
 }
 
 export function fnGet(collectionName: string): string {
-  // The generated contract overloads getC(uint256,bool) and getC(uint256).
-  // Use the full signature to disambiguate for viem encoding/decoding.
-  return `get${collectionName}(uint256)`;
+  // viem expects the function name (not full signature) and resolves overloads from args.
+  return `get${collectionName}`;
 }
 
 export function fnCreate(collectionName: string): string {
