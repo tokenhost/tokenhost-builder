@@ -126,8 +126,29 @@ function runCommand(cmd: string, args: string[], opts?: { cwd?: string }) {
     cwd: opts?.cwd,
     stdio: 'inherit'
   });
+  if (res.error && (res.error as any).code === 'ENOENT') {
+    throw new Error(`${cmd} not found on PATH. Install it and retry.`);
+  }
   if (res.status !== 0) {
     throw new Error(`${cmd} ${args.join(' ')} failed with exit code ${res.status ?? 'unknown'}`);
+  }
+}
+
+function runPnpmCommand(args: string[], opts?: { cwd?: string }) {
+  // Prefer local/global pnpm; fall back to corepack if pnpm isn't installed.
+  const res = spawnSync('pnpm', args, { cwd: opts?.cwd, stdio: 'inherit' });
+  if (res.error && (res.error as any).code === 'ENOENT') {
+    const res2 = spawnSync('corepack', ['pnpm', ...args], { cwd: opts?.cwd, stdio: 'inherit' });
+    if (res2.error && (res2.error as any).code === 'ENOENT') {
+      throw new Error(`pnpm not found. Install pnpm or enable corepack, then retry.`);
+    }
+    if (res2.status !== 0) {
+      throw new Error(`corepack pnpm ${args.join(' ')} failed with exit code ${res2.status ?? 'unknown'}`);
+    }
+    return;
+  }
+  if (res.status !== 0) {
+    throw new Error(`pnpm ${args.join(' ')} failed with exit code ${res.status ?? 'unknown'}`);
   }
 }
 
@@ -144,11 +165,19 @@ function renderThsTs(schema: ThsSchema): string {
   );
 }
 
+function ensureEd25519PrivateKey(key: crypto.KeyObject): crypto.KeyObject {
+  const type = (key as any).asymmetricKeyType as string | undefined;
+  if (type && type !== 'ed25519') {
+    throw new Error(`Manifest signing key must be Ed25519 (got ${type}).`);
+  }
+  return key;
+}
+
 function loadManifestSigningKey(): crypto.KeyObject | null {
   const keyPath = process.env.TH_MANIFEST_SIGNING_KEY_PATH;
   if (keyPath) {
     const pem = fs.readFileSync(keyPath, 'utf-8');
-    return crypto.createPrivateKey(pem);
+    return ensureEd25519PrivateKey(crypto.createPrivateKey(pem));
   }
 
   const env = process.env.TH_MANIFEST_SIGNING_KEY || process.env.TH_MANIFEST_SIGNING_PRIVATE_KEY;
@@ -156,13 +185,13 @@ function loadManifestSigningKey(): crypto.KeyObject | null {
 
   const raw = env.trim();
   if (raw.startsWith('-----BEGIN')) {
-    return crypto.createPrivateKey(raw);
+    return ensureEd25519PrivateKey(crypto.createPrivateKey(raw));
   }
 
   // Assume base64-encoded PKCS#8 DER.
   const b64 = raw.startsWith('base64:') ? raw.slice('base64:'.length) : raw;
   const der = Buffer.from(b64, 'base64');
-  return crypto.createPrivateKey({ key: der, format: 'der', type: 'pkcs8' });
+  return ensureEd25519PrivateKey(crypto.createPrivateKey({ key: der, format: 'der', type: 'pkcs8' }));
 }
 
 function computeKeyIdEd25519(privateKey: crypto.KeyObject): string {
@@ -616,8 +645,8 @@ program
         const bakedManifestPath = path.join(uiWorkDir, 'public', '.well-known', 'tokenhost', 'manifest.json');
         if (fs.existsSync(bakedManifestPath)) fs.rmSync(bakedManifestPath, { force: true });
 
-        runCommand('pnpm', ['install'], { cwd: uiWorkDir });
-        runCommand('pnpm', ['build'], { cwd: uiWorkDir });
+        runPnpmCommand(['install'], { cwd: uiWorkDir });
+        runPnpmCommand(['build'], { cwd: uiWorkDir });
 
         const exportedDir = path.join(uiWorkDir, 'out');
         if (!fs.existsSync(exportedDir)) {
