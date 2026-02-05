@@ -82,10 +82,9 @@ jobs:
         run: pnpm install --frozen-lockfile
 
       - name: Install Foundry
-        run: |
-          curl -L https://foundry.paradigm.xyz | bash
-          echo "$HOME/.foundry/bin" >> "$GITHUB_PATH"
-          "$HOME/.foundry/bin/foundryup"
+        uses: foundry-rs/foundry-toolchain@v1
+        with:
+          version: stable
 
       - name: Confirm Anvil
         run: anvil --version
