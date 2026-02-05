@@ -26,6 +26,11 @@ async function assertRoute200(baseUrl, route) {
   const u = `${baseUrl}${route}`;
   const out = await fetchOrThrow(u);
   assert.equal(out.status, 200, `Expected ${u} to return 200, got ${out.status}`);
+  assert.equal(
+    out.text.includes('not found on ABI'),
+    false,
+    `Route ${u} rendered an ABI lookup error. Check generated UI function names vs ABI overload handling.`
+  );
 }
 
 async function runLiveChecks(root, baseUrl, ths) {
