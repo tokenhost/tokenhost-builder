@@ -3,6 +3,7 @@ import './globals.css';
 import React from 'react';
 
 import ConnectButton from '../src/components/ConnectButton';
+import FaucetButton from '../src/components/FaucetButton';
 import { ths } from '../src/lib/ths';
 
 export const metadata = {
@@ -20,7 +21,10 @@ export default function RootLayout(props: { children: React.ReactNode }) {
               <h1>{ths.app.name}</h1>
               <span className="badge">{ths.schemaVersion}</span>
             </div>
-            <ConnectButton />
+            <div style={{ display: 'flex', gap: 10, alignItems: 'center' }}>
+              <FaucetButton />
+              <ConnectButton />
+            </div>
           </div>
           {props.children}
         </div>
