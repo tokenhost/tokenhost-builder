@@ -48,7 +48,30 @@ export async function requestWalletAddress(chain: Chain): Promise<`0x${string}`>
     try {
       await wallet.switchChain({ id: chain.id });
     } catch (e: any) {
+      const code = e?.cause?.code ?? e?.code ?? null;
       const msg = String(e?.shortMessage ?? e?.message ?? e ?? '');
+
+      // MetaMask uses 4902 for "Unrecognized chain" when switching to a chain that hasn't been added.
+      const looksUnrecognized =
+        String(code) === '4902' ||
+        /4902/.test(msg) ||
+        /unrecognized chain|unknown chain|not added/i.test(msg);
+
+      if (looksUnrecognized) {
+        try {
+          // Attempt to add the chain to the wallet, then retry the switch.
+          await wallet.addChain({ chain });
+          await wallet.switchChain({ id: chain.id });
+        } catch (e2: any) {
+          const msg2 = String(e2?.shortMessage ?? e2?.message ?? e2 ?? '');
+          throw new Error(
+            `Wrong network. Wallet is on chainId ${currentChainId} but this app's primary deployment is chainId ${chain.id}. ` +
+              `We tried to add/switch the chain automatically but it failed. ` +
+              `Add/switch networks in your wallet and retry. ${msg2 ? `(${msg2})` : ''}`
+          );
+        }
+      }
+
       throw new Error(
         `Wrong network. Wallet is on chainId ${currentChainId} but this app's primary deployment is chainId ${chain.id}. ` +
           `Switch networks in your wallet and retry. ${msg ? `(${msg})` : ''}`
