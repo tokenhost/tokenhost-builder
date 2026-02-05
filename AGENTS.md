@@ -9,7 +9,7 @@ Spec-aligned (new) pipeline:
 - Input: THS (Token Host Schema) JSON (validated + linted), e.g. `apps/example/job-board.schema.json`.
 - Schema/validation: `packages/schema` (JSON Schema + Ajv validation, semantic lints, RFC8785+sha256 hashing, legacy importer).
 - Contracts generator: `packages/generator` (single-contract, mapping-based CRUD `App.sol`, Solidity 0.8.24).
-- CLI: `packages/cli` (`th init|validate|import-legacy|generate|build|deploy|verify(stub)|doctor`).
+- CLI: `packages/cli` (`th init|studio|validate|import-legacy|generate|build|deploy|verify(stub)|doctor`).
 - Build output: `th build <schema> --out <dir>` writes `contracts/App.sol`, `compiled/App.json`, `schema.json`, `manifest.json`.
 - Deploy: `th deploy <buildDir> --chain anvil|sepolia` (anvil deploy works; sepolia verify still TBD).
 
@@ -20,7 +20,9 @@ Legacy (kept temporarily; deprecated):
 - Build/deploy: `build.sh` compiles via `solcjs`, generates UI, then deploys via `tokenhost-web-template/contracts/deploy.js` (Foundry `forge create`).
 
 Tests:
-- `pnpm test` passes (legacy generator golden tests + THS lint tests + CRUD generator compile smoke test).
+- `pnpm test` and `pnpm test:integration` pass.
+- CI requires `static` and `integration-local` on PRs to `master`.
+- Canonical generated app coverage includes contract and UI scaffold verification.
 
 ## Phase 0 (NOW): Remediation of current snapshot (stability + security)
 
@@ -146,11 +148,45 @@ Goal: replace ad-hoc scripts with a coherent CLI that runs locally and in CI.
 - Add `th migrate` and stubs for chain migration/indexer hooks as needed.
 
 Phase 5 progress (done/partial):
-- Implemented: `th init`, `th validate`, `th import-legacy`, `th generate` (contracts only), `th build`, `th deploy`, `th verify` (stub), `th doctor`.
+- Implemented: `th init`, `th studio` (local schema builder), `th validate`, `th import-legacy`, `th generate` (contracts + UI), `th build`, `th deploy`, `th verify` (stub), `th doctor`, `th up|run|dev`.
+- `th generate --with-tests` emits generated app test scaffold and generated app CI workflow.
 
 Remaining:
-- `th generate` UI generation (SPEC 8), `th publish` (if/when in scope), real `th verify`.
+- `th publish` (if/when in scope), real `th verify`.
 - `th migrate` implementation + `migrate-chain` implementation (currently stubs).
+
+## Phase 6: Generated-app test rollout (default behavior)
+
+Goal: make generated-app tests default-on with a controlled compatibility transition.
+
+Rollout phases:
+1) scaffold emission,
+2) contract tests emission,
+3) UI tests emission,
+4) generated CI template emission,
+5) default-on switch.
+
+Phase 6 progress (done/partial):
+- Phases 1-4 are complete behind `th generate --with-tests`.
+- Generated output now includes:
+  - `tests/contract/integration.mjs`
+  - `tests/ui/smoke.mjs`
+  - `.github/workflows/generated-app-ci.yml`
+
+Remaining:
+- Phase 5 default-on switch for emitted tests.
+- Add/keep explicit opt-out (`--no-tests` or equivalent) when default-on is enabled.
+- Keep compatibility alias behavior for `--with-tests` across a deprecation window.
+
+Default-on gate (must satisfy before switching):
+- `integration-local` includes generated-app verification and is stable on `master`.
+- At least one canonical generated-app workflow verification remains in CI before and after switch.
+- No open P0/P1 generated-test-scaffold regressions.
+
+Migration/deprecation policy:
+- Existing generated app repos are not auto-migrated; teams must regenerate and merge emitted tests/workflow.
+- `--with-tests` remains accepted for at least two minor releases after default-on.
+- Remove testless generation path only after deprecation milestones are completed.
 
 ## Out of scope for this repo (unless we explicitly pull it in)
 

@@ -40,6 +40,11 @@ pnpm legacy:build-run
 
 ## Testing
 
+Token Host Builder uses a two-layer quality model:
+
+- Builder framework tests: validate schema/generator/CLI/runtime behavior.
+- Generated app tests: validate that produced apps behave correctly for their schema (canonical `job-board` is enforced in CI today).
+
 Fast local suite (no local chain required):
 
 ```bash
@@ -52,6 +57,27 @@ Local integration suite (requires `anvil` on PATH):
 ```bash
 pnpm test:integration
 ```
+
+Generated app test scaffold (issue #28 slice):
+
+```bash
+pnpm th generate apps/example/job-board.schema.json --out artifacts/job-board --with-tests
+cd artifacts/job-board/ui
+pnpm test
+```
+
+Current integration coverage includes:
+
+- preview auto-deploy behavior and manifest publication checks,
+- local faucet behavior checks,
+- canonical `apps/example/job-board.schema.json` end-to-end assertions:
+  - Candidate CRUD flows,
+  - JobPosting paid-create enforcement,
+  - generated UI route health checks.
+
+Planned expansion:
+
+- generated apps emitted by `th generate` should include app-level test scaffolds/scripts so downstream repos can run schema-specific tests by default.
 
 ## CI
 
