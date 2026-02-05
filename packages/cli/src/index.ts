@@ -673,6 +673,28 @@ function startUiSiteServer(args: {
     return `0x${n.toString(16)}`;
   }
 
+  async function trySetLocalBalance(rpcUrl: string, addr: string, wei: bigint): Promise<{ ok: boolean; method?: string; error?: string }> {
+    const qty = toHexQuantity(wei);
+    const methods = ['anvil_setBalance', 'hardhat_setBalance'];
+
+    for (const method of methods) {
+      try {
+        await rpcRequest(rpcUrl, method, [addr, qty], 2000);
+        return { ok: true, method };
+      } catch (e: any) {
+        const msg = String(e?.message ?? e ?? '');
+        const unsupported =
+          /method not found/i.test(msg) ||
+          /unsupported/i.test(msg) ||
+          /does not exist/i.test(msg) ||
+          /-32601/.test(msg);
+        if (!unsupported) return { ok: false, method, error: msg };
+      }
+    }
+
+    return { ok: false, error: 'No supported local balance RPC method found (anvil_setBalance, hardhat_setBalance).' };
+  }
+
   function readBody(req: nodeHttp.IncomingMessage, maxBytes = 1024 * 1024): Promise<string> {
     return new Promise((resolve, reject) => {
       let raw = '';
@@ -750,9 +772,14 @@ function startUiSiteServer(args: {
           const targetWei = faucet!.targetWei;
 
           let didSet = false;
+          let setMethod: string | null = null;
           if (oldWei < targetWei) {
-            await rpcRequest(faucet!.rpcUrl, 'anvil_setBalance', [addr, toHexQuantity(targetWei)], 2000);
+            const setResult = await trySetLocalBalance(faucet!.rpcUrl, addr, targetWei);
+            if (!setResult.ok) {
+              return sendJson(res, 400, { ok: false, error: setResult.error ?? 'Failed to set balance.' });
+            }
             didSet = true;
+            setMethod = setResult.method ?? null;
           }
 
           const newHex = (await rpcRequest(faucet!.rpcUrl, 'eth_getBalance', [addr, 'latest'], 2000)) as string;
@@ -765,6 +792,7 @@ function startUiSiteServer(args: {
             targetWei: toHexQuantity(targetWei),
             oldBalanceWei: toHexQuantity(oldWei),
             newBalanceWei: toHexQuantity(newWei),
+            method: setMethod,
             didSet
           });
         } catch (e: any) {

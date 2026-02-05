@@ -14,6 +14,19 @@ type FaucetStatus = {
   reason?: string | null;
 };
 
+function formatWeiHexAsEth(weiHex: unknown): string | null {
+  if (typeof weiHex !== 'string' || !weiHex.startsWith('0x')) return null;
+  try {
+    const wei = BigInt(weiHex);
+    const whole = wei / 10n ** 18n;
+    const frac4 = (wei % 10n ** 18n) / 10n ** 14n;
+    if (frac4 === 0n) return `${whole.toString()} ETH`;
+    return `${whole.toString()}.${frac4.toString().padStart(4, '0')} ETH`;
+  } catch {
+    return null;
+  }
+}
+
 async function tryFetchFaucetStatus(): Promise<FaucetStatus | null> {
   try {
     const res = await fetch('/__tokenhost/faucet', { cache: 'no-store' });
@@ -102,8 +115,16 @@ export default function FaucetButton() {
         const msg = String(json?.error ?? `Faucet failed (HTTP ${res.status}).`);
         throw new Error(msg);
       }
-
-      setTimedNote(`Funded to ~${targetEthRef.current} ETH`);
+      const oldEth = formatWeiHexAsEth(json?.oldBalanceWei);
+      const newEth = formatWeiHexAsEth(json?.newBalanceWei);
+      if (json?.didSet) {
+        const detail = oldEth && newEth ? ` (${oldEth} -> ${newEth})` : '';
+        setTimedNote(`Faucet funded${detail}`);
+      } else if (newEth) {
+        setTimedNote(`Already funded (${newEth})`);
+      } else {
+        setTimedNote(`Already funded (~${targetEthRef.current} ETH)`);
+      }
     } catch (e: any) {
       setTimedNote(String(e?.message ?? e));
     } finally {
