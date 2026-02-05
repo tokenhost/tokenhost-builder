@@ -123,12 +123,15 @@ describe('th generate (UI template)', function () {
 
     const uiDir = path.join(outDir, 'ui');
     expect(fs.existsSync(path.join(uiDir, 'tests', 'contract', 'smoke.mjs'))).to.equal(true);
+    expect(fs.existsSync(path.join(uiDir, 'tests', 'contract', 'integration.mjs'))).to.equal(true);
     expect(fs.existsSync(path.join(uiDir, 'tests', 'ui', 'smoke.mjs'))).to.equal(true);
 
     const pkg = JSON.parse(fs.readFileSync(path.join(uiDir, 'package.json'), 'utf-8'));
     expect(pkg?.scripts?.test).to.equal('pnpm run test:contract && pnpm run test:ui');
-    expect(pkg?.scripts?.['test:contract']).to.equal('node tests/contract/smoke.mjs');
+    expect(pkg?.scripts?.['test:contract']).to.equal('node tests/contract/integration.mjs');
     expect(pkg?.scripts?.['test:ui']).to.equal('node tests/ui/smoke.mjs');
+    expect(pkg?.devDependencies?.solc).to.equal('0.8.24');
+    expect(pkg?.devDependencies?.web3).to.equal('^1.3.5');
 
     const contractSmoke = runCmd('node', ['tests/contract/smoke.mjs'], uiDir);
     expect(contractSmoke.status, contractSmoke.stderr || contractSmoke.stdout).to.equal(0);
