@@ -12,14 +12,14 @@ Turns a Token Host Schema (THS) document into deterministic Solidity artifacts a
 
 ## Quickstart (New Pipeline)
 
-Prereqs: Node >= 20, pnpm (repo uses `packageManager`), Foundry required for local anvil (`th dev` default) and for `th verify`.
+Prereqs: Node >= 20, pnpm (repo uses `packageManager`), Foundry required for local anvil (`th up` default) and for `th verify`.
 
 ```bash
 pnpm install
 pnpm th doctor
 
-# One command: validate + build + start anvil + deploy + serve UI
-pnpm th dev apps/example/job-board.schema.json
+# One command: validate + build + start anvil + deploy + serve UI + local faucet
+pnpm th up apps/example/job-board.schema.json
 
 # Open http://127.0.0.1:3000/
 # MetaMask: approve switching/adding the Anvil network (chainId 31337).

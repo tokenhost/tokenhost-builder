@@ -1074,7 +1074,7 @@ function buildFromSchema(
     console.log('');
     console.log('Next steps:');
     if (opts.schemaPathForHints) {
-      console.log(`  th dev ${opts.schemaPathForHints}            # build+deploy+preview (local)`);
+      console.log(`  th up ${opts.schemaPathForHints}             # build+deploy+preview (local)`);
     }
     console.log(`  th deploy ${resolvedOutDir} --chain anvil   # start anvil first`);
     console.log(`  th deploy ${resolvedOutDir} --chain sepolia # requires RPC + funded key`);
@@ -1302,7 +1302,7 @@ program
         '',
         '```bash',
         `pnpm th doctor`,
-        `pnpm th dev ${schemaPath}`,
+        `pnpm th up ${schemaPath}`,
         '```',
         ''
       ].join('\n')
@@ -1473,9 +1473,11 @@ function anyPaidCreates(schema: ThsSchema): boolean {
 }
 
 program
-  .command('dev')
+  .command('up')
+  .alias('run')
+  .alias('dev')
   .argument('[schema]', 'Path to THS schema JSON file (defaults to an example schema when available)')
-  .description('All-in-one local dev: validate + build + (start anvil) + deploy + preview')
+  .description('All-in-one local flow: validate + build + (start anvil) + deploy + preview + faucet')
   .option('--out <dir>', 'Build output directory (defaults to artifacts/<appSlug>)')
   .option('--chain <name>', 'Chain name (anvil|sepolia)', 'anvil')
   .option('--rpc <url>', 'RPC URL override')
@@ -1562,7 +1564,7 @@ program
             } else {
               if (!interactive) {
                 console.error('No schema provided and none found under apps/.');
-                console.error('Run: th dev <path/to/schema.schema.json>');
+                console.error('Run: th up <path/to/schema.schema.json>');
                 process.exitCode = 1;
                 return;
               }
