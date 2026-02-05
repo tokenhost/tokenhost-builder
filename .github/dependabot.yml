@@ -1,0 +1,16 @@
+version: 2
+updates:
+  # Keep updates focused on the spec-aligned pnpm workspace. The legacy
+  # `tokenhost-web-template/` directory is intentionally not included.
+  - package-ecosystem: "npm"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+    open-pull-requests-limit: 5
+
+  - package-ecosystem: "github-actions"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+    open-pull-requests-limit: 5
+
