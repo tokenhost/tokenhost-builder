@@ -3,7 +3,8 @@ import os from 'os';
 import path from 'path';
 import crypto from 'crypto';
 import * as nodeHttp from 'node:http';
-import { spawnSync } from 'child_process';
+import { createInterface, type Interface as ReadlineInterface } from 'node:readline/promises';
+import { spawn, spawnSync } from 'child_process';
 import { createRequire } from 'module';
 import { fileURLToPath, pathToFileURL } from 'url';
 import { Command } from 'commander';
@@ -67,6 +68,23 @@ function formatIssues(issues: Issue[]): string {
   return issues
     .map((i) => `${i.severity.toUpperCase()} ${i.code} ${i.path} - ${i.message}`)
     .join('\n');
+}
+
+function loadThsSchemaOrThrow(schemaPath: string): ThsSchema {
+  const input = readJsonFile(schemaPath);
+  const structural = validateThsStructural(input);
+  if (!structural.ok) {
+    throw new Error(formatIssues(structural.issues));
+  }
+
+  const schema = structural.data!;
+  const lintIssues = lintThs(schema);
+  const errors = lintIssues.filter((i) => i.severity === 'error');
+  if (errors.length > 0) {
+    throw new Error(formatIssues(lintIssues));
+  }
+
+  return schema;
 }
 
 function ensureDir(dir: string) {
@@ -431,6 +449,695 @@ function validateChainConfig(chainConfig: any): { ok: boolean; errors: unknown }
   return { ok, errors: validate.errors };
 }
 
+function listSchemaCandidates(rootDir: string): string[] {
+  const out: string[] = [];
+
+  function walk(dir: string) {
+    for (const entry of fs.readdirSync(dir, { withFileTypes: true })) {
+      if (entry.name === 'node_modules' || entry.name === '.git' || entry.name === '.next' || entry.name === 'dist' || entry.name === 'out') continue;
+      const full = path.join(dir, entry.name);
+      if (entry.isDirectory()) {
+        walk(full);
+        continue;
+      }
+      if (entry.isFile() && entry.name.endsWith('.schema.json')) {
+        out.push(full);
+      }
+    }
+  }
+
+  if (fs.existsSync(rootDir) && fs.statSync(rootDir).isDirectory()) {
+    walk(rootDir);
+  }
+
+  return out.sort((a, b) => (a < b ? -1 : a > b ? 1 : 0));
+}
+
+async function rpcRequest(rpcUrl: string, method: string, params: any[] = [], timeoutMs = 1000): Promise<any> {
+  const controller = new AbortController();
+  const t = setTimeout(() => controller.abort(), timeoutMs);
+  try {
+    const res = await fetch(rpcUrl, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ jsonrpc: '2.0', id: 1, method, params }),
+      signal: controller.signal
+    });
+    if (!res.ok) {
+      throw new Error(`RPC HTTP ${res.status}`);
+    }
+    const json = await res.json();
+    if (json?.error) {
+      throw new Error(`RPC error: ${JSON.stringify(json.error)}`);
+    }
+    return json?.result;
+  } finally {
+    clearTimeout(t);
+  }
+}
+
+async function tryGetRpcChainId(rpcUrl: string, timeoutMs = 1000): Promise<number | null> {
+  try {
+    const hex = await rpcRequest(rpcUrl, 'eth_chainId', [], timeoutMs);
+    if (typeof hex !== 'string') return null;
+    const n = Number.parseInt(hex, 16);
+    if (!Number.isFinite(n)) return null;
+    return n;
+  } catch {
+    return null;
+  }
+}
+
+function isLocalHttpRpcUrl(rpcUrl: string): { host: string; port: number } | null {
+  try {
+    const u = new URL(rpcUrl);
+    if (u.protocol !== 'http:' && u.protocol !== 'https:') return null;
+    const host = u.hostname;
+    const isLocal = host === '127.0.0.1' || host === 'localhost';
+    if (!isLocal) return null;
+    const port = Number(u.port || (u.protocol === 'https:' ? 443 : 80));
+    if (!Number.isInteger(port) || port <= 0 || port > 65535) return null;
+    return { host, port };
+  } catch {
+    return null;
+  }
+}
+
+function pipeWithPrefix(stream: NodeJS.ReadableStream, prefix: string, dest: NodeJS.WriteStream) {
+  let buf = '';
+  stream.on('data', (chunk) => {
+    buf += String(chunk);
+    while (true) {
+      const idx = buf.indexOf('\n');
+      if (idx < 0) break;
+      const line = buf.slice(0, idx + 1);
+      buf = buf.slice(idx + 1);
+      dest.write(`${prefix}${line}`);
+    }
+  });
+  stream.on('end', () => {
+    if (buf) dest.write(`${prefix}${buf}\n`);
+  });
+}
+
+async function ensureAnvilRunning(rpcUrl: string, opts?: { start: boolean; expectedChainId?: number }): Promise<{ child: ReturnType<typeof spawn> | null }> {
+  const expectedChainId = opts?.expectedChainId ?? 31337;
+  const start = opts?.start ?? true;
+
+  const chainId = await tryGetRpcChainId(rpcUrl, 500);
+  if (chainId !== null) {
+    if (chainId !== expectedChainId) {
+      throw new Error(`RPC at ${rpcUrl} is chainId ${chainId}, expected ${expectedChainId}.`);
+    }
+    return { child: null };
+  }
+
+  if (!start) {
+    throw new Error(`RPC at ${rpcUrl} is not reachable. Start anvil (or pass --no-start-anvil).`);
+  }
+
+  const local = isLocalHttpRpcUrl(rpcUrl);
+  if (!local) {
+    throw new Error(`--start-anvil only supports localhost RPC URLs (got ${rpcUrl}).`);
+  }
+
+  const anvilVersion = spawnSync('anvil', ['--version'], { encoding: 'utf-8' });
+  if (anvilVersion.error && (anvilVersion.error as any).code === 'ENOENT') {
+    throw new Error('Missing Foundry: `anvil` not found on PATH. Install Foundry from https://book.getfoundry.sh/getting-started/installation');
+  }
+
+  const child = spawn('anvil', ['--host', local.host, '--port', String(local.port), '--chain-id', String(expectedChainId)], {
+    stdio: ['ignore', 'pipe', 'pipe']
+  });
+
+  if (child.stdout) pipeWithPrefix(child.stdout, '[anvil] ', process.stdout);
+  if (child.stderr) pipeWithPrefix(child.stderr, '[anvil] ', process.stderr);
+
+  const startedAt = Date.now();
+  const timeoutMs = 10_000;
+  while (Date.now() - startedAt < timeoutMs) {
+    const nowChainId = await tryGetRpcChainId(rpcUrl, 500);
+    if (nowChainId === expectedChainId) return { child };
+    await new Promise((r) => setTimeout(r, 200));
+  }
+
+  child.kill('SIGTERM');
+  throw new Error(`Timed out waiting for anvil at ${rpcUrl} to become ready.`);
+}
+
+function startUiSiteServer(args: { buildDir: string; host: string; port: number }): { server: nodeHttp.Server; url: string } {
+  const resolvedBuildDir = path.resolve(args.buildDir);
+  const uiSiteDir = path.join(resolvedBuildDir, 'ui-site');
+
+  if (!fs.existsSync(uiSiteDir)) {
+    throw new Error(`Missing ui-site/ in ${resolvedBuildDir}. Re-run \`th build\` without \`--no-ui\`.`);
+  }
+
+  if (!Number.isInteger(args.port) || args.port <= 0 || args.port > 65535) {
+    throw new Error(`Invalid port: ${args.port}`);
+  }
+
+  const host = String(args.host || '127.0.0.1');
+  const port = args.port;
+  const rootAbs = path.resolve(uiSiteDir);
+
+  function contentTypeForPath(filePath: string): string {
+    const ext = path.extname(filePath).toLowerCase();
+    switch (ext) {
+      case '.html':
+        return 'text/html; charset=utf-8';
+      case '.js':
+        return 'application/javascript; charset=utf-8';
+      case '.css':
+        return 'text/css; charset=utf-8';
+      case '.json':
+      case '.map':
+        return 'application/json; charset=utf-8';
+      case '.svg':
+        return 'image/svg+xml';
+      case '.png':
+        return 'image/png';
+      case '.jpg':
+      case '.jpeg':
+        return 'image/jpeg';
+      case '.gif':
+        return 'image/gif';
+      case '.webp':
+        return 'image/webp';
+      case '.ico':
+        return 'image/x-icon';
+      case '.woff2':
+        return 'font/woff2';
+      case '.woff':
+        return 'font/woff';
+      case '.ttf':
+        return 'font/ttf';
+      case '.txt':
+        return 'text/plain; charset=utf-8';
+      default:
+        return 'application/octet-stream';
+    }
+  }
+
+  function sendText(res: nodeHttp.ServerResponse, status: number, text: string) {
+    res.statusCode = status;
+    res.setHeader('Content-Type', 'text/plain; charset=utf-8');
+    res.setHeader('Cache-Control', 'no-store');
+    res.end(text);
+  }
+
+  const server = nodeHttp.createServer((req, res) => {
+    if (!req.url) return sendText(res, 400, 'Bad Request');
+
+    if (req.method && req.method !== 'GET' && req.method !== 'HEAD') {
+      res.setHeader('Allow', 'GET, HEAD');
+      return sendText(res, 405, 'Method Not Allowed');
+    }
+
+    let pathname = '/';
+    try {
+      pathname = new URL(req.url, `http://${host}:${port}`).pathname || '/';
+    } catch {
+      return sendText(res, 400, 'Bad Request');
+    }
+
+    try {
+      pathname = decodeURIComponent(pathname);
+    } catch {
+      return sendText(res, 400, 'Bad Request');
+    }
+
+    if (!pathname.startsWith('/')) pathname = `/${pathname}`;
+    const rel = pathname.replace(/^\/+/, '');
+    const unsafeAbs = path.resolve(rootAbs, rel);
+    const withinRoot = unsafeAbs === rootAbs || unsafeAbs.startsWith(rootAbs + path.sep);
+    if (!withinRoot) return sendText(res, 400, 'Bad Request');
+
+    // Redirect to trailing-slash routes (Next export uses trailingSlash: true).
+    if (!pathname.endsWith('/') && fs.existsSync(unsafeAbs) && fs.statSync(unsafeAbs).isDirectory()) {
+      res.statusCode = 308;
+      res.setHeader('Location', pathname + '/');
+      res.setHeader('Cache-Control', 'no-store');
+      res.end();
+      return;
+    }
+
+    let filePath = unsafeAbs;
+    if (fs.existsSync(filePath) && fs.statSync(filePath).isDirectory()) {
+      filePath = path.join(filePath, 'index.html');
+    } else if (!fs.existsSync(filePath)) {
+      // Convenience: allow /foo -> /foo/index.html if present.
+      const dirIndex = path.join(filePath, 'index.html');
+      if (fs.existsSync(dirIndex)) {
+        res.statusCode = 308;
+        res.setHeader('Location', pathname.endsWith('/') ? pathname : pathname + '/');
+        res.setHeader('Cache-Control', 'no-store');
+        res.end();
+        return;
+      }
+
+      return sendText(res, 404, 'Not Found');
+    }
+
+    try {
+      const stat = fs.statSync(filePath);
+      if (!stat.isFile()) return sendText(res, 404, 'Not Found');
+
+      res.statusCode = 200;
+      res.setHeader('Content-Type', contentTypeForPath(filePath));
+      res.setHeader('Content-Length', String(stat.size));
+      res.setHeader('Cache-Control', 'no-store');
+
+      if (req.method === 'HEAD') {
+        res.end();
+        return;
+      }
+
+      fs.createReadStream(filePath).pipe(res);
+    } catch (e: any) {
+      return sendText(res, 500, String(e?.message ?? e ?? 'Internal Server Error'));
+    }
+  });
+
+  server.on('error', (e: any) => {
+    console.error(String(e?.message ?? e ?? e));
+    process.exitCode = 1;
+  });
+
+  const url = `http://${host}:${port}/`;
+  server.listen(port, host, () => {
+    console.log(`Serving ${uiSiteDir}`);
+    console.log(url);
+
+    const manifestCandidates = [
+      path.join(uiSiteDir, '.well-known', 'tokenhost', 'manifest.json'),
+      path.join(uiSiteDir, 'manifest.json'),
+      path.join(resolvedBuildDir, 'manifest.json')
+    ];
+    const manifestPath = manifestCandidates.find((p) => fs.existsSync(p)) || null;
+    if (manifestPath) {
+      try {
+        const manifest = readJsonFile(manifestPath) as any;
+        const deployments = Array.isArray(manifest?.deployments) ? manifest.deployments : [];
+        const deployment = deployments.find((d: any) => d && d.role === 'primary') ?? deployments[0] ?? null;
+        const addr = String(deployment?.deploymentEntrypointAddress ?? '');
+        const chainId = deployment?.chainId ?? null;
+        console.log(`manifest: ${manifestPath}`);
+        console.log(`deployment: chainId=${chainId ?? 'unknown'} address=${addr || 'unknown'}`);
+        const zeroAddress = '0x0000000000000000000000000000000000000000';
+        if (addr && addr.toLowerCase() === zeroAddress) {
+          console.log('');
+          console.log('Not deployed: deploymentEntrypointAddress is 0x0.');
+          console.log(`Run: th deploy ${resolvedBuildDir} --chain anvil`);
+          console.log('Then refresh this page.');
+        }
+      } catch {
+        // Ignore manifest parse errors; the UI will surface them at runtime.
+      }
+    }
+  });
+
+  return { server, url };
+}
+
+function buildFromSchema(
+  schema: ThsSchema,
+  outDir: string,
+  opts: { ui: boolean; quiet?: boolean; schemaPathForHints?: string }
+): { outDir: string; uiBundleDir: string | null; uiSiteDir: string | null } {
+  const resolvedOutDir = path.resolve(outDir);
+  ensureDir(resolvedOutDir);
+
+  // 1) Generate Solidity source
+  const appSol = generateAppSolidity(schema);
+  ensureDir(path.join(resolvedOutDir, path.dirname(appSol.path)));
+  fs.writeFileSync(path.join(resolvedOutDir, appSol.path), appSol.contents);
+
+  // 2) Compile (solc-js)
+  const sourceRelPath = appSol.path.replace(/\\\\/g, '/');
+  const compiled = compileSolidity(sourceRelPath, appSol.contents, 'App');
+  const compiledArtifact = {
+    contractName: 'App',
+    abi: compiled.abi,
+    bytecode: compiled.bytecode,
+    deployedBytecode: compiled.deployedBytecode
+  };
+  const compiledJson = JSON.stringify(compiledArtifact, null, 2);
+  const compiledOutPath = path.join(resolvedOutDir, 'compiled', 'App.json');
+  ensureDir(path.dirname(compiledOutPath));
+  fs.writeFileSync(compiledOutPath, compiledJson);
+
+  // 3) Write schema copy
+  fs.writeFileSync(path.join(resolvedOutDir, 'schema.json'), JSON.stringify(schema, null, 2));
+
+  // 4) Package build artifacts (SPEC 11)
+  const sourcesTgzPath = path.join(resolvedOutDir, 'sources.tgz');
+  const compiledTgzPath = path.join(resolvedOutDir, 'compiled.tgz');
+  runCommand('tar', ['-czf', sourcesTgzPath, '-C', resolvedOutDir, path.dirname(appSol.path)]);
+  runCommand('tar', ['-czf', compiledTgzPath, '-C', resolvedOutDir, 'compiled']);
+
+  // 5) Build UI bundle (Next.js static export) (SPEC 8 / 11)
+  const emptyUiBundleDigest = computeSchemaHash({ version: 1, files: [] });
+  let uiBundleDigest = emptyUiBundleDigest;
+  let uiBaseUrl = ensureTrailingSlash(process.env.TH_UI_BASE_URL ?? 'http://localhost/');
+  let uiBundleDir: string | null = null;
+  let uiSiteDir: string | null = null;
+
+  if (opts.ui) {
+    uiBundleDir = path.join(resolvedOutDir, 'ui-bundle');
+    uiSiteDir = path.join(resolvedOutDir, 'ui-site');
+    fs.rmSync(uiBundleDir, { recursive: true, force: true });
+    ensureDir(uiBundleDir);
+
+    const uiWorkDir = fs.mkdtempSync(path.join(os.tmpdir(), 'tokenhost-ui-build-'));
+    try {
+      const templateDir = resolveNextExportUiTemplateDir();
+      copyDir(templateDir, uiWorkDir);
+
+      // Inject schema for client-side routing/forms.
+      const thsTsPath = path.join(uiWorkDir, 'src', 'generated', 'ths.ts');
+      ensureDir(path.dirname(thsTsPath));
+      fs.writeFileSync(thsTsPath, renderThsTs(schema));
+
+      // Ship ABI alongside the UI so it can operate without additional servers.
+      const compiledPublicPath = path.join(uiWorkDir, 'public', 'compiled', 'App.json');
+      ensureDir(path.dirname(compiledPublicPath));
+      fs.writeFileSync(compiledPublicPath, compiledJson);
+
+      // Do not bake a manifest into the UI bundle; it is published separately and signed.
+      const bakedManifestPath = path.join(uiWorkDir, 'public', '.well-known', 'tokenhost', 'manifest.json');
+      if (fs.existsSync(bakedManifestPath)) fs.rmSync(bakedManifestPath, { force: true });
+
+      runPnpmCommand(['install'], { cwd: uiWorkDir });
+      runPnpmCommand(['build'], { cwd: uiWorkDir });
+
+      const exportedDir = path.join(uiWorkDir, 'out');
+      if (!fs.existsSync(exportedDir)) {
+        throw new Error(`UI build did not produce an export directory at ${exportedDir}.`);
+      }
+
+      // Copy the static export output into the build output directory.
+      copyDir(exportedDir, uiBundleDir);
+    } finally {
+      fs.rmSync(uiWorkDir, { recursive: true, force: true });
+    }
+
+    uiBundleDigest = computeDirectoryDigest(uiBundleDir);
+    uiBaseUrl = ensureTrailingSlash(process.env.TH_UI_BASE_URL ?? toFileUrl(uiSiteDir));
+  }
+
+  // 6) Build a local manifest. This is spec-shaped but uses placeholder deployments
+  // until `th deploy` updates it.
+  const schemaHash = computeSchemaHash(schema);
+  const sourcesDigest = computeDirectoryDigest(path.join(resolvedOutDir, path.dirname(appSol.path)));
+  const compiledDigest = computeDirectoryDigest(path.join(resolvedOutDir, 'compiled'));
+  const abiDigest = sha256Digest(JSON.stringify(compiled.abi));
+  const bytecodeDigest = sha256Digest(compiled.bytecode);
+
+  const features = {
+    indexer: schema.app.features?.indexer ?? false,
+    delegation: schema.app.features?.delegation ?? false,
+    uploads: schema.app.features?.uploads ?? false,
+    onChainIndexing: schema.app.features?.onChainIndexing ?? true
+  };
+
+  const collections = schema.collections.map((c) => ({
+    name: c.name,
+    collectionId: keccak256(toBytes(c.name))
+  }));
+
+  const zeroAddress = '0x0000000000000000000000000000000000000000';
+
+  const manifest = {
+    manifestVersion: '0.1.0',
+    thsVersion: schema.thsVersion,
+    schemaVersion: schema.schemaVersion,
+    schemaHash,
+    generatorVersion: '0.0.0',
+    toolchain: {
+      node: process.version.replace(/^v/, ''),
+      solc: solc.version()
+    },
+    release: {
+      releaseId: `rel_local_${Date.now()}`,
+      supersedesReleaseId: null,
+      publishedAt: new Date().toISOString()
+    },
+    app: {
+      name: schema.app.name,
+      slug: schema.app.slug
+    },
+    collections,
+    artifacts: {
+      soliditySources: { digest: sourcesDigest, url: toFileUrl(sourcesTgzPath) },
+      compiledContracts: { digest: compiledDigest, url: toFileUrl(compiledTgzPath) }
+    },
+    deployments: [
+      {
+        role: 'primary',
+        chainId: 31337,
+        chainName: 'local',
+        deploymentMode: 'single',
+        deploymentEntrypointAddress: zeroAddress,
+        adminAddress: zeroAddress,
+        treasuryAddress: anyPaidCreates(schema) ? zeroAddress : null,
+        contracts: [
+          {
+            role: 'app',
+            address: zeroAddress,
+            verified: false,
+            bytecodeDigest,
+            abiDigest
+          }
+        ],
+        verified: false,
+        blockNumber: 0
+      }
+    ],
+    ui: {
+      bundleHash: uiBundleDigest,
+      baseUrl: uiBaseUrl,
+      wellKnown: '/.well-known/tokenhost/manifest.json'
+    },
+    features,
+    signatures: [{ alg: 'none', sig: 'UNSIGNED' }]
+  };
+
+  const signingKey = loadManifestSigningKey();
+  if (signingKey) {
+    manifest.signatures = [signManifest(manifest, signingKey)];
+  }
+
+  // Validate manifest shape against the local JSON schema.
+  const { ok, errors: manifestErrors } = validateManifest(manifest);
+  if (!ok) {
+    throw new Error(
+      'Generated manifest did not validate against schemas/tokenhost-release-manifest.schema.json\n' + JSON.stringify(manifestErrors, null, 2)
+    );
+  }
+
+  const manifestPath = path.join(resolvedOutDir, 'manifest.json');
+  const manifestJsonOut = JSON.stringify(manifest, null, 2);
+  fs.writeFileSync(manifestPath, manifestJsonOut);
+
+  // Convenience: create a self-hostable static site root that includes the UI bundle + manifest.
+  // Note: ui.bundleHash is computed over ui-bundle/ (UI code only), not this directory.
+  if (uiBundleDir && uiSiteDir) {
+    fs.rmSync(uiSiteDir, { recursive: true, force: true });
+    copyDir(uiBundleDir, uiSiteDir);
+    publishManifestToUiSite(uiSiteDir, manifestJsonOut);
+  }
+
+  if (!opts.quiet) {
+    console.log(`Wrote ${appSol.path}`);
+    console.log(`Wrote compiled/App.json`);
+    console.log(`Wrote sources.tgz`);
+    console.log(`Wrote compiled.tgz`);
+    if (uiBundleDir) {
+      console.log(`Wrote ui-bundle/ (digest: ${uiBundleDigest})`);
+      console.log(`Wrote ui-site/ (self-hostable static root)`);
+    }
+    console.log(`Wrote manifest.json`);
+
+    console.log('');
+    console.log('Next steps:');
+    if (opts.schemaPathForHints) {
+      console.log(`  th dev ${opts.schemaPathForHints}            # build+deploy+preview (local)`);
+    }
+    console.log(`  th deploy ${resolvedOutDir} --chain anvil   # start anvil first`);
+    console.log(`  th deploy ${resolvedOutDir} --chain sepolia # requires RPC + funded key`);
+    if (uiBundleDir) {
+      console.log(`  th preview ${resolvedOutDir}                # open http://127.0.0.1:3000/`);
+    }
+  }
+
+  return { outDir: resolvedOutDir, uiBundleDir, uiSiteDir };
+}
+
+async function deployBuildDir(
+  buildDir: string,
+  opts: { chain: string; rpc?: string; privateKey?: string; admin?: string; treasury?: string; role: string }
+): Promise<void> {
+  const resolvedBuildDir = path.resolve(buildDir);
+  const manifestPath = path.join(resolvedBuildDir, 'manifest.json');
+  const compiledPath = path.join(resolvedBuildDir, 'compiled', 'App.json');
+  const schemaPath = path.join(resolvedBuildDir, 'schema.json');
+
+  if (!fs.existsSync(manifestPath)) throw new Error(`Missing manifest.json in ${resolvedBuildDir}. Run \`th build\` first.`);
+  if (!fs.existsSync(compiledPath)) throw new Error(`Missing compiled/App.json in ${resolvedBuildDir}. Run \`th build\` first.`);
+  if (!fs.existsSync(schemaPath)) throw new Error(`Missing schema.json in ${resolvedBuildDir}. Run \`th build\` first.`);
+
+  const manifest = readJsonFile(manifestPath) as any;
+  const compiled = readJsonFile(compiledPath) as any;
+  const schemaInput = readJsonFile(schemaPath);
+  const schemaStructural = validateThsStructural(schemaInput);
+  if (!schemaStructural.ok) throw new Error(`Invalid schema.json in buildDir:\n${formatIssues(schemaStructural.issues)}`);
+  const schema = schemaStructural.data!;
+
+  const { chainName, chain } = resolveKnownChain(opts.chain);
+  const rpcUrl = resolveRpcUrl(chainName, chain, opts.rpc);
+  const privateKey = resolvePrivateKey(chainName, opts.privateKey);
+  const account = privateKeyToAccount(privateKey);
+
+  const walletClient = createWalletClient({
+    chain,
+    account,
+    transport: http(rpcUrl)
+  });
+  const publicClient = createPublicClient({
+    chain,
+    transport: http(rpcUrl)
+  });
+
+  const abi = compiled.abi;
+  const bytecode: Hex = normalizeHexString(String(compiled.bytecode), 'bytecode');
+  const ctorInputs = findConstructorInputs(abi);
+
+  const deployer = account.address as Address;
+  const admin = normalizeAddress(opts.admin ?? deployer, 'admin');
+  const treasury = normalizeAddress(opts.treasury ?? deployer, 'treasury');
+
+  const args = (() => {
+    if (ctorInputs.length === 0) return [];
+    if (ctorInputs.length === 2) return [admin, treasury];
+    throw new Error(`Unsupported constructor arity (${ctorInputs.length}).`);
+  })();
+
+  console.log(`Deploying App to ${chainName} (${rpcUrl}) as ${deployer}...`);
+
+  const txHash = await walletClient.deployContract({
+    abi,
+    bytecode,
+    args,
+    chain
+  });
+
+  const receipt = await publicClient.waitForTransactionReceipt({ hash: txHash });
+  const deployedAddress = receipt.contractAddress;
+  if (!deployedAddress) throw new Error('Deployment receipt missing contractAddress.');
+
+  console.log(`Deployed App: ${deployedAddress}`);
+
+  const bytecodeDigest = sha256Digest(String(compiled.bytecode));
+  const abiDigest = sha256Digest(JSON.stringify(abi));
+
+  const deployment = {
+    role: opts.role,
+    chainId: chain.id,
+    chainName,
+    deploymentMode: 'single',
+    deploymentEntrypointAddress: deployedAddress,
+    adminAddress: admin,
+    treasuryAddress: ctorInputs.length === 2 ? treasury : null,
+    contracts: [
+      {
+        role: 'app',
+        address: deployedAddress,
+        verified: false,
+        bytecodeDigest,
+        abiDigest
+      }
+    ],
+    verified: false,
+    blockNumber: Number(receipt.blockNumber ?? 0n)
+  };
+
+  // Emit a chain config artifact and reference it from this deployment.
+  const chainConfig = buildChainConfigArtifact({ chainName, chain, rpcUrl });
+  const chainSigningKey = loadManifestSigningKey();
+  if (chainSigningKey) {
+    chainConfig.signatures = [signManifest(chainConfig, chainSigningKey)];
+  }
+  const chainCfgValidation = validateChainConfig(chainConfig);
+  if (!chainCfgValidation.ok) {
+    throw new Error(`Generated chain config did not validate:\n${JSON.stringify(chainCfgValidation.errors, null, 2)}`);
+  }
+
+  const chainConfigDir = path.join(resolvedBuildDir, 'chain-config');
+  ensureDir(chainConfigDir);
+  const chainConfigPath = path.join(chainConfigDir, `${chainName}.json`);
+  fs.writeFileSync(chainConfigPath, JSON.stringify(chainConfig, null, 2));
+  const chainConfigDigest = computeSchemaHash(chainConfig);
+  (deployment as any).chainConfig = {
+    url: toFileUrl(chainConfigPath),
+    digest: chainConfigDigest,
+    chainConfigVersion: chainConfig.chainConfigVersion
+  };
+
+  // Replace existing deployment entry for (role, chainId) if it exists; otherwise append.
+  manifest.deployments = Array.isArray(manifest.deployments) ? manifest.deployments : [];
+  const zeroAddress = '0x0000000000000000000000000000000000000000';
+  const byRoleAndChainIdx = manifest.deployments.findIndex((d: any) => d && d.role === opts.role && d.chainId === chain.id);
+  const placeholderIdx =
+    byRoleAndChainIdx >= 0
+      ? -1
+      : manifest.deployments.findIndex((d: any) => d && d.role === opts.role && String(d.deploymentEntrypointAddress || '').toLowerCase() === zeroAddress);
+  const idx = byRoleAndChainIdx >= 0 ? byRoleAndChainIdx : placeholderIdx;
+  if (idx >= 0) {
+    manifest.deployments[idx] = deployment;
+  } else {
+    manifest.deployments.push(deployment);
+  }
+
+  // If the schema includes paid creates, make sure treasury is not null in manifest.
+  if (anyPaidCreates(schema) && deployment.treasuryAddress === null) {
+    throw new Error('Schema includes paid creates, but deployed contract has no treasuryAddress constructor.');
+  }
+
+  // Re-sign manifest after mutating deployments.
+  const signingKey = loadManifestSigningKey();
+  if (signingKey) {
+    manifest.signatures = [signManifest(manifest, signingKey)];
+  } else {
+    const hadRealSig = Array.isArray(manifest.signatures) && manifest.signatures.some((s: any) => s && s.alg && s.alg !== 'none');
+    if (hadRealSig) {
+      console.warn('WARN manifest: signing key not provided; clearing signatures and marking UNSIGNED');
+    }
+    manifest.signatures = [{ alg: 'none', sig: 'UNSIGNED' }];
+  }
+
+  const validation = validateManifest(manifest);
+  if (!validation.ok) {
+    throw new Error(`Updated manifest failed validation:\n${JSON.stringify(validation.errors, null, 2)}`);
+  }
+
+  const manifestJsonOut = JSON.stringify(manifest, null, 2);
+  fs.writeFileSync(manifestPath, manifestJsonOut);
+  console.log(`Updated ${manifestPath}`);
+
+  const uiSiteDir = path.join(resolvedBuildDir, 'ui-site');
+  if (fs.existsSync(uiSiteDir)) {
+    publishManifestToUiSite(uiSiteDir, manifestJsonOut);
+    console.log(`Published manifest to ui-site/`);
+  }
+
+  if (fs.existsSync(uiSiteDir)) {
+    console.log('');
+    console.log('Next steps:');
+    console.log(`  th preview ${resolvedBuildDir}  # open http://127.0.0.1:3000/`);
+  }
+}
+
 const program = new Command();
 
 program.name('th').description('Token Host CLI (local)').version('0.0.0');
@@ -482,10 +1189,8 @@ program
         '## Quickstart',
         '',
         '```bash',
-        `pnpm th validate ${schemaPath}`,
-        `pnpm th build ${schemaPath} --out ${path.join(outDir, 'build')}`,
-        `pnpm th deploy ${path.join(outDir, 'build')} --chain anvil`,
-        `pnpm th preview ${path.join(outDir, 'build')}`,
+        `pnpm th doctor`,
+        `pnpm th dev ${schemaPath}`,
         '```',
         ''
       ].join('\n')
@@ -642,222 +1347,12 @@ program
   .option('--out <dir>', 'Output directory', 'artifacts')
   .option('--no-ui', 'Do not generate/build UI bundle')
   .action((schemaPath: string, opts: { out: string; ui: boolean }) => {
-    const input = readJsonFile(schemaPath);
-    const structural = validateThsStructural(input);
-    if (!structural.ok) {
-      console.error(formatIssues(structural.issues));
+    try {
+      const schema = loadThsSchemaOrThrow(schemaPath);
+      buildFromSchema(schema, opts.out, { ui: opts.ui, schemaPathForHints: schemaPath });
+    } catch (e: any) {
+      console.error(String(e?.message ?? e));
       process.exitCode = 1;
-      return;
-    }
-
-    const schema = structural.data!;
-    const lintIssues = lintThs(schema);
-    const errors = lintIssues.filter((i) => i.severity === 'error');
-    if (errors.length > 0) {
-      console.error(formatIssues(lintIssues));
-      process.exitCode = 1;
-      return;
-    }
-
-    const outDir = path.resolve(opts.out);
-    ensureDir(outDir);
-
-    // 1) Generate Solidity source
-    const appSol = generateAppSolidity(schema);
-    ensureDir(path.join(outDir, path.dirname(appSol.path)));
-    fs.writeFileSync(path.join(outDir, appSol.path), appSol.contents);
-
-    // 2) Compile (solc-js)
-    const sourceRelPath = appSol.path.replace(/\\\\/g, '/');
-    const compiled = compileSolidity(sourceRelPath, appSol.contents, 'App');
-    const compiledArtifact = {
-      contractName: 'App',
-      abi: compiled.abi,
-      bytecode: compiled.bytecode,
-      deployedBytecode: compiled.deployedBytecode
-    };
-    const compiledJson = JSON.stringify(compiledArtifact, null, 2);
-    const compiledOutPath = path.join(outDir, 'compiled', 'App.json');
-    ensureDir(path.dirname(compiledOutPath));
-    fs.writeFileSync(compiledOutPath, compiledJson);
-
-    // 3) Write schema copy
-    fs.writeFileSync(path.join(outDir, 'schema.json'), JSON.stringify(schema, null, 2));
-
-    // 4) Package build artifacts (SPEC 11)
-    const sourcesTgzPath = path.join(outDir, 'sources.tgz');
-    const compiledTgzPath = path.join(outDir, 'compiled.tgz');
-    runCommand('tar', ['-czf', sourcesTgzPath, '-C', outDir, path.dirname(appSol.path)]);
-    runCommand('tar', ['-czf', compiledTgzPath, '-C', outDir, 'compiled']);
-
-    // 5) Build UI bundle (Next.js static export) (SPEC 8 / 11)
-    const emptyUiBundleDigest = computeSchemaHash({ version: 1, files: [] });
-    let uiBundleDigest = emptyUiBundleDigest;
-    let uiBaseUrl = ensureTrailingSlash(process.env.TH_UI_BASE_URL ?? 'http://localhost/');
-    let uiBundleDir: string | null = null;
-    let uiSiteDir: string | null = null;
-
-    if (opts.ui) {
-      uiBundleDir = path.join(outDir, 'ui-bundle');
-      uiSiteDir = path.join(outDir, 'ui-site');
-      fs.rmSync(uiBundleDir, { recursive: true, force: true });
-      ensureDir(uiBundleDir);
-
-      const uiWorkDir = fs.mkdtempSync(path.join(os.tmpdir(), 'tokenhost-ui-build-'));
-      try {
-        const templateDir = resolveNextExportUiTemplateDir();
-        copyDir(templateDir, uiWorkDir);
-
-        // Inject schema for client-side routing/forms.
-        const thsTsPath = path.join(uiWorkDir, 'src', 'generated', 'ths.ts');
-        ensureDir(path.dirname(thsTsPath));
-        fs.writeFileSync(thsTsPath, renderThsTs(schema));
-
-        // Ship ABI alongside the UI so it can operate without additional servers.
-        const compiledPublicPath = path.join(uiWorkDir, 'public', 'compiled', 'App.json');
-        ensureDir(path.dirname(compiledPublicPath));
-        fs.writeFileSync(compiledPublicPath, compiledJson);
-
-        // Do not bake a manifest into the UI bundle; it is published separately and signed.
-        const bakedManifestPath = path.join(uiWorkDir, 'public', '.well-known', 'tokenhost', 'manifest.json');
-        if (fs.existsSync(bakedManifestPath)) fs.rmSync(bakedManifestPath, { force: true });
-
-        runPnpmCommand(['install'], { cwd: uiWorkDir });
-        runPnpmCommand(['build'], { cwd: uiWorkDir });
-
-        const exportedDir = path.join(uiWorkDir, 'out');
-        if (!fs.existsSync(exportedDir)) {
-          throw new Error(`UI build did not produce an export directory at ${exportedDir}.`);
-        }
-
-        // Copy the static export output into the build output directory.
-        copyDir(exportedDir, uiBundleDir);
-      } finally {
-        fs.rmSync(uiWorkDir, { recursive: true, force: true });
-      }
-
-      uiBundleDigest = computeDirectoryDigest(uiBundleDir);
-      uiBaseUrl = ensureTrailingSlash(process.env.TH_UI_BASE_URL ?? toFileUrl(uiSiteDir));
-    }
-
-    // 6) Build a local manifest. This is spec-shaped but uses placeholder deployments
-    // until `th deploy` updates it.
-    const schemaHash = computeSchemaHash(schema);
-    const sourcesDigest = computeDirectoryDigest(path.join(outDir, path.dirname(appSol.path)));
-    const compiledDigest = computeDirectoryDigest(path.join(outDir, 'compiled'));
-    const abiDigest = sha256Digest(JSON.stringify(compiled.abi));
-    const bytecodeDigest = sha256Digest(compiled.bytecode);
-
-    const features = {
-      indexer: schema.app.features?.indexer ?? false,
-      delegation: schema.app.features?.delegation ?? false,
-      uploads: schema.app.features?.uploads ?? false,
-      onChainIndexing: schema.app.features?.onChainIndexing ?? true
-    };
-
-    const collections = schema.collections.map((c) => ({
-      name: c.name,
-      collectionId: keccak256(toBytes(c.name))
-    }));
-
-    const zeroAddress = '0x0000000000000000000000000000000000000000';
-
-    const manifest = {
-      manifestVersion: '0.1.0',
-      thsVersion: schema.thsVersion,
-      schemaVersion: schema.schemaVersion,
-      schemaHash,
-      generatorVersion: '0.0.0',
-      toolchain: {
-        node: process.version.replace(/^v/, ''),
-        solc: solc.version()
-      },
-      release: {
-        releaseId: `rel_local_${Date.now()}`,
-        supersedesReleaseId: null,
-        publishedAt: new Date().toISOString()
-      },
-      app: {
-        name: schema.app.name,
-        slug: schema.app.slug
-      },
-      collections,
-      artifacts: {
-        soliditySources: { digest: sourcesDigest, url: toFileUrl(sourcesTgzPath) },
-        compiledContracts: { digest: compiledDigest, url: toFileUrl(compiledTgzPath) }
-      },
-      deployments: [
-        {
-          role: 'primary',
-          chainId: 31337,
-          chainName: 'local',
-          deploymentMode: 'single',
-          deploymentEntrypointAddress: zeroAddress,
-          adminAddress: zeroAddress,
-          treasuryAddress: anyPaidCreates(schema) ? zeroAddress : null,
-          contracts: [
-            {
-              role: 'app',
-              address: zeroAddress,
-              verified: false,
-              bytecodeDigest,
-              abiDigest
-            }
-          ],
-          verified: false,
-          blockNumber: 0
-        }
-      ],
-      ui: {
-        bundleHash: uiBundleDigest,
-        baseUrl: uiBaseUrl,
-        wellKnown: '/.well-known/tokenhost/manifest.json'
-      },
-      features,
-      signatures: [{ alg: 'none', sig: 'UNSIGNED' }]
-    };
-
-    const signingKey = loadManifestSigningKey();
-    if (signingKey) {
-      manifest.signatures = [signManifest(manifest, signingKey)];
-    }
-
-    // Validate manifest shape against the local JSON schema.
-    const { ok, errors: manifestErrors } = validateManifest(manifest);
-    if (!ok) {
-      console.error('Generated manifest did not validate against schemas/tokenhost-release-manifest.schema.json');
-      console.error(JSON.stringify(manifestErrors, null, 2));
-      process.exitCode = 1;
-      return;
-    }
-
-    const manifestPath = path.join(outDir, 'manifest.json');
-    const manifestJsonOut = JSON.stringify(manifest, null, 2);
-    fs.writeFileSync(manifestPath, manifestJsonOut);
-
-    // Convenience: create a self-hostable static site root that includes the UI bundle + manifest.
-    // Note: ui.bundleHash is computed over ui-bundle/ (UI code only), not this directory.
-    if (uiBundleDir && uiSiteDir) {
-      fs.rmSync(uiSiteDir, { recursive: true, force: true });
-      copyDir(uiBundleDir, uiSiteDir);
-      publishManifestToUiSite(uiSiteDir, manifestJsonOut);
-    }
-    console.log(`Wrote ${appSol.path}`);
-    console.log(`Wrote compiled/App.json`);
-    console.log(`Wrote sources.tgz`);
-    console.log(`Wrote compiled.tgz`);
-    if (uiBundleDir) {
-      console.log(`Wrote ui-bundle/ (digest: ${uiBundleDigest})`);
-      console.log(`Wrote ui-site/ (self-hostable static root)`);
-    }
-    console.log(`Wrote manifest.json`);
-
-    console.log('');
-    console.log('Next steps:');
-    console.log(`  th deploy ${outDir} --chain anvil   # start anvil first`);
-    console.log(`  th deploy ${outDir} --chain sepolia # requires RPC + funded key`);
-    if (uiBundleDir) {
-      console.log(`  th preview ${outDir}               # open http://127.0.0.1:3000/`);
     }
   });
 
@@ -866,193 +1361,241 @@ function anyPaidCreates(schema: ThsSchema): boolean {
 }
 
 program
+  .command('dev')
+  .argument('[schema]', 'Path to THS schema JSON file (defaults to an example schema when available)')
+  .description('All-in-one local dev: validate + build + (start anvil) + deploy + preview')
+  .option('--out <dir>', 'Build output directory (defaults to artifacts/<appSlug>)')
+  .option('--chain <name>', 'Chain name (anvil|sepolia)', 'anvil')
+  .option('--rpc <url>', 'RPC URL override')
+  .option('--private-key <hex>', 'Private key (0x...) override')
+  .option('--admin <address>', 'Admin address (defaults to deployer)')
+  .option('--treasury <address>', 'Treasury address (defaults to deployer)')
+  .option('--role <role>', 'Deployment role (primary|legacy)', 'primary')
+  .option('--host <host>', 'Preview host', '127.0.0.1')
+  .option('--port <n>', 'Preview port', '3000')
+  .option('--interactive', 'Prompt for missing values', false)
+  .option('--dry-run', 'Print what would run and exit', false)
+  .option('--no-start-anvil', 'Do not start anvil automatically (anvil chain only)')
+  .option('--no-deploy', 'Skip deployment (UI will show Not deployed)')
+  .option('--no-preview', 'Skip preview server')
+  .action(
+    async (
+      schemaArg: string | undefined,
+      opts: {
+        out?: string;
+        chain: string;
+        rpc?: string;
+        privateKey?: string;
+        admin?: string;
+        treasury?: string;
+        role: string;
+        host: string;
+        port: string;
+        interactive: boolean;
+        dryRun: boolean;
+        startAnvil: boolean;
+        deploy: boolean;
+        preview: boolean;
+      }
+    ) => {
+      let rl: ReadlineInterface | null = null;
+      let anvilChild: ReturnType<typeof spawn> | null = null;
+      const originalUiBaseUrl = process.env.TH_UI_BASE_URL;
+
+      try {
+        const isTty = Boolean(process.stdin.isTTY && process.stdout.isTTY);
+        const interactive = Boolean(opts.interactive || (isTty && !schemaArg));
+        if (interactive) {
+          rl = createInterface({ input: process.stdin, output: process.stdout });
+        }
+
+        async function ask(question: string, def?: string): Promise<string> {
+          if (!rl) throw new Error('Interactive prompt requested but stdin/stdout is not a TTY.');
+          const suffix = def ? ` [${def}]` : '';
+          const ans = await rl.question(`${question}${suffix}: `);
+          const v = ans.trim();
+          return v || def || '';
+        }
+
+        // Resolve schema path.
+        let schemaPath = schemaArg?.trim() || '';
+        if (!schemaPath) {
+          const example = path.join('apps', 'example', 'job-board.schema.json');
+          if (fs.existsSync(example)) {
+            schemaPath = example;
+            console.log(`Using example schema: ${schemaPath}`);
+          } else {
+            const appsDir = path.join(process.cwd(), 'apps');
+            const candidates = listSchemaCandidates(appsDir);
+            if (candidates.length === 1) {
+              schemaPath = candidates[0]!;
+              console.log(`Using schema: ${path.relative(process.cwd(), schemaPath)}`);
+            } else if (candidates.length > 1) {
+              if (!interactive) {
+                console.error('Multiple schema candidates found. Pass one explicitly:');
+                for (const c of candidates) console.error(`  - ${path.relative(process.cwd(), c)}`);
+                process.exitCode = 1;
+                return;
+              }
+              console.log('Select a schema:');
+              candidates.forEach((c, idx) => console.log(`  ${idx + 1}) ${path.relative(process.cwd(), c)}`));
+              const pick = await ask('Schema number', '1');
+              const idx = Number(pick) - 1;
+              if (!Number.isInteger(idx) || idx < 0 || idx >= candidates.length) {
+                throw new Error(`Invalid selection: ${pick}`);
+              }
+              schemaPath = candidates[idx]!;
+            } else {
+              if (!interactive) {
+                console.error('No schema provided and none found under apps/.');
+                console.error('Run: th dev <path/to/schema.schema.json>');
+                process.exitCode = 1;
+                return;
+              }
+              schemaPath = await ask('Schema path');
+            }
+          }
+        }
+
+        const resolvedSchemaPath = path.resolve(schemaPath);
+        if (!fs.existsSync(resolvedSchemaPath) || !fs.statSync(resolvedSchemaPath).isFile()) {
+          throw new Error(`Schema not found: ${resolvedSchemaPath}`);
+        }
+
+        const schema = loadThsSchemaOrThrow(resolvedSchemaPath);
+        const outDir = path.resolve(opts.out ? String(opts.out) : path.join('artifacts', schema.app.slug));
+
+        const host = String(opts.host || '127.0.0.1');
+        const port = Number(opts.port);
+        const previewUrl = `http://${host}:${port}/`;
+
+        // Resolve chain + RPC early so dry-run shows the real target.
+        const { chainName, chain } = resolveKnownChain(opts.chain);
+        const rpcUrl = resolveRpcUrl(chainName, chain, opts.rpc);
+
+        if (opts.dryRun) {
+          console.log('Plan:');
+          console.log(`  - validate: ${resolvedSchemaPath}`);
+          console.log(`  - build:    ${outDir}`);
+          if (chainName === 'anvil') {
+            console.log(`  - anvil:    ${opts.startAnvil ? `ensure running at ${rpcUrl}` : `SKIP (rpc=${rpcUrl})`}`);
+          }
+          if (opts.deploy) {
+            console.log(`  - deploy:   chain=${chainName} rpc=${rpcUrl}`);
+          } else {
+            console.log(`  - deploy:   SKIP`);
+          }
+          if (opts.preview) {
+            console.log(`  - preview:  ${previewUrl}`);
+          } else {
+            console.log(`  - preview:  SKIP`);
+          }
+          return;
+        }
+
+        console.log(`Schema: ${schema.app.slug} (${path.relative(process.cwd(), resolvedSchemaPath)})`);
+        console.log(`Out:    ${path.relative(process.cwd(), outDir)}`);
+        console.log(`Chain:  ${chainName} (${rpcUrl})`);
+        if (opts.preview) console.log(`UI:     ${previewUrl}`);
+        console.log('');
+
+        // If the user didn't explicitly set TH_UI_BASE_URL, set it to the preview URL so
+        // the manifest's ui.baseUrl is meaningful during local dev.
+        if (!originalUiBaseUrl && opts.preview) {
+          process.env.TH_UI_BASE_URL = previewUrl;
+        }
+
+        // Start Anvil (if needed) while we build.
+        const anvilPromise =
+          chainName === 'anvil' ? ensureAnvilRunning(rpcUrl, { start: Boolean(opts.startAnvil), expectedChainId: chain.id }) : Promise.resolve({ child: null });
+
+        console.log('Building…');
+        buildFromSchema(schema, outDir, { ui: true, quiet: true, schemaPathForHints: resolvedSchemaPath });
+        console.log('Build complete.');
+
+        const ensured = await anvilPromise;
+        anvilChild = ensured.child;
+
+        if (opts.deploy) {
+          console.log('');
+          console.log('Deploying…');
+          await deployBuildDir(outDir, {
+            chain: opts.chain,
+            rpc: opts.rpc,
+            privateKey: opts.privateKey,
+            admin: opts.admin,
+            treasury: opts.treasury,
+            role: opts.role
+          });
+          console.log('Deploy complete.');
+        }
+
+        if (opts.preview) {
+          console.log('');
+          const { server, url } = startUiSiteServer({ buildDir: outDir, host, port });
+          console.log('');
+          console.log(`Ready: ${url}`);
+          console.log('Press Ctrl+C to stop.');
+
+          const cleanup = () => {
+            try {
+              server.close(() => {});
+            } catch {}
+            if (anvilChild) {
+              try {
+                anvilChild.kill('SIGTERM');
+              } catch {}
+            }
+            process.exit(0);
+          };
+
+          process.on('SIGINT', cleanup);
+          process.on('SIGTERM', cleanup);
+        } else {
+          // If we started Anvil ourselves, shut it down on exit unless we're staying alive to serve the UI.
+          if (anvilChild) {
+            try {
+              anvilChild.kill('SIGTERM');
+            } catch {}
+            anvilChild = null;
+          }
+        }
+      } catch (e: any) {
+        console.error(String(e?.message ?? e));
+        process.exitCode = 1;
+        if (anvilChild) {
+          try {
+            anvilChild.kill('SIGTERM');
+          } catch {}
+        }
+      } finally {
+        if (rl) rl.close();
+        if (originalUiBaseUrl !== undefined) {
+          process.env.TH_UI_BASE_URL = originalUiBaseUrl;
+        } else {
+          delete process.env.TH_UI_BASE_URL;
+        }
+      }
+    }
+  );
+
+program
   .command('preview')
   .argument('<buildDir>', 'Directory created by `th build` (contains ui-site/)')
   .description('Serve the generated static UI locally (no Python required)')
   .option('--port <n>', 'Port to listen on', '3000')
   .option('--host <host>', 'Host to bind (default: 127.0.0.1)', '127.0.0.1')
   .action((buildDir: string, opts: { port: string; host: string }) => {
-    const resolvedBuildDir = path.resolve(buildDir);
-    const uiSiteDir = path.join(resolvedBuildDir, 'ui-site');
-
-    if (!fs.existsSync(uiSiteDir)) {
-      console.error(`Missing ui-site/ in ${resolvedBuildDir}.`);
-      console.error('Re-run `th build` without `--no-ui` to generate the UI bundle.');
+    try {
+      const port = Number(opts.port);
+      const { server } = startUiSiteServer({ buildDir, host: opts.host, port });
+      process.on('SIGINT', () => {
+        server.close(() => process.exit(0));
+      });
+    } catch (e: any) {
+      console.error(String(e?.message ?? e));
       process.exitCode = 1;
-      return;
     }
-
-    const port = Number(opts.port);
-    if (!Number.isInteger(port) || port <= 0 || port > 65535) {
-      console.error(`Invalid --port: ${opts.port}`);
-      process.exitCode = 1;
-      return;
-    }
-
-    const host = String(opts.host || '127.0.0.1');
-    const rootAbs = path.resolve(uiSiteDir);
-
-    function contentTypeForPath(filePath: string): string {
-      const ext = path.extname(filePath).toLowerCase();
-      switch (ext) {
-        case '.html':
-          return 'text/html; charset=utf-8';
-        case '.js':
-          return 'application/javascript; charset=utf-8';
-        case '.css':
-          return 'text/css; charset=utf-8';
-        case '.json':
-        case '.map':
-          return 'application/json; charset=utf-8';
-        case '.svg':
-          return 'image/svg+xml';
-        case '.png':
-          return 'image/png';
-        case '.jpg':
-        case '.jpeg':
-          return 'image/jpeg';
-        case '.gif':
-          return 'image/gif';
-        case '.webp':
-          return 'image/webp';
-        case '.ico':
-          return 'image/x-icon';
-        case '.woff2':
-          return 'font/woff2';
-        case '.woff':
-          return 'font/woff';
-        case '.ttf':
-          return 'font/ttf';
-        case '.txt':
-          return 'text/plain; charset=utf-8';
-        default:
-          return 'application/octet-stream';
-      }
-    }
-
-    function sendText(res: nodeHttp.ServerResponse, status: number, text: string) {
-      res.statusCode = status;
-      res.setHeader('Content-Type', 'text/plain; charset=utf-8');
-      res.setHeader('Cache-Control', 'no-store');
-      res.end(text);
-    }
-
-    const server = nodeHttp.createServer((req, res) => {
-      if (!req.url) return sendText(res, 400, 'Bad Request');
-
-      if (req.method && req.method !== 'GET' && req.method !== 'HEAD') {
-        res.setHeader('Allow', 'GET, HEAD');
-        return sendText(res, 405, 'Method Not Allowed');
-      }
-
-      let pathname = '/';
-      try {
-        pathname = new URL(req.url, `http://${host}:${port}`).pathname || '/';
-      } catch {
-        return sendText(res, 400, 'Bad Request');
-      }
-
-      try {
-        pathname = decodeURIComponent(pathname);
-      } catch {
-        return sendText(res, 400, 'Bad Request');
-      }
-
-      if (!pathname.startsWith('/')) pathname = `/${pathname}`;
-      const rel = pathname.replace(/^\/+/, '');
-      const unsafeAbs = path.resolve(rootAbs, rel);
-      const withinRoot = unsafeAbs === rootAbs || unsafeAbs.startsWith(rootAbs + path.sep);
-      if (!withinRoot) return sendText(res, 400, 'Bad Request');
-
-      // Redirect to trailing-slash routes (Next export uses trailingSlash: true).
-      if (!pathname.endsWith('/') && fs.existsSync(unsafeAbs) && fs.statSync(unsafeAbs).isDirectory()) {
-        res.statusCode = 308;
-        res.setHeader('Location', pathname + '/');
-        res.setHeader('Cache-Control', 'no-store');
-        res.end();
-        return;
-      }
-
-      let filePath = unsafeAbs;
-      if (fs.existsSync(filePath) && fs.statSync(filePath).isDirectory()) {
-        filePath = path.join(filePath, 'index.html');
-      } else if (!fs.existsSync(filePath)) {
-        // Convenience: allow /foo -> /foo/index.html if present.
-        const dirIndex = path.join(filePath, 'index.html');
-        if (fs.existsSync(dirIndex)) {
-          res.statusCode = 308;
-          res.setHeader('Location', pathname.endsWith('/') ? pathname : pathname + '/');
-          res.setHeader('Cache-Control', 'no-store');
-          res.end();
-          return;
-        }
-
-        return sendText(res, 404, 'Not Found');
-      }
-
-      try {
-        const stat = fs.statSync(filePath);
-        if (!stat.isFile()) return sendText(res, 404, 'Not Found');
-
-        res.statusCode = 200;
-        res.setHeader('Content-Type', contentTypeForPath(filePath));
-        res.setHeader('Content-Length', String(stat.size));
-
-        // Disable caching so manifest updates (e.g. after `th deploy`) are reflected immediately.
-        res.setHeader('Cache-Control', 'no-store');
-
-        if (req.method === 'HEAD') {
-          res.end();
-          return;
-        }
-
-        fs.createReadStream(filePath).pipe(res);
-      } catch (e: any) {
-        return sendText(res, 500, String(e?.message ?? e ?? 'Internal Server Error'));
-      }
-    });
-
-    server.on('error', (e: any) => {
-      console.error(String(e?.message ?? e ?? e));
-      process.exitCode = 1;
-    });
-
-    server.listen(port, host, () => {
-      const url = `http://${host}:${port}/`;
-      console.log(`Serving ${uiSiteDir}`);
-      console.log(url);
-
-      const manifestCandidates = [
-        path.join(uiSiteDir, '.well-known', 'tokenhost', 'manifest.json'),
-        path.join(uiSiteDir, 'manifest.json'),
-        path.join(resolvedBuildDir, 'manifest.json')
-      ];
-      const manifestPath = manifestCandidates.find((p) => fs.existsSync(p)) || null;
-      if (manifestPath) {
-        try {
-          const manifest = readJsonFile(manifestPath) as any;
-          const deployments = Array.isArray(manifest?.deployments) ? manifest.deployments : [];
-          const deployment = deployments.find((d: any) => d && d.role === 'primary') ?? deployments[0] ?? null;
-          const addr = String(deployment?.deploymentEntrypointAddress ?? '');
-          const chainId = deployment?.chainId ?? null;
-          console.log(`manifest: ${manifestPath}`);
-          console.log(`deployment: chainId=${chainId ?? 'unknown'} address=${addr || 'unknown'}`);
-          const zeroAddress = '0x0000000000000000000000000000000000000000';
-          if (addr && addr.toLowerCase() === zeroAddress) {
-            console.log('');
-            console.log('Not deployed: deploymentEntrypointAddress is 0x0.');
-            console.log(`Run: th deploy ${resolvedBuildDir} --chain anvil`);
-            console.log('Then refresh this page.');
-          }
-        } catch {
-          // Ignore manifest parse errors; the UI will surface them at runtime.
-        }
-      }
-    });
-
-    process.on('SIGINT', () => {
-      server.close(() => process.exit(0));
-    });
   });
 
 program
@@ -1066,166 +1609,7 @@ program
   .option('--role <role>', 'Deployment role (primary|legacy)', 'primary')
   .action(async (buildDir: string, opts: { chain: string; rpc?: string; privateKey?: string; admin?: string; treasury?: string; role: string }) => {
     try {
-      const resolvedBuildDir = path.resolve(buildDir);
-      const manifestPath = path.join(resolvedBuildDir, 'manifest.json');
-      const compiledPath = path.join(resolvedBuildDir, 'compiled', 'App.json');
-      const schemaPath = path.join(resolvedBuildDir, 'schema.json');
-
-      if (!fs.existsSync(manifestPath)) throw new Error(`Missing manifest.json in ${resolvedBuildDir}. Run \`th build\` first.`);
-      if (!fs.existsSync(compiledPath)) throw new Error(`Missing compiled/App.json in ${resolvedBuildDir}. Run \`th build\` first.`);
-      if (!fs.existsSync(schemaPath)) throw new Error(`Missing schema.json in ${resolvedBuildDir}. Run \`th build\` first.`);
-
-      const manifest = readJsonFile(manifestPath) as any;
-      const compiled = readJsonFile(compiledPath) as any;
-      const schemaInput = readJsonFile(schemaPath);
-      const schemaStructural = validateThsStructural(schemaInput);
-      if (!schemaStructural.ok) throw new Error(`Invalid schema.json in buildDir:\n${formatIssues(schemaStructural.issues)}`);
-      const schema = schemaStructural.data!;
-
-      const { chainName, chain } = resolveKnownChain(opts.chain);
-      const rpcUrl = resolveRpcUrl(chainName, chain, opts.rpc);
-      const privateKey = resolvePrivateKey(chainName, opts.privateKey);
-      const account = privateKeyToAccount(privateKey);
-
-      const walletClient = createWalletClient({
-        chain,
-        account,
-        transport: http(rpcUrl)
-      });
-      const publicClient = createPublicClient({
-        chain,
-        transport: http(rpcUrl)
-      });
-
-      const abi = compiled.abi;
-      const bytecode: Hex = normalizeHexString(String(compiled.bytecode), 'bytecode');
-      const ctorInputs = findConstructorInputs(abi);
-
-      const deployer = account.address as Address;
-      const admin = normalizeAddress(opts.admin ?? deployer, 'admin');
-      const treasury = normalizeAddress(opts.treasury ?? deployer, 'treasury');
-
-      const args = (() => {
-        if (ctorInputs.length === 0) return [];
-        if (ctorInputs.length === 2) return [admin, treasury];
-        throw new Error(`Unsupported constructor arity (${ctorInputs.length}).`);
-      })();
-
-      console.log(`Deploying App to ${chainName} (${rpcUrl}) as ${deployer}...`);
-
-      const txHash = await walletClient.deployContract({
-        abi,
-        bytecode,
-        args,
-        chain
-      });
-
-      const receipt = await publicClient.waitForTransactionReceipt({ hash: txHash });
-      const deployedAddress = receipt.contractAddress;
-      if (!deployedAddress) throw new Error('Deployment receipt missing contractAddress.');
-
-      console.log(`Deployed App: ${deployedAddress}`);
-
-      const bytecodeDigest = sha256Digest(String(compiled.bytecode));
-      const abiDigest = sha256Digest(JSON.stringify(abi));
-
-      const deployment = {
-        role: opts.role,
-        chainId: chain.id,
-        chainName,
-        deploymentMode: 'single',
-        deploymentEntrypointAddress: deployedAddress,
-        adminAddress: admin,
-        treasuryAddress: ctorInputs.length === 2 ? treasury : null,
-        contracts: [
-          {
-            role: 'app',
-            address: deployedAddress,
-            verified: false,
-            bytecodeDigest,
-            abiDigest
-          }
-        ],
-        verified: false,
-        blockNumber: Number(receipt.blockNumber ?? 0n)
-      };
-
-      // Emit a chain config artifact and reference it from this deployment.
-      const chainConfig = buildChainConfigArtifact({ chainName, chain, rpcUrl });
-      const chainSigningKey = loadManifestSigningKey();
-      if (chainSigningKey) {
-        chainConfig.signatures = [signManifest(chainConfig, chainSigningKey)];
-      }
-      const chainCfgValidation = validateChainConfig(chainConfig);
-      if (!chainCfgValidation.ok) {
-        throw new Error(`Generated chain config did not validate:\n${JSON.stringify(chainCfgValidation.errors, null, 2)}`);
-      }
-
-      const chainConfigDir = path.join(resolvedBuildDir, 'chain-config');
-      ensureDir(chainConfigDir);
-      const chainConfigPath = path.join(chainConfigDir, `${chainName}.json`);
-      fs.writeFileSync(chainConfigPath, JSON.stringify(chainConfig, null, 2));
-      const chainConfigDigest = computeSchemaHash(chainConfig);
-      (deployment as any).chainConfig = {
-        url: toFileUrl(chainConfigPath),
-        digest: chainConfigDigest,
-        chainConfigVersion: chainConfig.chainConfigVersion
-      };
-
-      // Replace existing deployment entry for (role, chainId) if it exists; otherwise append.
-      manifest.deployments = Array.isArray(manifest.deployments) ? manifest.deployments : [];
-      const zeroAddress = '0x0000000000000000000000000000000000000000';
-      const byRoleAndChainIdx = manifest.deployments.findIndex((d: any) => d && d.role === opts.role && d.chainId === chain.id);
-      const placeholderIdx =
-        byRoleAndChainIdx >= 0
-          ? -1
-          : manifest.deployments.findIndex(
-              (d: any) => d && d.role === opts.role && String(d.deploymentEntrypointAddress || '').toLowerCase() === zeroAddress
-            );
-      const idx = byRoleAndChainIdx >= 0 ? byRoleAndChainIdx : placeholderIdx;
-      if (idx >= 0) {
-        manifest.deployments[idx] = deployment;
-      } else {
-        manifest.deployments.push(deployment);
-      }
-
-      // If the schema includes paid creates, make sure treasury is not null in manifest.
-      if (anyPaidCreates(schema) && deployment.treasuryAddress === null) {
-        throw new Error('Schema includes paid creates, but deployed contract has no treasuryAddress constructor.');
-      }
-
-      // Re-sign manifest after mutating deployments.
-      const signingKey = loadManifestSigningKey();
-      if (signingKey) {
-        manifest.signatures = [signManifest(manifest, signingKey)];
-      } else {
-        const hadRealSig = Array.isArray(manifest.signatures) && manifest.signatures.some((s: any) => s && s.alg && s.alg !== 'none');
-        if (hadRealSig) {
-          console.warn('WARN manifest: signing key not provided; clearing signatures and marking UNSIGNED');
-        }
-        manifest.signatures = [{ alg: 'none', sig: 'UNSIGNED' }];
-      }
-
-      const validation = validateManifest(manifest);
-      if (!validation.ok) {
-        throw new Error(`Updated manifest failed validation:\n${JSON.stringify(validation.errors, null, 2)}`);
-      }
-
-      const manifestJsonOut = JSON.stringify(manifest, null, 2);
-      fs.writeFileSync(manifestPath, manifestJsonOut);
-      console.log(`Updated ${manifestPath}`);
-
-      const uiSiteDir = path.join(resolvedBuildDir, 'ui-site');
-      if (fs.existsSync(uiSiteDir)) {
-        publishManifestToUiSite(uiSiteDir, manifestJsonOut);
-        console.log(`Published manifest to ui-site/`);
-      }
-
-      if (fs.existsSync(uiSiteDir)) {
-        console.log('');
-        console.log('Next steps:');
-        console.log(`  th preview ${resolvedBuildDir}  # open http://127.0.0.1:3000/`);
-      }
+      await deployBuildDir(buildDir, opts);
     } catch (e: any) {
       console.error(String(e?.message ?? e));
       process.exitCode = 1;
