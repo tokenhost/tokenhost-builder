@@ -9,7 +9,7 @@ Spec-aligned (new) pipeline:
 - Input: THS (Token Host Schema) JSON (validated + linted), e.g. `apps/example/job-board.schema.json`.
 - Schema/validation: `packages/schema` (JSON Schema + Ajv validation, semantic lints, RFC8785+sha256 hashing, legacy importer).
 - Contracts generator: `packages/generator` (single-contract, mapping-based CRUD `App.sol`, Solidity 0.8.24).
-- CLI: `packages/cli` (`th init|validate|import-legacy|generate|build|deploy|verify(stub)|doctor`).
+- CLI: `packages/cli` (`th init|studio|validate|import-legacy|generate|build|deploy|verify(stub)|doctor`).
 - Build output: `th build <schema> --out <dir>` writes `contracts/App.sol`, `compiled/App.json`, `schema.json`, `manifest.json`.
 - Deploy: `th deploy <buildDir> --chain anvil|sepolia` (anvil deploy works; sepolia verify still TBD).
 
@@ -148,7 +148,7 @@ Goal: replace ad-hoc scripts with a coherent CLI that runs locally and in CI.
 - Add `th migrate` and stubs for chain migration/indexer hooks as needed.
 
 Phase 5 progress (done/partial):
-- Implemented: `th init`, `th validate`, `th import-legacy`, `th generate` (contracts + UI), `th build`, `th deploy`, `th verify` (stub), `th doctor`, `th up|run|dev`.
+- Implemented: `th init`, `th studio` (local schema builder), `th validate`, `th import-legacy`, `th generate` (contracts + UI), `th build`, `th deploy`, `th verify` (stub), `th doctor`, `th up|run|dev`.
 - `th generate --with-tests` emits generated app test scaffold and generated app CI workflow.
 
 Remaining:

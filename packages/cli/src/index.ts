@@ -70,6 +70,281 @@ function formatIssues(issues: Issue[]): string {
     .join('\n');
 }
 
+function defaultStudioSchemaText(): string {
+  return JSON.stringify(
+    {
+      thsVersion: '2025-12',
+      schemaVersion: '0.0.1',
+      app: {
+        name: 'My App',
+        slug: 'my-app',
+        features: { uploads: false, onChainIndexing: true }
+      },
+      collections: [
+        {
+          name: 'Item',
+          fields: [{ name: 'title', type: 'string', required: true }],
+          createRules: { required: ['title'], access: 'public' },
+          visibilityRules: { gets: ['title'], access: 'public' },
+          updateRules: { mutable: ['title'], access: 'owner' },
+          deleteRules: { softDelete: true, access: 'owner' },
+          transferRules: { access: 'owner' },
+          indexes: { unique: [], index: [] }
+        }
+      ]
+    },
+    null,
+    2
+  );
+}
+
+function buildStudioPreview(schema: ThsSchema): {
+  app: { name: string; slug: string };
+  collections: Array<{
+    name: string;
+    routes: string[];
+    contractFns: string[];
+  }>;
+} {
+  const collections = (schema.collections || []).map((c) => {
+    const name = String(c?.name ?? '');
+    const routes = [`/${name}/`, `/${name}/new/`, `/${name}/view/?id=1`];
+    if (Array.isArray(c?.updateRules?.mutable) && c.updateRules.mutable.length > 0) {
+      routes.push(`/${name}/edit/?id=1`);
+    }
+    if (Boolean(c?.deleteRules?.softDelete)) {
+      routes.push(`/${name}/delete/?id=1`);
+    }
+
+    const contractFns = [`listIds${name}(uint256,uint256,bool)`, `get${name}(uint256)`, `create${name}(...)`];
+    if (Array.isArray(c?.updateRules?.mutable) && c.updateRules.mutable.length > 0) {
+      contractFns.push(`update${name}(...)`);
+    }
+    if (Boolean(c?.deleteRules?.softDelete)) {
+      contractFns.push(`delete${name}(uint256)`);
+    }
+    if (c?.transferRules) {
+      contractFns.push(`transfer${name}(uint256,address)`);
+    }
+
+    return { name, routes, contractFns };
+  });
+
+  return {
+    app: {
+      name: String(schema?.app?.name ?? ''),
+      slug: String(schema?.app?.slug ?? '')
+    },
+    collections
+  };
+}
+
+function validateStudioSchemaText(schemaText: string): {
+  ok: boolean;
+  issues: Issue[];
+  schemaHash: string | null;
+  preview: ReturnType<typeof buildStudioPreview> | null;
+} {
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(schemaText);
+  } catch (e: any) {
+    return {
+      ok: false,
+      issues: [
+        {
+          code: 'json.parse',
+          message: String(e?.message ?? e),
+          path: '$',
+          severity: 'error'
+        }
+      ],
+      schemaHash: null,
+      preview: null
+    };
+  }
+
+  const structural = validateThsStructural(parsed);
+  if (!structural.ok) {
+    return {
+      ok: false,
+      issues: structural.issues,
+      schemaHash: null,
+      preview: null
+    };
+  }
+
+  const schema = structural.data!;
+  const lintIssues = lintThs(schema);
+  const issues = [...lintIssues];
+  const hasErrors = issues.some((i) => i.severity === 'error');
+  return {
+    ok: !hasErrors,
+    issues,
+    schemaHash: computeSchemaHash(schema),
+    preview: buildStudioPreview(schema)
+  };
+}
+
+function renderStudioHtml(): string {
+  // Keep this local-first and dependency-free for fast startup in any repo clone.
+  return `<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Token Host Studio (Local)</title>
+  <style>
+    :root { color-scheme: light; --bg:#0b1220; --panel:#111a2b; --muted:#9db0cc; --text:#edf3ff; --ok:#2bb673; --err:#f25f5c; --warn:#f2c14e; }
+    * { box-sizing: border-box; }
+    body { margin:0; font-family: ui-sans-serif,system-ui,-apple-system,Segoe UI,Roboto,Helvetica,Arial,sans-serif; background: radial-gradient(circle at 10% 10%, #1f3559, #0b1220 55%); color: var(--text); }
+    .wrap { max-width: 1400px; margin: 0 auto; padding: 20px; }
+    .row { display:grid; grid-template-columns: 1.4fr 1fr; gap: 14px; }
+    .panel { background: linear-gradient(180deg, rgba(255,255,255,0.03), rgba(0,0,0,0.12)); border:1px solid rgba(255,255,255,0.12); border-radius: 14px; padding: 14px; }
+    .title { margin:0 0 10px 0; font-size: 18px; font-weight: 700; }
+    .muted { color: var(--muted); font-size: 13px; }
+    textarea { width:100%; min-height: 70vh; border-radius: 10px; border:1px solid rgba(255,255,255,0.18); background: #0a1426; color: #eaf2ff; padding: 10px; font-family: ui-monospace,SFMono-Regular,Menlo,Monaco,Consolas,monospace; font-size: 13px; line-height: 1.35; }
+    input[type=text] { width: 100%; border-radius: 8px; border:1px solid rgba(255,255,255,0.18); background:#0a1426; color:#eaf2ff; padding: 8px; }
+    .toolbar { display:flex; gap:8px; flex-wrap:wrap; margin-bottom:10px; }
+    button { border:1px solid rgba(255,255,255,0.2); color:#fff; background:#1e3357; border-radius:8px; padding:8px 10px; cursor:pointer; }
+    button:hover { filter: brightness(1.08); }
+    .pill { display:inline-block; padding: 2px 8px; border-radius:999px; font-size: 12px; border:1px solid transparent; }
+    .ok { color:#d8ffe9; background: rgba(43,182,115,.2); border-color: rgba(43,182,115,.45);}
+    .err { color:#ffd6d6; background: rgba(242,95,92,.2); border-color: rgba(242,95,92,.45);}
+    .warn { color:#fff6d5; background: rgba(242,193,78,.2); border-color: rgba(242,193,78,.45);}
+    ul { margin: 8px 0 0 18px; padding:0; }
+    li { margin: 2px 0; }
+    pre { white-space: pre-wrap; word-break: break-word; background:#0a1426; border:1px solid rgba(255,255,255,0.1); border-radius: 8px; padding: 10px; max-height: 280px; overflow:auto; }
+  </style>
+</head>
+<body>
+  <div class="wrap">
+    <h1 style="margin:0 0 8px 0;">Token Host Studio (Local)</h1>
+    <div class="muted" style="margin-bottom:14px;">Edit THS JSON, validate/lint in real-time, save/load files, and preview routes + contract surface.</div>
+    <div class="row">
+      <section class="panel">
+        <h2 class="title">Schema JSON</h2>
+        <div class="toolbar">
+          <button id="validateBtn">Validate Now</button>
+          <button id="loadBtn">Load File</button>
+          <button id="saveBtn">Save File</button>
+        </div>
+        <label class="muted" for="schemaPath">Schema file path</label>
+        <input id="schemaPath" type="text" placeholder="apps/example/job-board.schema.json" />
+        <div style="height:8px;"></div>
+        <textarea id="schemaText"></textarea>
+      </section>
+      <section class="panel">
+        <h2 class="title">Validation + Preview</h2>
+        <div id="statusLine" class="muted">Starting...</div>
+        <div style="height:8px;"></div>
+        <div id="issues"></div>
+        <div style="height:10px;"></div>
+        <div class="muted">schemaHash</div>
+        <pre id="schemaHash">(none)</pre>
+        <div style="height:10px;"></div>
+        <div class="muted">Generated surface preview</div>
+        <pre id="preview">(none)</pre>
+      </section>
+    </div>
+  </div>
+  <script>
+    const schemaPathEl = document.getElementById('schemaPath');
+    const schemaTextEl = document.getElementById('schemaText');
+    const statusLineEl = document.getElementById('statusLine');
+    const issuesEl = document.getElementById('issues');
+    const schemaHashEl = document.getElementById('schemaHash');
+    const previewEl = document.getElementById('preview');
+    let timer = null;
+
+    function setStatus(ok, issueCount) {
+      const cls = ok ? 'ok' : 'err';
+      const label = ok ? 'Valid' : 'Invalid';
+      statusLineEl.innerHTML = '<span class=\"pill ' + cls + '\">' + label + '</span> <span class=\"muted\">issues: ' + issueCount + '</span>';
+    }
+
+    function renderIssues(issues) {
+      if (!issues || issues.length === 0) {
+        issuesEl.innerHTML = '<span class=\"pill ok\">No issues</span>';
+        return;
+      }
+      const html = issues.map((i) => {
+        const cls = i.severity === 'error' ? 'err' : 'warn';
+        return '<li><span class=\"pill ' + cls + '\">' + i.severity + '</span> <code>' + i.code + '</code> <code>' + i.path + '</code> ' + i.message + '</li>';
+      }).join('');
+      issuesEl.innerHTML = '<ul>' + html + '</ul>';
+    }
+
+    async function postJson(url, body) {
+      const res = await fetch(url, {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify(body || {})
+      });
+      const text = await res.text();
+      const json = text ? JSON.parse(text) : null;
+      if (!res.ok) {
+        throw new Error(json && json.error ? json.error : ('HTTP ' + res.status));
+      }
+      return json;
+    }
+
+    async function runValidation() {
+      try {
+        const out = await postJson('/api/validate', { schemaText: schemaTextEl.value });
+        setStatus(Boolean(out.ok), Array.isArray(out.issues) ? out.issues.length : 0);
+        renderIssues(out.issues || []);
+        schemaHashEl.textContent = out.schemaHash || '(none)';
+        previewEl.textContent = out.preview ? JSON.stringify(out.preview, null, 2) : '(none)';
+      } catch (e) {
+        setStatus(false, 1);
+        renderIssues([{ severity: 'error', code: 'studio.validate', path: '$', message: String(e && e.message ? e.message : e) }]);
+      }
+    }
+
+    function queueValidation() {
+      if (timer) clearTimeout(timer);
+      timer = setTimeout(runValidation, 250);
+    }
+
+    document.getElementById('validateBtn').addEventListener('click', runValidation);
+    document.getElementById('loadBtn').addEventListener('click', async () => {
+      try {
+        const out = await postJson('/api/load', { path: schemaPathEl.value });
+        schemaPathEl.value = out.path || schemaPathEl.value;
+        schemaTextEl.value = out.schemaText || '';
+        queueValidation();
+      } catch (e) {
+        alert(String(e && e.message ? e.message : e));
+      }
+    });
+    document.getElementById('saveBtn').addEventListener('click', async () => {
+      try {
+        const out = await postJson('/api/save', { path: schemaPathEl.value, schemaText: schemaTextEl.value });
+        schemaPathEl.value = out.path || schemaPathEl.value;
+        queueValidation();
+      } catch (e) {
+        alert(String(e && e.message ? e.message : e));
+      }
+    });
+    schemaTextEl.addEventListener('input', queueValidation);
+
+    (async () => {
+      try {
+        const stateRes = await fetch('/api/state', { cache: 'no-store' });
+        const state = await stateRes.json();
+        schemaPathEl.value = state.schemaPath || '';
+        schemaTextEl.value = state.schemaText || '';
+      } catch {
+        schemaTextEl.value = '';
+      }
+      queueValidation();
+    })();
+  </script>
+</body>
+</html>`;
+}
+
 function loadThsSchemaOrThrow(schemaPath: string): ThsSchema {
   const input = readJsonFile(schemaPath);
   const structural = validateThsStructural(input);
@@ -1428,6 +1703,164 @@ program
     }
 
     if (errors.length > 0) process.exitCode = 1;
+  });
+
+program
+  .command('studio')
+  .description('Launch local Token Host Studio for THS authoring (load/save/validate/preview)')
+  .option('--schema <file>', 'Schema file to load at startup')
+  .option('--host <host>', 'Bind host', '127.0.0.1')
+  .option('--port <n>', 'Bind port', '3210')
+  .action((opts: { schema?: string; host: string; port: string }) => {
+    const host = String(opts.host || '127.0.0.1');
+    const port = Number.parseInt(String(opts.port || '3210'), 10);
+    if (!Number.isFinite(port) || port < 1 || port > 65535) {
+      throw new Error(`Invalid --port value: ${opts.port}`);
+    }
+
+    let schemaPath: string | null = opts.schema ? path.resolve(opts.schema) : null;
+    let schemaText = defaultStudioSchemaText();
+    if (schemaPath && fs.existsSync(schemaPath)) {
+      schemaText = fs.readFileSync(schemaPath, 'utf-8');
+    }
+
+    function sendText(res: nodeHttp.ServerResponse, status: number, text: string) {
+      res.statusCode = status;
+      res.setHeader('Content-Type', 'text/plain; charset=utf-8');
+      res.setHeader('Cache-Control', 'no-store');
+      res.end(text);
+    }
+
+    function sendJson(res: nodeHttp.ServerResponse, status: number, value: unknown) {
+      res.statusCode = status;
+      res.setHeader('Content-Type', 'application/json; charset=utf-8');
+      res.setHeader('Cache-Control', 'no-store');
+      res.end(JSON.stringify(value));
+    }
+
+    function readBody(req: nodeHttp.IncomingMessage, maxBytes = 1024 * 1024): Promise<string> {
+      return new Promise((resolve, reject) => {
+        let raw = '';
+        let total = 0;
+        req.on('data', (chunk: Buffer) => {
+          total += chunk.length;
+          if (total > maxBytes) {
+            reject(new Error('Request body too large.'));
+            req.destroy();
+            return;
+          }
+          raw += chunk.toString('utf-8');
+        });
+        req.on('end', () => resolve(raw));
+        req.on('error', reject);
+      });
+    }
+
+    async function parseJsonBody(req: nodeHttp.IncomingMessage): Promise<any> {
+      const raw = await readBody(req);
+      if (!raw.trim()) return {};
+      return JSON.parse(raw);
+    }
+
+    const server = nodeHttp.createServer((req, res) => {
+      if (!req.url) return sendText(res, 400, 'Bad Request');
+      const parsedUrl = new URL(req.url, `http://${host}:${port}`);
+      const pathname = parsedUrl.pathname;
+
+      if (pathname === '/') {
+        res.statusCode = 200;
+        res.setHeader('Content-Type', 'text/html; charset=utf-8');
+        res.setHeader('Cache-Control', 'no-store');
+        res.end(renderStudioHtml());
+        return;
+      }
+
+      if (pathname === '/api/state') {
+        return sendJson(res, 200, {
+          schemaPath,
+          schemaText
+        });
+      }
+
+      if (pathname === '/api/validate' && req.method === 'POST') {
+        (async () => {
+          try {
+            const body = await parseJsonBody(req);
+            const text = String(body?.schemaText ?? schemaText ?? '');
+            const out = validateStudioSchemaText(text);
+            schemaText = text;
+            sendJson(res, 200, out);
+          } catch (e: any) {
+            sendJson(res, 400, { error: String(e?.message ?? e) });
+          }
+        })();
+        return;
+      }
+
+      if (pathname === '/api/load' && req.method === 'POST') {
+        (async () => {
+          try {
+            const body = await parseJsonBody(req);
+            const requestedPath = String(body?.path ?? '').trim();
+            if (!requestedPath) return sendJson(res, 400, { error: 'Missing path.' });
+            const resolvedPath = path.resolve(requestedPath);
+            if (!fs.existsSync(resolvedPath)) return sendJson(res, 404, { error: `File not found: ${resolvedPath}` });
+            const loaded = fs.readFileSync(resolvedPath, 'utf-8');
+            schemaPath = resolvedPath;
+            schemaText = loaded;
+            sendJson(res, 200, { ok: true, path: resolvedPath, schemaText: loaded });
+          } catch (e: any) {
+            sendJson(res, 400, { error: String(e?.message ?? e) });
+          }
+        })();
+        return;
+      }
+
+      if (pathname === '/api/save' && req.method === 'POST') {
+        (async () => {
+          try {
+            const body = await parseJsonBody(req);
+            const requestedPath = String(body?.path ?? '').trim();
+            const text = String(body?.schemaText ?? '');
+            if (!requestedPath) return sendJson(res, 400, { error: 'Missing path.' });
+
+            const validated = validateStudioSchemaText(text);
+            if (!validated.ok) {
+              return sendJson(res, 400, {
+                error: 'Schema is invalid; fix errors before saving.',
+                issues: validated.issues
+              });
+            }
+
+            const resolvedPath = path.resolve(requestedPath);
+            ensureDir(path.dirname(resolvedPath));
+            fs.writeFileSync(resolvedPath, text.endsWith('\n') ? text : `${text}\n`);
+            schemaPath = resolvedPath;
+            schemaText = text;
+            sendJson(res, 200, { ok: true, path: resolvedPath });
+          } catch (e: any) {
+            sendJson(res, 400, { error: String(e?.message ?? e) });
+          }
+        })();
+        return;
+      }
+
+      sendText(res, 404, 'Not Found');
+    });
+
+    server.on('error', (e: any) => {
+      console.error(String(e?.message ?? e ?? 'Server error'));
+      process.exitCode = 1;
+    });
+
+    const studioUrl = `http://${host}:${port}/`;
+    server.listen(port, host, () => {
+      console.log('Token Host Studio (local)');
+      console.log(studioUrl);
+      if (schemaPath) {
+        console.log(`Loaded: ${schemaPath}`);
+      }
+    });
   });
 
 program
