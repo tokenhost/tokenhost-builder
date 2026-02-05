@@ -13,11 +13,11 @@ Spec-aligned (new) pipeline:
 - Build output: `th build <schema> --out <dir>` writes `contracts/App.sol`, `compiled/App.json`, `schema.json`, `manifest.json`.
 - Deploy: `th deploy <buildDir> --chain anvil|sepolia` (anvil deploy works; sepolia verify still TBD).
 
-Legacy (kept temporarily; deprecated):
+Legacy (deprecated path; no longer source-of-truth in this repo):
 - Input: legacy `contracts.json` shape (`contracts{}` with `fields`, `initRules`, `readRules`, `writeRules`).
 - Generator: `solidityGenerator.js` generates an `App` contract + per-record child contracts (one contract deployed per record).
-- UI: Handlebars templates in `tokenhost-web-template/` and generator script `handlebar.cjs` that writes a Next.js app into `site/`.
-- Build/deploy: `build.sh` compiles via `solcjs`, generates UI, then deploys via `tokenhost-web-template/contracts/deploy.js` (Foundry `forge create`).
+- UI legacy source now lives in separate repo: `tokenhost/app-tokenhost-com-frontend`.
+- Build/deploy references to `tokenhost-web-template/` in this repo are retired.
 
 Tests:
 - `pnpm test` and `pnpm test:integration` pass.

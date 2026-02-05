@@ -5,6 +5,12 @@ Token Host Builder is a schema-to-dapp generator framework for EVM CRUD apps.
 Canonical product behavior is defined in `SPEC.md`.  
 Execution backlog and current gap-tracking is in `AGENTS.md`.
 
+## Legacy template status
+
+- `tokenhost-web-template/` is retired from this repo.
+- Legacy frontend continuity lives in `tokenhost/app-tokenhost-com-frontend`.
+- Preserved migration/behavior notes: `docs/legacy-tokenhost-web-template-notes.md`.
+
 ## Current generated-app testing model
 
 - `th generate <schema> --with-tests` emits generated app tests and a generated app CI workflow.
