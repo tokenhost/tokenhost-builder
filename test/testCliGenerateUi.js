@@ -17,6 +17,18 @@ function runTh(args, cwd) {
   return res;
 }
 
+function runCmd(cmd, args, cwd) {
+  const res = spawnSync(cmd, args, {
+    cwd,
+    encoding: 'utf-8',
+    env: {
+      ...process.env,
+      NEXT_TELEMETRY_DISABLED: '1'
+    }
+  });
+  return res;
+}
+
 function minimalSchema() {
   return {
     thsVersion: '2025-12',
@@ -62,6 +74,30 @@ describe('th generate (UI template)', function () {
     expect(generatedThs).to.include('"slug": "ui-test-app"');
   });
 
+  it('generated UI builds (next export)', function () {
+    this.timeout(180000);
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'th-ui-build-'));
+    const schemaPath = path.join(dir, 'schema.json');
+    const outDir = path.join(dir, 'out');
+    writeJson(schemaPath, minimalSchema());
+
+    const res = runTh(['generate', schemaPath, '--out', outDir], process.cwd());
+    expect(res.status, res.stderr || res.stdout).to.equal(0);
+
+    const uiDir = path.join(outDir, 'ui');
+    expect(fs.existsSync(path.join(uiDir, 'package.json'))).to.equal(true);
+
+    // Install and build the generated UI to catch template/runtime regressions.
+    const install = runCmd('pnpm', ['install'], uiDir);
+    expect(install.status, install.stderr || install.stdout).to.equal(0);
+
+    const build = runCmd('pnpm', ['build'], uiDir);
+    expect(build.status, build.stderr || build.stdout).to.equal(0);
+
+    // For `output: export`, Next writes a static export to `out/`.
+    expect(fs.existsSync(path.join(uiDir, 'out', 'index.html'))).to.equal(true);
+  });
+
   it('supports --no-ui', function () {
     const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'th-ui-gen-no-ui-'));
     const schemaPath = path.join(dir, 'schema.json');
@@ -75,4 +111,3 @@ describe('th generate (UI template)', function () {
     expect(fs.existsSync(path.join(outDir, 'ui'))).to.equal(false);
   });
 });
-
