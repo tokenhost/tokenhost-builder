@@ -298,6 +298,9 @@ function renderStudioHtml(): string {
     .sectionTitle { font-size: 14px; font-weight: 700; margin-top: 10px; }
     .stack { display:flex; flex-direction:column; gap:8px; }
     .toolbar { display:flex; gap:8px; flex-wrap:wrap; margin-bottom:10px; }
+    .configList { display:flex; flex-direction:column; gap:8px; max-height:260px; overflow:auto; }
+    .configRow { display:grid; grid-template-columns: 1fr auto; gap:8px; align-items:center; border:1px solid rgba(255,255,255,0.12); border-radius:8px; padding:8px; background: rgba(0,0,0,0.2); }
+    .configPath { font-family: ui-monospace,SFMono-Regular,Menlo,Monaco,Consolas,monospace; font-size:12px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
     button { border:1px solid rgba(255,255,255,0.2); color:#fff; background:#1e3357; border-radius:8px; padding:8px 10px; cursor:pointer; }
     button:hover { filter: brightness(1.08); }
     .pill { display:inline-block; padding: 2px 8px; border-radius:999px; font-size: 12px; border:1px solid transparent; }
@@ -313,6 +316,20 @@ function renderStudioHtml(): string {
   <div class="wrap">
     <h1 style="margin:0 0 8px 0;">Token Host Studio (Local)</h1>
     <div class="muted" style="margin-bottom:14px;">Edit THS JSON, validate/lint in real-time, save/load files, and preview routes + contract surface.</div>
+    <section class="panel" style="margin-bottom:14px;">
+      <h2 class="title">Config Manager</h2>
+      <div class="grid3">
+        <div><label for="newConfigName">App name</label><input id="newConfigName" type="text" placeholder="My App" /></div>
+        <div><label for="newConfigSlug">App slug</label><input id="newConfigSlug" type="text" placeholder="my-app" /></div>
+        <div><label for="newConfigPath">Path (optional)</label><input id="newConfigPath" type="text" placeholder="apps/my-app/schema.json" /></div>
+      </div>
+      <div class="toolbar" style="margin-top:8px;">
+        <button id="refreshConfigsBtn">Refresh Configs</button>
+        <button id="createConfigBtn">Create New Config</button>
+        <span id="configsStatus" class="muted"></span>
+      </div>
+      <div id="configsList" class="configList"></div>
+    </section>
     <div class="row">
       <section class="panel">
         <h2 class="title">Schema Builder</h2>
@@ -342,6 +359,13 @@ function renderStudioHtml(): string {
   </div>
   <script>
     const schemaPathEl = document.getElementById('schemaPath');
+    const newConfigNameEl = document.getElementById('newConfigName');
+    const newConfigSlugEl = document.getElementById('newConfigSlug');
+    const newConfigPathEl = document.getElementById('newConfigPath');
+    const refreshConfigsBtnEl = document.getElementById('refreshConfigsBtn');
+    const createConfigBtnEl = document.getElementById('createConfigBtn');
+    const configsStatusEl = document.getElementById('configsStatus');
+    const configsListEl = document.getElementById('configsList');
     const formRootEl = document.getElementById('formRoot');
     const statusLineEl = document.getElementById('statusLine');
     const issuesEl = document.getElementById('issues');
@@ -350,6 +374,7 @@ function renderStudioHtml(): string {
     let timer = null;
     let selectedCollectionIndex = 0;
     let state = null;
+    let workspaceRoot = '';
     const fieldTypes = ['string','uint256','int256','decimal','bool','address','bytes32','image','reference','externalReference'];
     const accessModes = ['public','owner','allowlist','role'];
 
@@ -357,6 +382,52 @@ function renderStudioHtml(): string {
       const cls = ok ? 'ok' : 'err';
       const label = ok ? 'Valid' : 'Invalid';
       statusLineEl.innerHTML = '<span class=\"pill ' + cls + '\">' + label + '</span> <span class=\"muted\">issues: ' + issueCount + '</span>';
+    }
+
+    function relativePathForDisplay(filePath) {
+      if (!workspaceRoot) return String(filePath || '');
+      const normalizedRoot = workspaceRoot.endsWith('/') ? workspaceRoot : (workspaceRoot + '/');
+      if (String(filePath || '').startsWith(normalizedRoot)) {
+        return String(filePath).slice(normalizedRoot.length);
+      }
+      return String(filePath || '');
+    }
+
+    async function loadPathIntoStudio(targetPath) {
+      const out = await postJson('/api/load', { path: targetPath });
+      schemaPathEl.value = out.path || schemaPathEl.value;
+      state = out.formState || state;
+      selectedCollectionIndex = 0;
+      renderForm();
+      queueValidation();
+    }
+
+    function renderConfigsList(configs) {
+      if (!Array.isArray(configs) || configs.length === 0) {
+        configsListEl.innerHTML = '<div class="muted">No schema configs found under workspace root.</div>';
+        return;
+      }
+      configsListEl.innerHTML = configs.map((cfg) => (
+        '<div class="configRow">' +
+          '<div class="configPath" title="' + esc(cfg) + '">' + esc(relativePathForDisplay(cfg)) + '</div>' +
+          '<button data-action="load-config" data-path="' + esc(cfg) + '">Load</button>' +
+        '</div>'
+      )).join('');
+    }
+
+    async function refreshConfigs() {
+      configsStatusEl.textContent = 'Refreshing...';
+      try {
+        const res = await fetch('/api/configs', { cache: 'no-store' });
+        const json = await res.json();
+        if (!res.ok || !json || !json.ok) throw new Error(json && json.error ? json.error : ('HTTP ' + res.status));
+        workspaceRoot = String(json.workspaceRoot || workspaceRoot || '');
+        renderConfigsList(json.configs || []);
+        configsStatusEl.textContent = (json.configs || []).length + ' config(s)';
+      } catch (e) {
+        configsStatusEl.textContent = 'Failed to load configs';
+        renderConfigsList([]);
+      }
     }
 
     function renderIssues(issues) {
@@ -633,12 +704,7 @@ function renderStudioHtml(): string {
     document.getElementById('validateBtn').addEventListener('click', runValidation);
     document.getElementById('loadBtn').addEventListener('click', async () => {
       try {
-        const out = await postJson('/api/load', { path: schemaPathEl.value });
-        schemaPathEl.value = out.path || schemaPathEl.value;
-        state = out.formState || state;
-        selectedCollectionIndex = 0;
-        renderForm();
-        queueValidation();
+        await loadPathIntoStudio(schemaPathEl.value);
       } catch (e) {
         alert(String(e && e.message ? e.message : e));
       }
@@ -660,18 +726,54 @@ function renderStudioHtml(): string {
       renderForm();
       queueValidation();
     });
+    refreshConfigsBtnEl.addEventListener('click', async (ev) => {
+      ev.preventDefault();
+      await refreshConfigs();
+    });
+    createConfigBtnEl.addEventListener('click', async (ev) => {
+      ev.preventDefault();
+      try {
+        const out = await postJson('/api/create-config', {
+          name: newConfigNameEl.value,
+          slug: newConfigSlugEl.value,
+          path: newConfigPathEl.value
+        });
+        schemaPathEl.value = out.path || '';
+        state = out.formState || state;
+        selectedCollectionIndex = 0;
+        renderForm();
+        queueValidation();
+        await refreshConfigs();
+      } catch (e) {
+        alert(String(e && e.message ? e.message : e));
+      }
+    });
+    configsListEl.addEventListener('click', async (ev) => {
+      const target = ev.target;
+      if (!target || !target.getAttribute) return;
+      if (target.getAttribute('data-action') !== 'load-config') return;
+      const configPath = target.getAttribute('data-path');
+      if (!configPath) return;
+      try {
+        await loadPathIntoStudio(configPath);
+      } catch (e) {
+        alert(String(e && e.message ? e.message : e));
+      }
+    });
 
     (async () => {
       try {
         const stateRes = await fetch('/api/state', { cache: 'no-store' });
         const stateResJson = await stateRes.json();
         schemaPathEl.value = stateResJson.schemaPath || '';
+        workspaceRoot = String(stateResJson.workspaceRoot || '');
         state = stateResJson.formState || null;
         renderForm();
       } catch {
         ensureState();
         renderForm();
       }
+      await refreshConfigs();
       queueValidation();
     })();
   </script>
@@ -2054,10 +2156,42 @@ program
 
     let schemaPath: string | null = opts.schema ? path.resolve(opts.schema) : null;
     let formState: ThsSchema = defaultStudioFormState();
+    const workspaceRoot = process.cwd();
     if (schemaPath && fs.existsSync(schemaPath)) {
       const loaded = readJsonFile(schemaPath);
       const structural = validateThsStructural(loaded);
       if (structural.ok) formState = normalizeStudioFormState(structural.data);
+    }
+
+    function listLocalConfigs(root: string): string[] {
+      const out: string[] = [];
+      const stack = [root];
+      const skipDirs = new Set(['.git', 'node_modules', '.next', 'dist', 'out', 'artifacts', 'cache']);
+
+      while (stack.length > 0) {
+        const dir = stack.pop()!;
+        let entries: fs.Dirent[] = [];
+        try {
+          entries = fs.readdirSync(dir, { withFileTypes: true });
+        } catch {
+          continue;
+        }
+        for (const entry of entries) {
+          const full = path.join(dir, entry.name);
+          if (entry.isDirectory()) {
+            if (skipDirs.has(entry.name)) continue;
+            stack.push(full);
+            continue;
+          }
+          if (!entry.isFile()) continue;
+          if (!entry.name.endsWith('.json')) continue;
+          if (entry.name === 'schema.json' || entry.name.endsWith('.schema.json')) {
+            out.push(path.resolve(full));
+          }
+        }
+      }
+
+      return Array.from(new Set(out)).sort((a, b) => a.localeCompare(b));
     }
 
     function sendText(res: nodeHttp.ServerResponse, status: number, text: string) {
@@ -2114,7 +2248,16 @@ program
       if (pathname === '/api/state') {
         return sendJson(res, 200, {
           schemaPath,
-          formState
+          formState,
+          workspaceRoot
+        });
+      }
+
+      if (pathname === '/api/configs' && req.method === 'GET') {
+        return sendJson(res, 200, {
+          ok: true,
+          workspaceRoot,
+          configs: listLocalConfigs(workspaceRoot)
         });
       }
 
@@ -2181,6 +2324,57 @@ program
             sendJson(res, 200, { ok: true, path: resolvedPath });
           } catch (e: any) {
             sendJson(res, 400, { error: String(e?.message ?? e) });
+          }
+        })();
+        return;
+      }
+
+      if (pathname === '/api/create-config' && req.method === 'POST') {
+        (async () => {
+          try {
+            const body = await parseJsonBody(req);
+            const slugRaw = String(body?.slug ?? 'new-app').trim();
+            const slug = slugRaw
+              .toLowerCase()
+              .replace(/[^a-z0-9-]/g, '-')
+              .replace(/-+/g, '-')
+              .replace(/^-|-$/g, '') || 'new-app';
+            const appName = String(body?.name ?? 'New App').trim() || 'New App';
+            const requestedPath = String(body?.path ?? '').trim();
+            const targetPath = requestedPath
+              ? path.resolve(requestedPath)
+              : path.resolve(workspaceRoot, 'apps', slug, 'schema.json');
+
+            if (fs.existsSync(targetPath)) {
+              return sendJson(res, 409, { ok: false, error: `Config already exists: ${targetPath}` });
+            }
+
+            const defaults = defaultStudioFormState();
+            const createdState = normalizeStudioFormState({
+              ...defaults,
+              app: {
+                ...defaults.app,
+                name: appName,
+                slug
+              }
+            });
+
+            const validated = validateStudioFormState(createdState);
+            if (!validated.ok || !validated.schema) {
+              return sendJson(res, 400, {
+                ok: false,
+                error: 'Generated config failed validation.',
+                issues: validated.issues
+              });
+            }
+
+            ensureDir(path.dirname(targetPath));
+            fs.writeFileSync(targetPath, `${JSON.stringify(validated.schema, null, 2)}\n`);
+            schemaPath = targetPath;
+            formState = normalizeStudioFormState(validated.schema);
+            return sendJson(res, 200, { ok: true, path: targetPath, formState, created: true });
+          } catch (e: any) {
+            return sendJson(res, 400, { ok: false, error: String(e?.message ?? e) });
           }
         })();
         return;

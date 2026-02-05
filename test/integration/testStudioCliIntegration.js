@@ -80,6 +80,12 @@ describe('th studio local schema builder', function () {
     const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'th-studio-'));
     const schemaPath = path.join(dir, 'schema.json');
     const savedPath = path.join(dir, 'saved.schema.json');
+    const createdConfigPath = path.resolve(
+      process.cwd(),
+      'apps',
+      `_studio-test-${Date.now()}-${Math.floor(Math.random() * 10000)}`,
+      'schema.json'
+    );
     fs.writeFileSync(schemaPath, `${JSON.stringify(minimalSchema(), null, 2)}\n`);
 
     const host = '127.0.0.1';
@@ -104,6 +110,12 @@ describe('th studio local schema builder', function () {
       expect(state.status).to.equal(200);
       expect(state.json?.schemaPath).to.equal(path.resolve(schemaPath));
       expect(state.json?.formState?.app?.slug).to.equal('studio-test-app');
+      expect(state.json?.workspaceRoot).to.equal(process.cwd());
+
+      const configsRes = await request(`${baseUrl}/api/configs`);
+      expect(configsRes.status).to.equal(200);
+      expect(configsRes.json?.ok).to.equal(true);
+      expect(Array.isArray(configsRes.json?.configs)).to.equal(true);
 
       const invalidValidation = await request(`${baseUrl}/api/validate`, {
         method: 'POST',
@@ -140,8 +152,30 @@ describe('th studio local schema builder', function () {
       expect(loadRes.status).to.equal(200);
       expect(loadRes.json?.ok).to.equal(true);
       expect(loadRes.json?.formState?.app?.slug).to.equal('studio-test-app');
+
+      const createRes = await request(`${baseUrl}/api/create-config`, {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({
+          name: 'Created App',
+          slug: 'created-app',
+          path: createdConfigPath
+        })
+      });
+      expect(createRes.status).to.equal(200);
+      expect(createRes.json?.ok).to.equal(true);
+      expect(createRes.json?.created).to.equal(true);
+      expect(path.resolve(createRes.json?.path)).to.equal(path.resolve(createdConfigPath));
+      expect(createRes.json?.formState?.app?.slug).to.equal('created-app');
+      expect(fs.existsSync(createdConfigPath)).to.equal(true);
+      expect(fs.readFileSync(createdConfigPath, 'utf-8')).to.include('"created-app"');
+
+      const createdConfigsRes = await request(`${baseUrl}/api/configs`);
+      expect(createdConfigsRes.status).to.equal(200);
+      expect(createdConfigsRes.json?.configs).to.include(path.resolve(createdConfigPath));
     } finally {
       studio.kill('SIGINT');
+      fs.rmSync(path.dirname(createdConfigPath), { recursive: true, force: true });
     }
   });
 });
