@@ -39,5 +39,12 @@ jobs:
       - name: Install
         run: pnpm install --frozen-lockfile
 
+      - name: Typecheck
+        run: pnpm typecheck
+
       - name: Test
         run: pnpm test
+
+      - name: Audit (non-blocking)
+        continue-on-error: true
+        run: pnpm audit --audit-level high
