@@ -3,7 +3,7 @@
 Status: Draft (spec-driven design)  
 Owner: Token Host  
 Domain: `tokenhost.com`  
-Last updated: 2026-01-04  
+Last updated: 2026-02-05  
 Scope: Production system. All existing repos are legacy prototypes and are not binding.
 
 This document defines the intended production design of the Token Host platform: a managed schema-to-dapp builder that generates and deploys smart contracts, generates a hosted UI, optionally provisions indexing, and publishes apps under a dedicated hosted-app origin (default `*.apps.tokenhost.com`, plus optional custom domains).
@@ -1610,6 +1610,35 @@ Optional commands (chain management):
 - `th chains provision`: request provisioning of a Token Host-managed appchain (managed mode)
 
 The CLI MUST be able to export a complete bundle suitable for self-hosting.
+
+### 12.1 Generated-app test emission and default rollout
+
+Token Host MUST support generated app test scaffolding that can run in downstream app repositories without manual setup.
+
+Minimum emitted scaffold (when enabled):
+- contract tests (`tests/contract/*`),
+- UI smoke tests (`tests/ui/*`),
+- generated app CI workflow (`.github/workflows/generated-app-ci.yml`).
+
+Rollout phases MUST be:
+1) scaffold emission,
+2) contract tests emission,
+3) UI tests emission,
+4) generated CI template emission,
+5) default-on behavior.
+
+Until the default-on gate is met, test scaffold emission MAY remain opt-in (for example `th generate --with-tests`).
+After default-on, CLI MUST provide an explicit opt-out (for example `--no-tests`).
+
+Default-on gate requirements:
+- builder CI includes generated-app verification in the required integration suite,
+- canonical generated app coverage is green in CI,
+- no open P0/P1 regressions attributable to generated scaffold emission.
+
+Compatibility/deprecation requirements:
+- existing generated app repositories MUST NOT be silently mutated by builder releases,
+- migration notes for regeneration MUST be published in release notes and docs,
+- compatibility aliases for prior behavior (for example `--with-tests`) SHOULD be kept for at least two minor releases after default-on.
 
 ---
 

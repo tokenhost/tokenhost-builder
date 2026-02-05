@@ -1,0 +1,71 @@
+name: Generated App CI
+
+on:
+  push:
+    branches:
+      - main
+      - master
+  pull_request:
+
+jobs:
+  generated-app-tests:
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    env:
+      NEXT_TELEMETRY_DISABLED: '1'
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: '10.12.1'
+
+      - name: Get pnpm store path
+        id: pnpm-store
+        shell: bash
+        run: echo "store_path=$(pnpm store path --silent)" >> "$GITHUB_OUTPUT"
+
+      - name: Cache pnpm store
+        uses: actions/cache@v4
+        with:
+          path: ${{ steps.pnpm-store.outputs.store_path }}
+          key: generated-app-pnpm-${{ runner.os }}-${{ hashFiles('pnpm-lock.yaml') }}
+          restore-keys: |
+            generated-app-pnpm-${{ runner.os }}-
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Install Foundry (anvil)
+        if: ${{ env.TH_SKIP_CONTRACT_TESTS != '1' }}
+        uses: foundry-rs/foundry-toolchain@v1
+        with:
+          version: stable
+
+      - name: Confirm anvil
+        if: ${{ env.TH_SKIP_CONTRACT_TESTS != '1' }}
+        run: anvil --version
+
+      - name: Install browser deps (optional)
+        if: ${{ env.TH_INSTALL_BROWSER_DEPS == '1' }}
+        run: |
+          if pnpm exec playwright --version >/dev/null 2>&1; then
+            pnpm exec playwright install --with-deps chromium
+          else
+            echo "Playwright is not installed; skipping browser dependency install."
+          fi
+
+      - name: Run generated contract tests
+        if: ${{ env.TH_SKIP_CONTRACT_TESTS != '1' }}
+        run: pnpm run test:contract
+
+      - name: Run generated UI tests
+        if: ${{ env.TH_SKIP_UI_TESTS != '1' }}
+        run: pnpm run test:ui
