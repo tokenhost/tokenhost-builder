@@ -4,7 +4,7 @@ import React, { useEffect, useMemo, useState } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 
 import { fetchAppAbi } from '../../../src/lib/abi';
-import { fnCreate } from '../../../src/lib/app';
+import { assertAbiFunction, fnCreate } from '../../../src/lib/app';
 import { chainFromId } from '../../../src/lib/chains';
 import { makePublicClient, makeWalletClient, requestWalletAddress } from '../../../src/lib/clients';
 import { formatWei, parseFieldValue } from '../../../src/lib/format';
@@ -124,6 +124,7 @@ export default function CreateRecordPage(props: { params: { collection: string }
       const account = await requestWalletAddress(chain);
       const walletClient = makeWalletClient(chain);
 
+      assertAbiFunction(abi, fnCreate(collectionName), collectionName);
       const args = fields.map((f) => parseFieldValue(form[f.name] ?? '', f.type, (f as any).decimals));
 
       setStatus('Sending transaction…');

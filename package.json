@@ -15,7 +15,8 @@
     "legacy:build-run": "sh build.sh && cd site && yarn run dev",
     "build": "pnpm -r --filter @tokenhost/* build",
     "typecheck": "pnpm -r --filter @tokenhost/* typecheck",
-    "test": "pnpm build && mocha",
+    "test": "pnpm build && mocha \"test/*.js\"",
+    "test:integration": "pnpm build && mocha \"test/integration/*.js\"",
     "th": "tsx packages/cli/src/index.ts"
   },
   "dependencies": {
