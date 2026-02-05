@@ -108,6 +108,24 @@ function copyDir(srcDir: string, destDir: string) {
   }
 }
 
+function addGeneratedUiTestScaffold(uiDir: string, templateDir: string) {
+  const scaffoldDir = path.join(templateDir, 'test-scaffold');
+  if (!fs.existsSync(scaffoldDir)) {
+    throw new Error(`Missing test scaffold template at ${scaffoldDir}`);
+  }
+
+  copyDir(scaffoldDir, uiDir);
+
+  const packageJsonPath = path.join(uiDir, 'package.json');
+  const pkg = JSON.parse(fs.readFileSync(packageJsonPath, 'utf-8'));
+  const scripts = { ...(pkg.scripts || {}) };
+  scripts.test = scripts.test || 'pnpm run test:contract && pnpm run test:ui';
+  scripts['test:contract'] = scripts['test:contract'] || 'node tests/contract/smoke.mjs';
+  scripts['test:ui'] = scripts['test:ui'] || 'node tests/ui/smoke.mjs';
+  pkg.scripts = scripts;
+  fs.writeFileSync(packageJsonPath, JSON.stringify(pkg, null, 2) + '\n');
+}
+
 function publishManifestToUiSite(uiSiteDir: string, manifestJson: string) {
   ensureDir(uiSiteDir);
   ensureDir(path.join(uiSiteDir, '.well-known', 'tokenhost'));
@@ -1438,7 +1456,8 @@ program
   .argument('<schema>', 'Path to THS schema JSON file')
   .option('--out <dir>', 'Output directory', 'artifacts')
   .option('--no-ui', 'Do not generate UI output')
-  .action((schemaPath: string, opts: { out: string; ui: boolean }) => {
+  .option('--with-tests', 'Emit generated app test scaffold', false)
+  .action((schemaPath: string, opts: { out: string; ui: boolean; withTests: boolean }) => {
     const input = readJsonFile(schemaPath);
     const structural = validateThsStructural(input);
     if (!structural.ok) {
@@ -1474,6 +1493,11 @@ program
       const thsTsPath = path.join(uiDir, 'src', 'generated', 'ths.ts');
       ensureDir(path.dirname(thsTsPath));
       fs.writeFileSync(thsTsPath, renderThsTs(schema));
+
+      if (opts.withTests) {
+        addGeneratedUiTestScaffold(uiDir, templateDir);
+        console.log(`Wrote ui/tests/ (generated app test scaffold)`);
+      }
 
       console.log(`Wrote ui/ (Next.js static export template)`);
     }
