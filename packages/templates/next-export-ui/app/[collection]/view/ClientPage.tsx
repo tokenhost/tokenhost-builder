@@ -207,8 +207,17 @@ export default function ViewRecordPage(props: { params: { collection: string } }
     return (
       <div className="card">
         <h2>Not deployed</h2>
-        <div className="muted">Run <span className="badge">th deploy</span> and re-publish the manifest for this UI.</div>
-        <div className="pre">manifest deploymentEntrypointAddress is 0x0</div>
+        <div className="muted">
+          This UI reads <span className="badge">/.well-known/tokenhost/manifest.json</span> at runtime, but the manifest still has a placeholder
+          deployment address (<span className="badge">deploymentEntrypointAddress = 0x0</span>).
+        </div>
+        <div className="muted" style={{ marginTop: 12 }}>
+          Run <span className="badge">th deploy {'<buildDir>'} --chain anvil</span>, then refresh this page.
+        </div>
+        <div className="muted" style={{ marginTop: 12 }}>
+          If you are hosting this UI remotely, publish the updated <span className="badge">manifest.json</span> to{' '}
+          <span className="badge">/.well-known/tokenhost/manifest.json</span>.
+        </div>
       </div>
     );
   }

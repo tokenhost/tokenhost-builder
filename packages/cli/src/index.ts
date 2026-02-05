@@ -2,6 +2,7 @@ import fs from 'fs';
 import os from 'os';
 import path from 'path';
 import crypto from 'crypto';
+import * as nodeHttp from 'node:http';
 import { spawnSync } from 'child_process';
 import { createRequire } from 'module';
 import { fileURLToPath, pathToFileURL } from 'url';
@@ -87,6 +88,13 @@ function copyDir(srcDir: string, destDir: string) {
       fs.copyFileSync(src, dst);
     }
   }
+}
+
+function publishManifestToUiSite(uiSiteDir: string, manifestJson: string) {
+  ensureDir(uiSiteDir);
+  ensureDir(path.join(uiSiteDir, '.well-known', 'tokenhost'));
+  fs.writeFileSync(path.join(uiSiteDir, '.well-known', 'tokenhost', 'manifest.json'), manifestJson);
+  fs.writeFileSync(path.join(uiSiteDir, 'manifest.json'), manifestJson);
 }
 
 function resolveNextExportUiTemplateDir(): string {
@@ -477,6 +485,7 @@ program
         `pnpm th validate ${schemaPath}`,
         `pnpm th build ${schemaPath} --out ${path.join(outDir, 'build')}`,
         `pnpm th deploy ${path.join(outDir, 'build')} --chain anvil`,
+        `pnpm th preview ${path.join(outDir, 'build')}`,
         '```',
         ''
       ].join('\n')
@@ -650,7 +659,7 @@ program
       return;
     }
 
-    const outDir = opts.out;
+    const outDir = path.resolve(opts.out);
     ensureDir(outDir);
 
     // 1) Generate Solidity source
@@ -831,9 +840,7 @@ program
     if (uiBundleDir && uiSiteDir) {
       fs.rmSync(uiSiteDir, { recursive: true, force: true });
       copyDir(uiBundleDir, uiSiteDir);
-      ensureDir(path.join(uiSiteDir, '.well-known', 'tokenhost'));
-      fs.writeFileSync(path.join(uiSiteDir, '.well-known', 'tokenhost', 'manifest.json'), manifestJsonOut);
-      fs.writeFileSync(path.join(uiSiteDir, 'manifest.json'), manifestJsonOut);
+      publishManifestToUiSite(uiSiteDir, manifestJsonOut);
     }
     console.log(`Wrote ${appSol.path}`);
     console.log(`Wrote compiled/App.json`);
@@ -844,11 +851,209 @@ program
       console.log(`Wrote ui-site/ (self-hostable static root)`);
     }
     console.log(`Wrote manifest.json`);
+
+    console.log('');
+    console.log('Next steps:');
+    console.log(`  th deploy ${outDir} --chain anvil   # start anvil first`);
+    console.log(`  th deploy ${outDir} --chain sepolia # requires RPC + funded key`);
+    if (uiBundleDir) {
+      console.log(`  th preview ${outDir}               # open http://127.0.0.1:3000/`);
+    }
   });
 
 function anyPaidCreates(schema: ThsSchema): boolean {
   return schema.collections.some((c) => Boolean(c.createRules.payment));
 }
+
+program
+  .command('preview')
+  .argument('<buildDir>', 'Directory created by `th build` (contains ui-site/)')
+  .description('Serve the generated static UI locally (no Python required)')
+  .option('--port <n>', 'Port to listen on', '3000')
+  .option('--host <host>', 'Host to bind (default: 127.0.0.1)', '127.0.0.1')
+  .action((buildDir: string, opts: { port: string; host: string }) => {
+    const resolvedBuildDir = path.resolve(buildDir);
+    const uiSiteDir = path.join(resolvedBuildDir, 'ui-site');
+
+    if (!fs.existsSync(uiSiteDir)) {
+      console.error(`Missing ui-site/ in ${resolvedBuildDir}.`);
+      console.error('Re-run `th build` without `--no-ui` to generate the UI bundle.');
+      process.exitCode = 1;
+      return;
+    }
+
+    const port = Number(opts.port);
+    if (!Number.isInteger(port) || port <= 0 || port > 65535) {
+      console.error(`Invalid --port: ${opts.port}`);
+      process.exitCode = 1;
+      return;
+    }
+
+    const host = String(opts.host || '127.0.0.1');
+    const rootAbs = path.resolve(uiSiteDir);
+
+    function contentTypeForPath(filePath: string): string {
+      const ext = path.extname(filePath).toLowerCase();
+      switch (ext) {
+        case '.html':
+          return 'text/html; charset=utf-8';
+        case '.js':
+          return 'application/javascript; charset=utf-8';
+        case '.css':
+          return 'text/css; charset=utf-8';
+        case '.json':
+        case '.map':
+          return 'application/json; charset=utf-8';
+        case '.svg':
+          return 'image/svg+xml';
+        case '.png':
+          return 'image/png';
+        case '.jpg':
+        case '.jpeg':
+          return 'image/jpeg';
+        case '.gif':
+          return 'image/gif';
+        case '.webp':
+          return 'image/webp';
+        case '.ico':
+          return 'image/x-icon';
+        case '.woff2':
+          return 'font/woff2';
+        case '.woff':
+          return 'font/woff';
+        case '.ttf':
+          return 'font/ttf';
+        case '.txt':
+          return 'text/plain; charset=utf-8';
+        default:
+          return 'application/octet-stream';
+      }
+    }
+
+    function sendText(res: nodeHttp.ServerResponse, status: number, text: string) {
+      res.statusCode = status;
+      res.setHeader('Content-Type', 'text/plain; charset=utf-8');
+      res.setHeader('Cache-Control', 'no-store');
+      res.end(text);
+    }
+
+    const server = nodeHttp.createServer((req, res) => {
+      if (!req.url) return sendText(res, 400, 'Bad Request');
+
+      if (req.method && req.method !== 'GET' && req.method !== 'HEAD') {
+        res.setHeader('Allow', 'GET, HEAD');
+        return sendText(res, 405, 'Method Not Allowed');
+      }
+
+      let pathname = '/';
+      try {
+        pathname = new URL(req.url, `http://${host}:${port}`).pathname || '/';
+      } catch {
+        return sendText(res, 400, 'Bad Request');
+      }
+
+      try {
+        pathname = decodeURIComponent(pathname);
+      } catch {
+        return sendText(res, 400, 'Bad Request');
+      }
+
+      if (!pathname.startsWith('/')) pathname = `/${pathname}`;
+      const rel = pathname.replace(/^\/+/, '');
+      const unsafeAbs = path.resolve(rootAbs, rel);
+      const withinRoot = unsafeAbs === rootAbs || unsafeAbs.startsWith(rootAbs + path.sep);
+      if (!withinRoot) return sendText(res, 400, 'Bad Request');
+
+      // Redirect to trailing-slash routes (Next export uses trailingSlash: true).
+      if (!pathname.endsWith('/') && fs.existsSync(unsafeAbs) && fs.statSync(unsafeAbs).isDirectory()) {
+        res.statusCode = 308;
+        res.setHeader('Location', pathname + '/');
+        res.setHeader('Cache-Control', 'no-store');
+        res.end();
+        return;
+      }
+
+      let filePath = unsafeAbs;
+      if (fs.existsSync(filePath) && fs.statSync(filePath).isDirectory()) {
+        filePath = path.join(filePath, 'index.html');
+      } else if (!fs.existsSync(filePath)) {
+        // Convenience: allow /foo -> /foo/index.html if present.
+        const dirIndex = path.join(filePath, 'index.html');
+        if (fs.existsSync(dirIndex)) {
+          res.statusCode = 308;
+          res.setHeader('Location', pathname.endsWith('/') ? pathname : pathname + '/');
+          res.setHeader('Cache-Control', 'no-store');
+          res.end();
+          return;
+        }
+
+        return sendText(res, 404, 'Not Found');
+      }
+
+      try {
+        const stat = fs.statSync(filePath);
+        if (!stat.isFile()) return sendText(res, 404, 'Not Found');
+
+        res.statusCode = 200;
+        res.setHeader('Content-Type', contentTypeForPath(filePath));
+        res.setHeader('Content-Length', String(stat.size));
+
+        // Disable caching so manifest updates (e.g. after `th deploy`) are reflected immediately.
+        res.setHeader('Cache-Control', 'no-store');
+
+        if (req.method === 'HEAD') {
+          res.end();
+          return;
+        }
+
+        fs.createReadStream(filePath).pipe(res);
+      } catch (e: any) {
+        return sendText(res, 500, String(e?.message ?? e ?? 'Internal Server Error'));
+      }
+    });
+
+    server.on('error', (e: any) => {
+      console.error(String(e?.message ?? e ?? e));
+      process.exitCode = 1;
+    });
+
+    server.listen(port, host, () => {
+      const url = `http://${host}:${port}/`;
+      console.log(`Serving ${uiSiteDir}`);
+      console.log(url);
+
+      const manifestCandidates = [
+        path.join(uiSiteDir, '.well-known', 'tokenhost', 'manifest.json'),
+        path.join(uiSiteDir, 'manifest.json'),
+        path.join(resolvedBuildDir, 'manifest.json')
+      ];
+      const manifestPath = manifestCandidates.find((p) => fs.existsSync(p)) || null;
+      if (manifestPath) {
+        try {
+          const manifest = readJsonFile(manifestPath) as any;
+          const deployments = Array.isArray(manifest?.deployments) ? manifest.deployments : [];
+          const deployment = deployments.find((d: any) => d && d.role === 'primary') ?? deployments[0] ?? null;
+          const addr = String(deployment?.deploymentEntrypointAddress ?? '');
+          const chainId = deployment?.chainId ?? null;
+          console.log(`manifest: ${manifestPath}`);
+          console.log(`deployment: chainId=${chainId ?? 'unknown'} address=${addr || 'unknown'}`);
+          const zeroAddress = '0x0000000000000000000000000000000000000000';
+          if (addr && addr.toLowerCase() === zeroAddress) {
+            console.log('');
+            console.log('Not deployed: deploymentEntrypointAddress is 0x0.');
+            console.log(`Run: th deploy ${resolvedBuildDir} --chain anvil`);
+            console.log('Then refresh this page.');
+          }
+        } catch {
+          // Ignore manifest parse errors; the UI will surface them at runtime.
+        }
+      }
+    });
+
+    process.on('SIGINT', () => {
+      server.close(() => process.exit(0));
+    });
+  });
 
 program
   .command('deploy')
@@ -1006,8 +1211,21 @@ program
         throw new Error(`Updated manifest failed validation:\n${JSON.stringify(validation.errors, null, 2)}`);
       }
 
-      fs.writeFileSync(manifestPath, JSON.stringify(manifest, null, 2));
+      const manifestJsonOut = JSON.stringify(manifest, null, 2);
+      fs.writeFileSync(manifestPath, manifestJsonOut);
       console.log(`Updated ${manifestPath}`);
+
+      const uiSiteDir = path.join(resolvedBuildDir, 'ui-site');
+      if (fs.existsSync(uiSiteDir)) {
+        publishManifestToUiSite(uiSiteDir, manifestJsonOut);
+        console.log(`Published manifest to ui-site/`);
+      }
+
+      if (fs.existsSync(uiSiteDir)) {
+        console.log('');
+        console.log('Next steps:');
+        console.log(`  th preview ${resolvedBuildDir}  # open http://127.0.0.1:3000/`);
+      }
     } catch (e: any) {
       console.error(String(e?.message ?? e));
       process.exitCode = 1;
@@ -1271,7 +1489,14 @@ program
       return;
     }
 
-    fs.writeFileSync(manifestPath, JSON.stringify(manifest, null, 2));
+    const manifestJsonOut = JSON.stringify(manifest, null, 2);
+    fs.writeFileSync(manifestPath, manifestJsonOut);
+
+    const uiSiteDir = path.join(resolvedBuildDir, 'ui-site');
+    if (fs.existsSync(uiSiteDir)) {
+      publishManifestToUiSite(uiSiteDir, manifestJsonOut);
+      console.log(`Published manifest to ui-site/`);
+    }
 
     if (!verified) {
       console.error('Verification did not fully succeed.');
