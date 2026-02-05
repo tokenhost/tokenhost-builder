@@ -18,8 +18,8 @@ importers:
         specifier: ^3.8.1
         version: 3.8.1
       prettier-plugin-solidity:
-        specifier: ^1.0.0-beta.5
-        version: 1.4.3(prettier@3.8.1)
+        specifier: ^2.2.1
+        version: 2.2.1(prettier@3.8.1)
       solc:
         specifier: 0.8.33
         version: 0.8.33
@@ -95,6 +95,9 @@ packages:
 
   '@adraffy/ens-normalize@1.11.1':
     resolution: {integrity: sha512-nhCBV3quEgesuf7c7KYfperqSS14T8bYuvJ8PcLJp6znkZpFc0AuW4qBtr8eKVyPPe/8RSr7sglCWPU5eaxwKQ==}
+
+  '@bytecodealliance/preview2-shim@0.17.7':
+    resolution: {integrity: sha512-VFUQHwSScO+zO466DlsmNlNeCf6sUsHBazvisb3hmGCbiPxwAMn1rGmnwinM+6zcLJw0CqkV0h2JzL3MdudhJQ==}
 
   '@esbuild/aix-ppc64@0.27.2':
     resolution: {integrity: sha512-GZMB+a0mOMZs4MpDbj8RJp4cw+w1WV5NYD6xzgvzUJ5Ek2jerwfO2eADyI6ExDSUED+1X8aMbegahsJi+8mgpw==}
@@ -340,6 +343,9 @@ packages:
   '@noble/hashes@1.8.0':
     resolution: {integrity: sha512-jCs9ldd7NwzpgXDIf6P3+NrHh9/sD6CQdxHyjQI+h/6rDNo88ypBxxz45UDuZHz9r3tNz7N/VInSVoVdtXEI4A==}
     engines: {node: ^14.21.3 || >=16}
+
+  '@nomicfoundation/slang@1.3.1':
+    resolution: {integrity: sha512-gh0+JDjazmevEYCcwVgtuyfBJcV1209gIORZNRjUxbGzbQN0MOhQO9T0ptkzHKCf854gUy27SMxPbAyAu63fvQ==}
 
   '@pkgjs/parseargs@0.11.0':
     resolution: {integrity: sha512-+1VkjdD0QBLPodGrJUeqarH8VAIvQODIbwh9XpP5Syisf7YoQgsJKPNFoqqLQlu+VQ/tVSshMR6loPMn8U+dPg==}
@@ -1732,11 +1738,11 @@ packages:
     resolution: {integrity: sha512-E398TUmfAYFPBSdzgeieK2Y1+1cpdxJx8yXbK/m57nRhKSmk1GB2tO4lbLBtlkfPQTDKfe4Xqv1ASWPpayPEig==}
     engines: {node: ^10 || ^12 || >=14}
 
-  prettier-plugin-solidity@1.4.3:
-    resolution: {integrity: sha512-Mrr/iiR9f9IaeGRMZY2ApumXcn/C5Gs3S7B7hWB3gigBFML06C0yEyW86oLp0eqiA0qg+46FaChgLPJCj/pIlg==}
-    engines: {node: '>=18'}
+  prettier-plugin-solidity@2.2.1:
+    resolution: {integrity: sha512-LOHfxECJ/gHsY7qi4D7vanz8cVsCf6yFotBapJ5O0qaX0ZR1sGUzbWfMd4JeQYOItFl+wXW9IcjZOdfr6bmSvQ==}
+    engines: {node: '>=20'}
     peerDependencies:
-      prettier: '>=2.3.0'
+      prettier: '>=3.0.0'
 
   prettier@3.8.1:
     resolution: {integrity: sha512-UOnG6LftzbdaHZcKoPFtOcCKztrQ57WkHDeRD9t/PTQtmT0NHSeWWepj6pS0z/N7+08BHFDQVUrfmfMRcZwbMg==}
@@ -1869,8 +1875,8 @@ packages:
     resolution: {integrity: sha512-cBznnQ9KjJqU67B52RMC65CMarK2600WFnbkcaiwWq3xy/5haFJlshgnpjovMVJ+Hff49d8GEn0b87C5pDQ10g==}
     hasBin: true
 
-  semver@7.7.3:
-    resolution: {integrity: sha512-SdsKMrI9TdgjdweUSR9MweHA4EJ8YxHn8DFaDisvhVlUOe4BF1tLD7GAj0lIqWVl+dPb/rExr0Btby5loQm20Q==}
+  semver@7.7.4:
+    resolution: {integrity: sha512-vFKC2IEtQnVhpT78h1Yp8wzwrf8CM+MzKMHGJZfBtzhZNycRFnXsHk6E5TxIkkMsgNS7mdX3AGB7x2QM2di4lA==}
     engines: {node: '>=10'}
     hasBin: true
 
@@ -2376,6 +2382,8 @@ snapshots:
 
   '@adraffy/ens-normalize@1.11.1': {}
 
+  '@bytecodealliance/preview2-shim@0.17.7': {}
+
   '@esbuild/aix-ppc64@0.27.2':
     optional: true
 
@@ -2617,6 +2625,10 @@ snapshots:
       '@noble/hashes': 1.8.0
 
   '@noble/hashes@1.8.0': {}
+
+  '@nomicfoundation/slang@1.3.1':
+    dependencies:
+      '@bytecodealliance/preview2-shim': 0.17.7
 
   '@pkgjs/parseargs@0.11.0':
     optional: true
@@ -4024,11 +4036,12 @@ snapshots:
       source-map-js: 1.2.1
     optional: true
 
-  prettier-plugin-solidity@1.4.3(prettier@3.8.1):
+  prettier-plugin-solidity@2.2.1(prettier@3.8.1):
     dependencies:
+      '@nomicfoundation/slang': 1.3.1
       '@solidity-parser/parser': 0.20.2
       prettier: 3.8.1
-      semver: 7.7.3
+      semver: 7.7.4
 
   prettier@3.8.1: {}
 
@@ -4198,7 +4211,7 @@ snapshots:
 
   semver@5.7.2: {}
 
-  semver@7.7.3: {}
+  semver@7.7.4: {}
 
   send@0.19.2:
     dependencies:
