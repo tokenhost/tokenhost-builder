@@ -49,32 +49,28 @@ async function request(url, init) {
   return { status: res.status, text, json };
 }
 
-function minimalSchemaText() {
-  return JSON.stringify(
-    {
-      thsVersion: '2025-12',
-      schemaVersion: '0.0.1',
-      app: {
-        name: 'Studio Test App',
-        slug: 'studio-test-app',
-        features: { uploads: false, onChainIndexing: true }
-      },
-      collections: [
-        {
-          name: 'Item',
-          fields: [{ name: 'title', type: 'string', required: true }],
-          createRules: { required: ['title'], access: 'public' },
-          visibilityRules: { gets: ['title'], access: 'public' },
-          updateRules: { mutable: ['title'], access: 'owner' },
-          deleteRules: { softDelete: true, access: 'owner' },
-          transferRules: { access: 'owner' },
-          indexes: { unique: [], index: [] }
-        }
-      ]
+function minimalSchema() {
+  return {
+    thsVersion: '2025-12',
+    schemaVersion: '0.0.1',
+    app: {
+      name: 'Studio Test App',
+      slug: 'studio-test-app',
+      features: { uploads: false, onChainIndexing: true }
     },
-    null,
-    2
-  );
+    collections: [
+      {
+        name: 'Item',
+        fields: [{ name: 'title', type: 'string', required: true }],
+        createRules: { required: ['title'], access: 'public' },
+        visibilityRules: { gets: ['title'], access: 'public' },
+        updateRules: { mutable: ['title'], access: 'owner' },
+        deleteRules: { softDelete: true, access: 'owner' },
+        transferRules: { access: 'owner' },
+        indexes: { unique: [], index: [] }
+      }
+    ]
+  };
 }
 
 describe('th studio local schema builder', function () {
@@ -84,7 +80,7 @@ describe('th studio local schema builder', function () {
     const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'th-studio-'));
     const schemaPath = path.join(dir, 'schema.json');
     const savedPath = path.join(dir, 'saved.schema.json');
-    fs.writeFileSync(schemaPath, `${minimalSchemaText()}\n`);
+    fs.writeFileSync(schemaPath, `${JSON.stringify(minimalSchema(), null, 2)}\n`);
 
     const host = '127.0.0.1';
     const port = 47000 + Math.floor(Math.random() * 1000);
@@ -102,16 +98,17 @@ describe('th studio local schema builder', function () {
       const home = await request(`${baseUrl}/`);
       expect(home.status).to.equal(200);
       expect(home.text).to.include('Token Host Studio (Local)');
+      expect(home.text).to.not.include('id="schemaText"');
 
       const state = await request(`${baseUrl}/api/state`);
       expect(state.status).to.equal(200);
       expect(state.json?.schemaPath).to.equal(path.resolve(schemaPath));
-      expect(String(state.json?.schemaText || '')).to.include('"studio-test-app"');
+      expect(state.json?.formState?.app?.slug).to.equal('studio-test-app');
 
       const invalidValidation = await request(`${baseUrl}/api/validate`, {
         method: 'POST',
         headers: { 'content-type': 'application/json' },
-        body: JSON.stringify({ schemaText: '{invalid' })
+        body: JSON.stringify({ formState: { thsVersion: '2025-12', schemaVersion: '0.0.1', app: {}, collections: [] } })
       });
       expect(invalidValidation.status).to.equal(200);
       expect(invalidValidation.json?.ok).to.equal(false);
@@ -119,7 +116,7 @@ describe('th studio local schema builder', function () {
       const validValidation = await request(`${baseUrl}/api/validate`, {
         method: 'POST',
         headers: { 'content-type': 'application/json' },
-        body: JSON.stringify({ schemaText: minimalSchemaText() })
+        body: JSON.stringify({ formState: minimalSchema() })
       });
       expect(validValidation.status).to.equal(200);
       expect(validValidation.json?.ok).to.equal(true);
@@ -128,7 +125,7 @@ describe('th studio local schema builder', function () {
       const saveRes = await request(`${baseUrl}/api/save`, {
         method: 'POST',
         headers: { 'content-type': 'application/json' },
-        body: JSON.stringify({ path: savedPath, schemaText: minimalSchemaText() })
+        body: JSON.stringify({ path: savedPath, formState: minimalSchema() })
       });
       expect(saveRes.status).to.equal(200);
       expect(saveRes.json?.ok).to.equal(true);
@@ -142,7 +139,7 @@ describe('th studio local schema builder', function () {
       });
       expect(loadRes.status).to.equal(200);
       expect(loadRes.json?.ok).to.equal(true);
-      expect(String(loadRes.json?.schemaText || '')).to.include('"studio-test-app"');
+      expect(loadRes.json?.formState?.app?.slug).to.equal('studio-test-app');
     } finally {
       studio.kill('SIGINT');
     }

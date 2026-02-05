@@ -70,32 +70,32 @@ function formatIssues(issues: Issue[]): string {
     .join('\n');
 }
 
-function defaultStudioSchemaText(): string {
-  return JSON.stringify(
-    {
-      thsVersion: '2025-12',
-      schemaVersion: '0.0.1',
-      app: {
-        name: 'My App',
-        slug: 'my-app',
-        features: { uploads: false, onChainIndexing: true }
-      },
-      collections: [
-        {
-          name: 'Item',
-          fields: [{ name: 'title', type: 'string', required: true }],
-          createRules: { required: ['title'], access: 'public' },
-          visibilityRules: { gets: ['title'], access: 'public' },
-          updateRules: { mutable: ['title'], access: 'owner' },
-          deleteRules: { softDelete: true, access: 'owner' },
-          transferRules: { access: 'owner' },
-          indexes: { unique: [], index: [] }
-        }
-      ]
+function defaultStudioFormState(): ThsSchema {
+  return {
+    thsVersion: '2025-12',
+    schemaVersion: '0.0.1',
+    app: {
+      name: 'My App',
+      slug: 'my-app',
+      description: '',
+      features: { uploads: false, onChainIndexing: true, indexer: false, delegation: false }
     },
-    null,
-    2
-  );
+    collections: [
+      {
+        name: 'Item',
+        plural: 'Items',
+        fields: [{ name: 'title', type: 'string', required: true }],
+        createRules: { required: ['title'], access: 'public', auto: {} },
+        visibilityRules: { gets: ['title'], access: 'public' },
+        updateRules: { mutable: ['title'], access: 'owner', optimisticConcurrency: false },
+        deleteRules: { softDelete: true, access: 'owner' },
+        transferRules: { access: 'owner' },
+        indexes: { unique: [], index: [] },
+        relations: []
+      }
+    ],
+    metadata: {}
+  };
 }
 
 function buildStudioPreview(schema: ThsSchema): {
@@ -139,37 +139,122 @@ function buildStudioPreview(schema: ThsSchema): {
   };
 }
 
-function validateStudioSchemaText(schemaText: string): {
+function normalizeStudioFormState(input: any): ThsSchema {
+  const state = input && typeof input === 'object' ? input : {};
+  const appIn = state.app && typeof state.app === 'object' ? state.app : {};
+  const collectionsIn = Array.isArray(state.collections) ? state.collections : [];
+  const metadata = state.metadata && typeof state.metadata === 'object' ? state.metadata : {};
+
+  const out: ThsSchema = {
+    thsVersion: String(state.thsVersion ?? '2025-12'),
+    schemaVersion: String(state.schemaVersion ?? '0.0.1'),
+    app: {
+      name: String(appIn.name ?? 'My App'),
+      slug: String(appIn.slug ?? 'my-app'),
+      description: appIn.description == null ? undefined : String(appIn.description),
+      theme: appIn.theme && typeof appIn.theme === 'object' ? appIn.theme : undefined,
+      features: {
+        uploads: Boolean(appIn.features?.uploads),
+        onChainIndexing: Boolean(appIn.features?.onChainIndexing),
+        indexer: Boolean(appIn.features?.indexer),
+        delegation: Boolean(appIn.features?.delegation)
+      }
+    },
+    collections: collectionsIn.map((c: any) => {
+      const fields = Array.isArray(c?.fields) ? c.fields : [];
+      const createRules = c?.createRules && typeof c.createRules === 'object' ? c.createRules : {};
+      const visibilityRules = c?.visibilityRules && typeof c.visibilityRules === 'object' ? c.visibilityRules : {};
+      const updateRules = c?.updateRules && typeof c.updateRules === 'object' ? c.updateRules : {};
+      const deleteRules = c?.deleteRules && typeof c.deleteRules === 'object' ? c.deleteRules : {};
+      const transferRules = c?.transferRules && typeof c.transferRules === 'object' ? c.transferRules : null;
+      const indexes = c?.indexes && typeof c.indexes === 'object' ? c.indexes : {};
+      const relations = Array.isArray(c?.relations) ? c.relations : [];
+
+      return {
+        name: String(c?.name ?? ''),
+        plural: c?.plural == null ? undefined : String(c.plural),
+        fields: fields.map((f: any) => ({
+          name: String(f?.name ?? ''),
+          type: String(f?.type ?? 'string') as any,
+          required: Boolean(f?.required),
+          decimals: f?.decimals == null || f?.decimals === '' ? undefined : Number(f.decimals),
+          default: f?.default,
+          validation: f?.validation && typeof f.validation === 'object' ? f.validation : undefined,
+          ui: f?.ui && typeof f.ui === 'object' ? f.ui : undefined
+        })),
+        createRules: {
+          required: Array.isArray(createRules.required) ? createRules.required.map((x: any) => String(x)) : [],
+          auto: createRules.auto && typeof createRules.auto === 'object' ? createRules.auto : undefined,
+          payment:
+            createRules.payment && typeof createRules.payment === 'object'
+              ? {
+                  asset: String(createRules.payment.asset ?? 'native') as 'native',
+                  amountWei: String(createRules.payment.amountWei ?? '0')
+                }
+              : undefined,
+          access: String(createRules.access ?? 'public') as any
+        },
+        visibilityRules: {
+          gets: Array.isArray(visibilityRules.gets) ? visibilityRules.gets.map((x: any) => String(x)) : [],
+          access: String(visibilityRules.access ?? 'public') as any
+        },
+        updateRules: {
+          mutable: Array.isArray(updateRules.mutable) ? updateRules.mutable.map((x: any) => String(x)) : [],
+          access: String(updateRules.access ?? 'owner') as any,
+          optimisticConcurrency: Boolean(updateRules.optimisticConcurrency)
+        },
+        deleteRules: {
+          softDelete: Boolean(deleteRules.softDelete),
+          access: String(deleteRules.access ?? 'owner') as any
+        },
+        transferRules: transferRules
+          ? {
+              access: String(transferRules.access ?? 'owner') as any
+            }
+          : undefined,
+        indexes: {
+          unique: Array.isArray(indexes.unique)
+            ? indexes.unique.map((u: any) => ({
+                field: String(u?.field ?? ''),
+                scope: u?.scope == null ? undefined : String(u.scope) as any
+              }))
+            : [],
+          index: Array.isArray(indexes.index)
+            ? indexes.index.map((idx: any) => ({
+                field: String(idx?.field ?? '')
+              }))
+            : []
+        },
+        relations: relations.map((r: any) => ({
+          field: String(r?.field ?? ''),
+          to: String(r?.to ?? ''),
+          enforce: Boolean(r?.enforce),
+          reverseIndex: Boolean(r?.reverseIndex)
+        })),
+        ui: c?.ui && typeof c.ui === 'object' ? c.ui : undefined
+      };
+    }),
+    metadata
+  };
+
+  return out;
+}
+
+function validateStudioFormState(formState: any): {
   ok: boolean;
   issues: Issue[];
   schemaHash: string | null;
+  schema: ThsSchema | null;
   preview: ReturnType<typeof buildStudioPreview> | null;
 } {
-  let parsed: unknown;
-  try {
-    parsed = JSON.parse(schemaText);
-  } catch (e: any) {
-    return {
-      ok: false,
-      issues: [
-        {
-          code: 'json.parse',
-          message: String(e?.message ?? e),
-          path: '$',
-          severity: 'error'
-        }
-      ],
-      schemaHash: null,
-      preview: null
-    };
-  }
-
-  const structural = validateThsStructural(parsed);
+  const normalized = normalizeStudioFormState(formState);
+  const structural = validateThsStructural(normalized);
   if (!structural.ok) {
     return {
       ok: false,
       issues: structural.issues,
       schemaHash: null,
+      schema: null,
       preview: null
     };
   }
@@ -182,6 +267,7 @@ function validateStudioSchemaText(schemaText: string): {
     ok: !hasErrors,
     issues,
     schemaHash: computeSchemaHash(schema),
+    schema,
     preview: buildStudioPreview(schema)
   };
 }
@@ -199,12 +285,18 @@ function renderStudioHtml(): string {
     * { box-sizing: border-box; }
     body { margin:0; font-family: ui-sans-serif,system-ui,-apple-system,Segoe UI,Roboto,Helvetica,Arial,sans-serif; background: radial-gradient(circle at 10% 10%, #1f3559, #0b1220 55%); color: var(--text); }
     .wrap { max-width: 1400px; margin: 0 auto; padding: 20px; }
-    .row { display:grid; grid-template-columns: 1.4fr 1fr; gap: 14px; }
+    .row { display:grid; grid-template-columns: 1.6fr 1fr; gap: 14px; }
     .panel { background: linear-gradient(180deg, rgba(255,255,255,0.03), rgba(0,0,0,0.12)); border:1px solid rgba(255,255,255,0.12); border-radius: 14px; padding: 14px; }
     .title { margin:0 0 10px 0; font-size: 18px; font-weight: 700; }
     .muted { color: var(--muted); font-size: 13px; }
-    textarea { width:100%; min-height: 70vh; border-radius: 10px; border:1px solid rgba(255,255,255,0.18); background: #0a1426; color: #eaf2ff; padding: 10px; font-family: ui-monospace,SFMono-Regular,Menlo,Monaco,Consolas,monospace; font-size: 13px; line-height: 1.35; }
-    input[type=text] { width: 100%; border-radius: 8px; border:1px solid rgba(255,255,255,0.18); background:#0a1426; color:#eaf2ff; padding: 8px; }
+    textarea { width:100%; min-height: 120px; border-radius: 10px; border:1px solid rgba(255,255,255,0.18); background: #0a1426; color: #eaf2ff; padding: 10px; font-family: ui-monospace,SFMono-Regular,Menlo,Monaco,Consolas,monospace; font-size: 13px; line-height: 1.35; }
+    input[type=text], input[type=number], select { width: 100%; border-radius: 8px; border:1px solid rgba(255,255,255,0.18); background:#0a1426; color:#eaf2ff; padding: 8px; }
+    label { display: block; font-size: 12px; color: var(--muted); margin-bottom: 4px; }
+    .grid2 { display:grid; grid-template-columns: 1fr 1fr; gap:8px; }
+    .grid3 { display:grid; grid-template-columns: 1fr 1fr 1fr; gap:8px; }
+    .card { border:1px solid rgba(255,255,255,0.12); border-radius: 10px; padding: 8px; margin-top: 8px; background: rgba(0,0,0,0.2); }
+    .sectionTitle { font-size: 14px; font-weight: 700; margin-top: 10px; }
+    .stack { display:flex; flex-direction:column; gap:8px; }
     .toolbar { display:flex; gap:8px; flex-wrap:wrap; margin-bottom:10px; }
     button { border:1px solid rgba(255,255,255,0.2); color:#fff; background:#1e3357; border-radius:8px; padding:8px 10px; cursor:pointer; }
     button:hover { filter: brightness(1.08); }
@@ -223,16 +315,16 @@ function renderStudioHtml(): string {
     <div class="muted" style="margin-bottom:14px;">Edit THS JSON, validate/lint in real-time, save/load files, and preview routes + contract surface.</div>
     <div class="row">
       <section class="panel">
-        <h2 class="title">Schema JSON</h2>
+        <h2 class="title">Schema Builder</h2>
         <div class="toolbar">
           <button id="validateBtn">Validate Now</button>
           <button id="loadBtn">Load File</button>
           <button id="saveBtn">Save File</button>
+          <button id="addCollectionBtn">Add Collection</button>
         </div>
         <label class="muted" for="schemaPath">Schema file path</label>
         <input id="schemaPath" type="text" placeholder="apps/example/job-board.schema.json" />
-        <div style="height:8px;"></div>
-        <textarea id="schemaText"></textarea>
+        <div id="formRoot" class="stack" style="margin-top:10px;"></div>
       </section>
       <section class="panel">
         <h2 class="title">Validation + Preview</h2>
@@ -250,12 +342,16 @@ function renderStudioHtml(): string {
   </div>
   <script>
     const schemaPathEl = document.getElementById('schemaPath');
-    const schemaTextEl = document.getElementById('schemaText');
+    const formRootEl = document.getElementById('formRoot');
     const statusLineEl = document.getElementById('statusLine');
     const issuesEl = document.getElementById('issues');
     const schemaHashEl = document.getElementById('schemaHash');
     const previewEl = document.getElementById('preview');
     let timer = null;
+    let selectedCollectionIndex = 0;
+    let state = null;
+    const fieldTypes = ['string','uint256','int256','decimal','bool','address','bytes32','image','reference','externalReference'];
+    const accessModes = ['public','owner','allowlist','role'];
 
     function setStatus(ok, issueCount) {
       const cls = ok ? 'ok' : 'err';
@@ -289,9 +385,236 @@ function renderStudioHtml(): string {
       return json;
     }
 
+    function esc(s) {
+      return String(s == null ? '' : s)
+        .replaceAll('&', '&amp;')
+        .replaceAll('<', '&lt;')
+        .replaceAll('>', '&gt;')
+        .replaceAll('\"', '&quot;')
+        .replaceAll(\"'\", '&#39;');
+    }
+
+    function opt(val, current) {
+      return '<option value=\"' + esc(val) + '\"' + (String(current) === String(val) ? ' selected' : '') + '>' + esc(val) + '</option>';
+    }
+
+    function ensureState() {
+      if (state) return;
+      state = {
+        thsVersion: '2025-12',
+        schemaVersion: '0.0.1',
+        app: { name: 'My App', slug: 'my-app', description: '', features: { uploads: false, onChainIndexing: true, indexer: false, delegation: false } },
+        collections: [],
+        metadata: {}
+      };
+    }
+
+    function makeCollection() {
+      return {
+        name: 'Collection',
+        plural: 'Collections',
+        fields: [],
+        createRules: { required: [], access: 'public', auto: {} },
+        visibilityRules: { gets: [], access: 'public' },
+        updateRules: { mutable: [], access: 'owner', optimisticConcurrency: false },
+        deleteRules: { softDelete: true, access: 'owner' },
+        transferRules: { access: 'owner' },
+        indexes: { unique: [], index: [] },
+        relations: []
+      };
+    }
+
+    function makeField() {
+      return { name: 'field', type: 'string', required: false, decimals: null };
+    }
+
+    function setPath(path, value) {
+      let cur = state;
+      for (let i = 0; i < path.length - 1; i++) {
+        if (cur[path[i]] == null) cur[path[i]] = {};
+        cur = cur[path[i]];
+      }
+      cur[path[path.length - 1]] = value;
+      queueValidation();
+      renderForm();
+    }
+
+    function addItem(path, value) {
+      let cur = state;
+      for (const p of path) cur = cur[p];
+      cur.push(value);
+      queueValidation();
+      renderForm();
+    }
+
+    function delItem(path, idx) {
+      let cur = state;
+      for (const p of path) cur = cur[p];
+      cur.splice(idx, 1);
+      if (selectedCollectionIndex >= state.collections.length) selectedCollectionIndex = Math.max(0, state.collections.length - 1);
+      queueValidation();
+      renderForm();
+    }
+
+    function toggleListItem(path, value, enabled) {
+      let cur = state;
+      for (const p of path) cur = cur[p];
+      const pos = cur.indexOf(value);
+      if (enabled && pos < 0) cur.push(value);
+      if (!enabled && pos >= 0) cur.splice(pos, 1);
+      queueValidation();
+    }
+
+    function renderCollectionEditor(c, ci) {
+      const fieldChecks = (targetPath) => c.fields.map((f) => {
+        const on = (targetPath.reduce((acc, p) => acc[p], c) || []).includes(f.name);
+        return '<label><input type=\"checkbox\" data-type=\"check-list\" data-path=\"' + esc(targetPath.join('.')) + '\" data-value=\"' + esc(f.name) + '\" ' + (on ? 'checked' : '') + '> ' + esc(f.name) + '</label>';
+      }).join('');
+      return (
+        '<div class=\"card\">' +
+          '<div class=\"sectionTitle\">Collection</div>' +
+          '<div class=\"grid2\">' +
+            '<div><label>Name</label><input type=\"text\" data-bind=\"collections.' + ci + '.name\" value=\"' + esc(c.name) + '\"></div>' +
+            '<div><label>Plural</label><input type=\"text\" data-bind=\"collections.' + ci + '.plural\" value=\"' + esc(c.plural || '') + '\"></div>' +
+          '</div>' +
+          '<div class=\"sectionTitle\">Fields</div>' +
+          '<button data-action=\"add-field\" data-ci=\"' + ci + '\">Add Field</button>' +
+          c.fields.map((f, fi) =>
+            '<div class=\"card\">' +
+              '<div class=\"grid3\">' +
+                '<div><label>Name</label><input type=\"text\" data-bind=\"collections.' + ci + '.fields.' + fi + '.name\" value=\"' + esc(f.name) + '\"></div>' +
+                '<div><label>Type</label><select data-bind=\"collections.' + ci + '.fields.' + fi + '.type\">' + fieldTypes.map((t) => opt(t, f.type)).join('') + '</select></div>' +
+                '<div><label>Decimals</label><input type=\"number\" data-bind=\"collections.' + ci + '.fields.' + fi + '.decimals\" value=\"' + esc(f.decimals == null ? '' : f.decimals) + '\"></div>' +
+              '</div>' +
+              '<label><input type=\"checkbox\" data-bind-check=\"collections.' + ci + '.fields.' + fi + '.required\" ' + (f.required ? 'checked' : '') + '> required</label> ' +
+              '<button data-action=\"del-field\" data-ci=\"' + ci + '\" data-fi=\"' + fi + '\">Remove</button>' +
+            '</div>'
+          ).join('') +
+          '<div class=\"sectionTitle\">Rules</div>' +
+          '<div class=\"grid2\">' +
+            '<div><label>Create access</label><select data-bind=\"collections.' + ci + '.createRules.access\">' + accessModes.map((a) => opt(a, c.createRules.access)).join('') + '</select></div>' +
+            '<div><label>Visibility access</label><select data-bind=\"collections.' + ci + '.visibilityRules.access\">' + accessModes.map((a) => opt(a, c.visibilityRules.access)).join('') + '</select></div>' +
+            '<div><label>Update access</label><select data-bind=\"collections.' + ci + '.updateRules.access\">' + accessModes.map((a) => opt(a, c.updateRules.access)).join('') + '</select></div>' +
+            '<div><label>Delete access</label><select data-bind=\"collections.' + ci + '.deleteRules.access\">' + accessModes.map((a) => opt(a, c.deleteRules.access)).join('') + '</select></div>' +
+          '</div>' +
+          '<label><input type=\"checkbox\" data-bind-check=\"collections.' + ci + '.updateRules.optimisticConcurrency\" ' + (c.updateRules.optimisticConcurrency ? 'checked' : '') + '> optimisticConcurrency</label>' +
+          '<label><input type=\"checkbox\" data-bind-check=\"collections.' + ci + '.deleteRules.softDelete\" ' + (c.deleteRules.softDelete ? 'checked' : '') + '> softDelete</label>' +
+          '<label><input type=\"checkbox\" data-bind-check=\"collections.' + ci + '.hasTransfer\" ' + (c.transferRules ? 'checked' : '') + '> enable transfer</label>' +
+          '<div><label>Transfer access</label><select data-bind=\"collections.' + ci + '.transferRules.access\" ' + (c.transferRules ? '' : 'disabled') + '>' + accessModes.map((a) => opt(a, c.transferRules?.access || 'owner')).join('') + '</select></div>' +
+          '<div class=\"card\"><div class=\"muted\">createRules.required</div>' + fieldChecks(['createRules','required']) + '</div>' +
+          '<div class=\"card\"><div class=\"muted\">visibilityRules.gets</div>' + fieldChecks(['visibilityRules','gets']) + '</div>' +
+          '<div class=\"card\"><div class=\"muted\">updateRules.mutable</div>' + fieldChecks(['updateRules','mutable']) + '</div>' +
+          '<div class=\"sectionTitle\">Payment (optional)</div>' +
+          '<label><input type=\"checkbox\" data-bind-check=\"collections.' + ci + '.hasPayment\" ' + (c.createRules.payment ? 'checked' : '') + '> require native payment</label>' +
+          '<div class=\"grid2\">' +
+            '<div><label>asset</label><select data-bind=\"collections.' + ci + '.createRules.payment.asset\" ' + (c.createRules.payment ? '' : 'disabled') + '>' + opt('native', c.createRules.payment?.asset || 'native') + '</select></div>' +
+            '<div><label>amountWei</label><input type=\"text\" data-bind=\"collections.' + ci + '.createRules.payment.amountWei\" value=\"' + esc(c.createRules.payment?.amountWei || '') + '\" ' + (c.createRules.payment ? '' : 'disabled') + '></div>' +
+          '</div>' +
+          '<div class=\"sectionTitle\">Indexes</div>' +
+          '<button data-action=\"add-unique\" data-ci=\"' + ci + '\">Add Unique</button> <button data-action=\"add-index\" data-ci=\"' + ci + '\">Add Index</button>' +
+          c.indexes.unique.map((u, ui) => '<div class=\"grid3\"><div><label>Unique field</label><input type=\"text\" data-bind=\"collections.' + ci + '.indexes.unique.' + ui + '.field\" value=\"' + esc(u.field) + '\"></div><div><label>scope</label><select data-bind=\"collections.' + ci + '.indexes.unique.' + ui + '.scope\">' + opt('', u.scope || '') + opt('active', u.scope || '') + opt('allTime', u.scope || '') + '</select></div><div><button data-action=\"del-unique\" data-ci=\"' + ci + '\" data-ui=\"' + ui + '\">Remove</button></div></div>').join('') +
+          c.indexes.index.map((u, ui) => '<div class=\"grid3\"><div><label>Index field</label><input type=\"text\" data-bind=\"collections.' + ci + '.indexes.index.' + ui + '.field\" value=\"' + esc(u.field) + '\"></div><div></div><div><button data-action=\"del-index\" data-ci=\"' + ci + '\" data-ui=\"' + ui + '\">Remove</button></div></div>').join('') +
+          '<div class=\"sectionTitle\">Relations</div>' +
+          '<button data-action=\"add-relation\" data-ci=\"' + ci + '\">Add Relation</button>' +
+          c.relations.map((r, ri) =>
+            '<div class=\"card\">' +
+              '<div class=\"grid2\">' +
+                '<div><label>field</label><input type=\"text\" data-bind=\"collections.' + ci + '.relations.' + ri + '.field\" value=\"' + esc(r.field) + '\"></div>' +
+                '<div><label>to collection</label><input type=\"text\" data-bind=\"collections.' + ci + '.relations.' + ri + '.to\" value=\"' + esc(r.to) + '\"></div>' +
+              '</div>' +
+              '<label><input type=\"checkbox\" data-bind-check=\"collections.' + ci + '.relations.' + ri + '.enforce\" ' + (r.enforce ? 'checked' : '') + '> enforce</label>' +
+              '<label><input type=\"checkbox\" data-bind-check=\"collections.' + ci + '.relations.' + ri + '.reverseIndex\" ' + (r.reverseIndex ? 'checked' : '') + '> reverseIndex</label> ' +
+              '<button data-action=\"del-relation\" data-ci=\"' + ci + '\" data-ri=\"' + ri + '\">Remove</button>' +
+            '</div>'
+          ).join('') +
+        '</div>'
+      );
+    }
+
+    function renderForm() {
+      ensureState();
+      const c = state.collections[selectedCollectionIndex] || makeCollection();
+      const collectionsNav = state.collections.map((col, i) => '<button data-action=\"pick-collection\" data-ci=\"' + i + '\" ' + (i === selectedCollectionIndex ? 'style=\"outline:2px solid #fff;\"' : '') + '>' + esc(col.name || ('Collection ' + (i + 1))) + '</button> <button data-action=\"del-collection\" data-ci=\"' + i + '\">x</button>').join(' ');
+      formRootEl.innerHTML =
+        '<div class=\"card\"><div class=\"sectionTitle\">Document</div><div class=\"grid2\">' +
+          '<div><label>thsVersion</label><input type=\"text\" data-bind=\"thsVersion\" value=\"' + esc(state.thsVersion) + '\"></div>' +
+          '<div><label>schemaVersion</label><input type=\"text\" data-bind=\"schemaVersion\" value=\"' + esc(state.schemaVersion) + '\"></div>' +
+        '</div>' +
+        '<div class=\"sectionTitle\">App</div><div class=\"grid2\">' +
+          '<div><label>name</label><input type=\"text\" data-bind=\"app.name\" value=\"' + esc(state.app?.name || '') + '\"></div>' +
+          '<div><label>slug</label><input type=\"text\" data-bind=\"app.slug\" value=\"' + esc(state.app?.slug || '') + '\"></div>' +
+        '</div><div><label>description</label><input type=\"text\" data-bind=\"app.description\" value=\"' + esc(state.app?.description || '') + '\"></div>' +
+        '<div class=\"grid2\"><label><input type=\"checkbox\" data-bind-check=\"app.features.uploads\" ' + (state.app?.features?.uploads ? 'checked' : '') + '> uploads</label>' +
+        '<label><input type=\"checkbox\" data-bind-check=\"app.features.onChainIndexing\" ' + (state.app?.features?.onChainIndexing ? 'checked' : '') + '> onChainIndexing</label>' +
+        '<label><input type=\"checkbox\" data-bind-check=\"app.features.indexer\" ' + (state.app?.features?.indexer ? 'checked' : '') + '> indexer</label>' +
+        '<label><input type=\"checkbox\" data-bind-check=\"app.features.delegation\" ' + (state.app?.features?.delegation ? 'checked' : '') + '> delegation</label></div>' +
+        '</div>' +
+        '<div class=\"card\"><div class=\"sectionTitle\">Collections</div><div>' + collectionsNav + '</div>' + (state.collections.length > 0 ? renderCollectionEditor(c, selectedCollectionIndex) : '<div class=\"muted\">No collections yet.</div>') + '</div>';
+
+      for (const el of formRootEl.querySelectorAll('[data-bind]')) {
+        el.addEventListener('input', (ev) => {
+          const target = ev.currentTarget;
+          const path = target.getAttribute('data-bind').split('.');
+          let value = target.value;
+          if (path[path.length - 1] === 'decimals') value = value === '' ? null : Number(value);
+          setPath(path, value);
+        });
+      }
+      for (const el of formRootEl.querySelectorAll('[data-bind-check]')) {
+        el.addEventListener('change', (ev) => {
+          const target = ev.currentTarget;
+          const pathStr = target.getAttribute('data-bind-check');
+          const path = pathStr.split('.');
+          if (pathStr === 'collections.' + selectedCollectionIndex + '.hasTransfer') {
+            const c = state.collections[selectedCollectionIndex];
+            c.transferRules = target.checked ? (c.transferRules || { access: 'owner' }) : undefined;
+            queueValidation();
+            renderForm();
+            return;
+          }
+          if (pathStr === 'collections.' + selectedCollectionIndex + '.hasPayment') {
+            const c = state.collections[selectedCollectionIndex];
+            c.createRules.payment = target.checked ? (c.createRules.payment || { asset: 'native', amountWei: '0' }) : undefined;
+            queueValidation();
+            renderForm();
+            return;
+          }
+          setPath(path, Boolean(target.checked));
+        });
+      }
+      for (const el of formRootEl.querySelectorAll('[data-type=\"check-list\"]')) {
+        el.addEventListener('change', (ev) => {
+          const target = ev.currentTarget;
+          const path = target.getAttribute('data-path').split('.');
+          const value = target.getAttribute('data-value');
+          toggleListItem(['collections', selectedCollectionIndex, ...path], value, Boolean(target.checked));
+          renderForm();
+        });
+      }
+      for (const el of formRootEl.querySelectorAll('[data-action]')) {
+        el.addEventListener('click', (ev) => {
+          ev.preventDefault();
+          const target = ev.currentTarget;
+          const action = target.getAttribute('data-action');
+          const ci = Number(target.getAttribute('data-ci'));
+          if (action === 'add-field') addItem(['collections', ci, 'fields'], makeField());
+          if (action === 'del-field') delItem(['collections', ci, 'fields'], Number(target.getAttribute('data-fi')));
+          if (action === 'add-collection') addItem(['collections'], makeCollection());
+          if (action === 'del-collection') delItem(['collections'], ci);
+          if (action === 'pick-collection') { selectedCollectionIndex = ci; renderForm(); }
+          if (action === 'add-unique') addItem(['collections', ci, 'indexes', 'unique'], { field: '', scope: 'active' });
+          if (action === 'del-unique') delItem(['collections', ci, 'indexes', 'unique'], Number(target.getAttribute('data-ui')));
+          if (action === 'add-index') addItem(['collections', ci, 'indexes', 'index'], { field: '' });
+          if (action === 'del-index') delItem(['collections', ci, 'indexes', 'index'], Number(target.getAttribute('data-ui')));
+          if (action === 'add-relation') addItem(['collections', ci, 'relations'], { field: '', to: '', enforce: false, reverseIndex: false });
+          if (action === 'del-relation') delItem(['collections', ci, 'relations'], Number(target.getAttribute('data-ri')));
+        });
+      }
+    }
+
     async function runValidation() {
       try {
-        const out = await postJson('/api/validate', { schemaText: schemaTextEl.value });
+        const out = await postJson('/api/validate', { formState: state });
         setStatus(Boolean(out.ok), Array.isArray(out.issues) ? out.issues.length : 0);
         renderIssues(out.issues || []);
         schemaHashEl.textContent = out.schemaHash || '(none)';
@@ -312,7 +635,9 @@ function renderStudioHtml(): string {
       try {
         const out = await postJson('/api/load', { path: schemaPathEl.value });
         schemaPathEl.value = out.path || schemaPathEl.value;
-        schemaTextEl.value = out.schemaText || '';
+        state = out.formState || state;
+        selectedCollectionIndex = 0;
+        renderForm();
         queueValidation();
       } catch (e) {
         alert(String(e && e.message ? e.message : e));
@@ -320,23 +645,32 @@ function renderStudioHtml(): string {
     });
     document.getElementById('saveBtn').addEventListener('click', async () => {
       try {
-        const out = await postJson('/api/save', { path: schemaPathEl.value, schemaText: schemaTextEl.value });
+        const out = await postJson('/api/save', { path: schemaPathEl.value, formState: state });
         schemaPathEl.value = out.path || schemaPathEl.value;
         queueValidation();
       } catch (e) {
         alert(String(e && e.message ? e.message : e));
       }
     });
-    schemaTextEl.addEventListener('input', queueValidation);
+    document.getElementById('addCollectionBtn').addEventListener('click', (ev) => {
+      ev.preventDefault();
+      ensureState();
+      state.collections.push(makeCollection());
+      selectedCollectionIndex = state.collections.length - 1;
+      renderForm();
+      queueValidation();
+    });
 
     (async () => {
       try {
         const stateRes = await fetch('/api/state', { cache: 'no-store' });
-        const state = await stateRes.json();
-        schemaPathEl.value = state.schemaPath || '';
-        schemaTextEl.value = state.schemaText || '';
+        const stateResJson = await stateRes.json();
+        schemaPathEl.value = stateResJson.schemaPath || '';
+        state = stateResJson.formState || null;
+        renderForm();
       } catch {
-        schemaTextEl.value = '';
+        ensureState();
+        renderForm();
       }
       queueValidation();
     })();
@@ -1719,9 +2053,11 @@ program
     }
 
     let schemaPath: string | null = opts.schema ? path.resolve(opts.schema) : null;
-    let schemaText = defaultStudioSchemaText();
+    let formState: ThsSchema = defaultStudioFormState();
     if (schemaPath && fs.existsSync(schemaPath)) {
-      schemaText = fs.readFileSync(schemaPath, 'utf-8');
+      const loaded = readJsonFile(schemaPath);
+      const structural = validateThsStructural(loaded);
+      if (structural.ok) formState = normalizeStudioFormState(structural.data);
     }
 
     function sendText(res: nodeHttp.ServerResponse, status: number, text: string) {
@@ -1778,7 +2114,7 @@ program
       if (pathname === '/api/state') {
         return sendJson(res, 200, {
           schemaPath,
-          schemaText
+          formState
         });
       }
 
@@ -1786,9 +2122,9 @@ program
         (async () => {
           try {
             const body = await parseJsonBody(req);
-            const text = String(body?.schemaText ?? schemaText ?? '');
-            const out = validateStudioSchemaText(text);
-            schemaText = text;
+            const incoming = body?.formState ?? formState;
+            const out = validateStudioFormState(incoming);
+            if (out.schema) formState = normalizeStudioFormState(out.schema);
             sendJson(res, 200, out);
           } catch (e: any) {
             sendJson(res, 400, { error: String(e?.message ?? e) });
@@ -1805,10 +2141,14 @@ program
             if (!requestedPath) return sendJson(res, 400, { error: 'Missing path.' });
             const resolvedPath = path.resolve(requestedPath);
             if (!fs.existsSync(resolvedPath)) return sendJson(res, 404, { error: `File not found: ${resolvedPath}` });
-            const loaded = fs.readFileSync(resolvedPath, 'utf-8');
+            const loaded = readJsonFile(resolvedPath);
+            const structural = validateThsStructural(loaded);
+            if (!structural.ok) {
+              return sendJson(res, 400, { error: 'Invalid THS file.', issues: structural.issues });
+            }
             schemaPath = resolvedPath;
-            schemaText = loaded;
-            sendJson(res, 200, { ok: true, path: resolvedPath, schemaText: loaded });
+            formState = normalizeStudioFormState(structural.data);
+            sendJson(res, 200, { ok: true, path: resolvedPath, formState });
           } catch (e: any) {
             sendJson(res, 400, { error: String(e?.message ?? e) });
           }
@@ -1821,11 +2161,11 @@ program
           try {
             const body = await parseJsonBody(req);
             const requestedPath = String(body?.path ?? '').trim();
-            const text = String(body?.schemaText ?? '');
+            const incoming = body?.formState ?? formState;
             if (!requestedPath) return sendJson(res, 400, { error: 'Missing path.' });
 
-            const validated = validateStudioSchemaText(text);
-            if (!validated.ok) {
+            const validated = validateStudioFormState(incoming);
+            if (!validated.ok || !validated.schema) {
               return sendJson(res, 400, {
                 error: 'Schema is invalid; fix errors before saving.',
                 issues: validated.issues
@@ -1834,9 +2174,10 @@ program
 
             const resolvedPath = path.resolve(requestedPath);
             ensureDir(path.dirname(resolvedPath));
-            fs.writeFileSync(resolvedPath, text.endsWith('\n') ? text : `${text}\n`);
+            const schemaJson = JSON.stringify(validated.schema, null, 2);
+            fs.writeFileSync(resolvedPath, schemaJson.endsWith('\n') ? schemaJson : `${schemaJson}\n`);
             schemaPath = resolvedPath;
-            schemaText = text;
+            formState = normalizeStudioFormState(validated.schema);
             sendJson(res, 200, { ok: true, path: resolvedPath });
           } catch (e: any) {
             sendJson(res, 400, { error: String(e?.message ?? e) });
