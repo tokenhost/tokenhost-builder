@@ -125,6 +125,7 @@ describe('th generate (UI template)', function () {
     expect(fs.existsSync(path.join(uiDir, 'tests', 'contract', 'smoke.mjs'))).to.equal(true);
     expect(fs.existsSync(path.join(uiDir, 'tests', 'contract', 'integration.mjs'))).to.equal(true);
     expect(fs.existsSync(path.join(uiDir, 'tests', 'ui', 'smoke.mjs'))).to.equal(true);
+    expect(fs.existsSync(path.join(uiDir, '.github', 'workflows', 'generated-app-ci.yml'))).to.equal(true);
 
     const pkg = JSON.parse(fs.readFileSync(path.join(uiDir, 'package.json'), 'utf-8'));
     expect(pkg?.scripts?.test).to.equal('pnpm run test:contract && pnpm run test:ui');
@@ -138,5 +139,12 @@ describe('th generate (UI template)', function () {
 
     const uiSmoke = runCmd('node', ['tests/ui/smoke.mjs'], uiDir);
     expect(uiSmoke.status, uiSmoke.stderr || uiSmoke.stdout).to.equal(0);
+
+    const workflow = fs.readFileSync(path.join(uiDir, '.github', 'workflows', 'generated-app-ci.yml'), 'utf-8');
+    expect(workflow).to.include('pnpm run test:contract');
+    expect(workflow).to.include('pnpm run test:ui');
+    expect(workflow).to.include('TH_SKIP_CONTRACT_TESTS');
+    expect(workflow).to.include('TH_SKIP_UI_TESTS');
+    expect(workflow).to.include('TH_INSTALL_BROWSER_DEPS');
   });
 });
