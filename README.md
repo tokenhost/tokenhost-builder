@@ -34,3 +34,15 @@ This repo requires:
 - `integration-local`
 
 `integration-local` must continue to include canonical generated-app verification before default-on is enabled for emitted tests.
+
+## Contract verification
+
+Use `th verify <buildDir>` after deployment to verify on Sourcify and/or Etherscan.
+
+- Supports `--verifier sourcify|etherscan|both`.
+- Uses chain-scoped API keys:
+  - `SEPOLIA_ETHERSCAN_API_KEY` (preferred)
+  - `ETHERSCAN_API_KEY` (fallback)
+- Writes verification status back into `manifest.json` under `deployments[*].verified`
+  and `manifest.extensions.verification[chainId]`.
+- Re-publishes manifest into `ui-site/` when present.
