@@ -385,11 +385,37 @@ function loadStudioWordmarkSvg(): string {
   return '<div class="brandWordFallback">token host</div>';
 }
 
+function loadStudioBackgroundImageCss(): string {
+  const here = path.dirname(fileURLToPath(import.meta.url));
+  const candidates = [
+    path.resolve(here, '../assets/studio/Token BIG-01@2x.png'),
+    path.resolve(here, '../assets/studio/Token BIG-01.png'),
+    path.resolve(here, '../../assets/studio/Token BIG-01@2x.png'),
+    path.resolve(here, '../../assets/studio/Token BIG-01.png')
+  ];
+
+  const workspace = findUp('pnpm-workspace.yaml', process.cwd());
+  if (workspace) {
+    const root = path.dirname(workspace);
+    candidates.push(path.join(root, 'packages', 'cli', 'assets', 'studio', 'Token BIG-01@2x.png'));
+    candidates.push(path.join(root, 'packages', 'cli', 'assets', 'studio', 'Token BIG-01.png'));
+  }
+
+  for (const candidate of candidates) {
+    if (!fs.existsSync(candidate)) continue;
+    const bytes = fs.readFileSync(candidate);
+    return `url("data:image/png;base64,${bytes.toString('base64')}")`;
+  }
+
+  return 'none';
+}
+
 function renderStudioHtml(): string {
   // Keep this local-first and dependency-free for fast startup in any repo clone.
   const themeTokens = loadSharedThemeTokens();
   const cssVars = renderStudioThemeCssVars(themeTokens);
   const studioWordmarkSvg = loadStudioWordmarkSvg();
+  const studioBgImageCss = loadStudioBackgroundImageCss();
   return `<!doctype html>
 <html lang="en">
 <head>
@@ -401,7 +427,9 @@ function renderStudioHtml(): string {
     :root { color-scheme: light; ${cssVars}; --ok:var(--th-success); --err:var(--th-danger); --warn:var(--th-accent); }
     * { box-sizing: border-box; }
     body { margin:0; font-family: "Montserrat", var(--th-font-body); background: radial-gradient(circle at 18% 24%, #f1f6ff 0, #f1f6ff 44%, transparent 44%), radial-gradient(circle at 18% 24%, #f7faff 0, #f7faff 52%, transparent 52%), linear-gradient(180deg, #ffffff 0%, #f6f9ff 100%); color: #021a4d; }
-    .wrap { max-width: 1400px; margin: 0 auto; padding: 28px 24px 40px; position: relative; }
+    .wrap { max-width: 1400px; margin: 0 auto; padding: 28px 24px 40px; position: relative; overflow: hidden; }
+    .wrap::before { content:""; position:absolute; inset:-120px -220px auto auto; width:min(70vw, 960px); height:min(70vw, 960px); background-image: ${studioBgImageCss}; background-repeat:no-repeat; background-size:contain; opacity:.12; pointer-events:none; z-index:0; }
+    .hero, .panel, .row { position:relative; z-index:1; }
     .hero { margin-bottom: 18px; }
     .brandMark { margin-bottom: 6px; display:flex; align-items:center; }
     .brandSvg { width: min(470px, 74vw); height: auto; display:block; }
