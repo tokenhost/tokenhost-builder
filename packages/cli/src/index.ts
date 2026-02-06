@@ -374,39 +374,51 @@ function renderStudioHtml(): string {
   <style>
     :root { color-scheme: light; ${cssVars}; --ok:var(--th-success); --err:var(--th-danger); --warn:var(--th-accent); }
     * { box-sizing: border-box; }
-    body { margin:0; font-family: var(--th-font-body); background: radial-gradient(circle at 8% 0%, #255bb688, transparent 42%), radial-gradient(circle at 88% 0%, #50b9fa66, transparent 36%), linear-gradient(155deg, var(--th-bg) 20%, var(--th-bg-alt) 100%); color: var(--th-text); }
-    .wrap { max-width: 1400px; margin: 0 auto; padding: 20px; }
+    body { margin:0; font-family: var(--th-font-body); background: radial-gradient(circle at 18% 24%, #f1f6ff 0, #f1f6ff 44%, transparent 44%), radial-gradient(circle at 18% 24%, #f7faff 0, #f7faff 52%, transparent 52%), linear-gradient(180deg, #ffffff 0%, #f6f9ff 100%); color: #021a4d; }
+    .wrap { max-width: 1400px; margin: 0 auto; padding: 28px 24px 40px; position: relative; }
+    .hero { margin-bottom: 18px; }
+    .brandMark { display: flex; align-items: center; gap: 12px; margin-bottom: 6px; }
+    .brandRing { width: 42px; height: 42px; border-radius: 50%; border: 5px solid #0a4df0; border-right-color: transparent; transform: rotate(-20deg); }
+    .brandWord { font-family: var(--th-font-display); font-size: 52px; font-weight: 900; letter-spacing: .01em; color: #031f63; line-height: 1; }
+    .heroTitle { margin: 0; font-size: 34px; font-family: var(--th-font-display); font-weight: 800; color: #0a43d8; letter-spacing: .01em; }
+    .heroSub { margin-top: 6px; color: #375b9d; font-size: 15px; max-width: 900px; }
     .row { display:grid; grid-template-columns: 1.6fr 1fr; gap: 14px; }
-    .panel { background: linear-gradient(180deg, #0f2958cf, #0d234bd4); border:1px solid var(--th-border); border-radius: var(--th-radius-lg); padding: var(--th-space-md); box-shadow: 0 8px 32px #02122f4d; }
-    .title { margin:0 0 10px 0; font-size: 22px; font-family: var(--th-font-display); font-weight: 700; }
-    .muted { color: var(--th-muted); font-size: 13px; }
-    textarea { width:100%; min-height: 120px; border-radius: var(--th-radius-sm); border:1px solid var(--th-border); background: #071b3f; color: var(--th-text); padding: 10px; font-family: var(--th-font-mono); font-size: 13px; line-height: 1.35; }
-    input[type=text], input[type=number], select { width: 100%; border-radius: var(--th-radius-sm); border:1px solid var(--th-border); background:#071b3f; color:var(--th-text); padding: 8px; }
-    label { display: block; font-size: 12px; color: var(--th-muted); margin-bottom: 4px; }
+    .panel { background: #ffffff; border:1px solid #d7e4ff; border-radius: var(--th-radius-lg); padding: var(--th-space-md); box-shadow: 0 8px 24px #1345ac1a; }
+    .title { margin:0 0 10px 0; font-size: 28px; font-family: var(--th-font-display); font-weight: 800; color: #0a43d8; letter-spacing: .01em; }
+    .muted { color: #4e6ea7; font-size: 13px; }
+    textarea { width:100%; min-height: 120px; border-radius: var(--th-radius-sm); border:1px solid #c9dbff; background: #f8fbff; color: #0a255f; padding: 10px; font-family: var(--th-font-mono); font-size: 13px; line-height: 1.35; }
+    input[type=text], input[type=number], select { width: 100%; border-radius: var(--th-radius-sm); border:1px solid #c9dbff; background:#f8fbff; color:#0a255f; padding: 8px; }
+    input[type=text]:focus, input[type=number]:focus, select:focus, textarea:focus { outline: 2px solid #7fb5ff; outline-offset: 0; border-color: #7fb5ff; }
+    label { display: block; font-size: 12px; color: #46689f; margin-bottom: 4px; font-weight: 600; }
     .grid2 { display:grid; grid-template-columns: 1fr 1fr; gap:8px; }
     .grid3 { display:grid; grid-template-columns: 1fr 1fr 1fr; gap:8px; }
-    .card { border:1px solid var(--th-border); border-radius: var(--th-radius-sm); padding: 8px; margin-top: 8px; background: #0a2a5888; }
-    .sectionTitle { font-size: 14px; font-weight: 700; margin-top: 10px; }
+    .card { border:1px solid #d7e4ff; border-radius: var(--th-radius-sm); padding: 8px; margin-top: 8px; background: #ffffff; }
+    .sectionTitle { font-size: 14px; font-weight: 800; margin-top: 10px; color: #0b3bb6; }
     .stack { display:flex; flex-direction:column; gap:8px; }
     .toolbar { display:flex; gap:8px; flex-wrap:wrap; margin-bottom:10px; }
     .configList { display:flex; flex-direction:column; gap:8px; max-height:260px; overflow:auto; }
-    .configRow { display:grid; grid-template-columns: 1fr auto; gap:8px; align-items:center; border:1px solid var(--th-border); border-radius: var(--th-radius-sm); padding:8px; background: #0a2a5888; }
+    .configRow { display:grid; grid-template-columns: 1fr auto; gap:8px; align-items:center; border:1px solid #d7e4ff; border-radius: var(--th-radius-sm); padding:8px; background: #ffffff; }
     .configPath { font-family: var(--th-font-mono); font-size:12px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
-    button { border:1px solid var(--th-border); color:var(--th-text); background:#15407f; border-radius: var(--th-radius-sm); padding:8px 10px; cursor:pointer; transition: transform var(--th-motion-fast) ease, background var(--th-motion-base) ease; font-weight: 600; }
-    button:hover { background:#1a4f9d; }
+    button { border:1px solid #0f56e0; color:#ffffff; background:#0f56e0; border-radius: var(--th-radius-sm); padding:8px 10px; cursor:pointer; transition: transform var(--th-motion-fast) ease, background var(--th-motion-base) ease; font-weight: 700; }
+    button:hover { background:#0943b8; }
+    button:active { transform: translateY(1px); }
     .pill { display:inline-block; padding: 2px 8px; border-radius:999px; font-size: 12px; border:1px solid transparent; }
-    .ok { color:#d8ffe9; background: color-mix(in srgb, var(--th-success) 24%, transparent); border-color: color-mix(in srgb, var(--th-success) 45%, transparent);}
-    .err { color:#ffd6d6; background: color-mix(in srgb, var(--th-danger) 24%, transparent); border-color: color-mix(in srgb, var(--th-danger) 45%, transparent);}
-    .warn { color:#fff6d5; background: color-mix(in srgb, var(--th-accent) 24%, transparent); border-color: color-mix(in srgb, var(--th-accent) 45%, transparent);}
+    .ok { color:#03552e; background: #d9f8e8; border-color: #97e0bc;}
+    .err { color:#8a1a1d; background: #ffdfe0; border-color: #f2a3a6;}
+    .warn { color:#6b5300; background: #fff2c8; border-color: #f2d266;}
     ul { margin: 8px 0 0 18px; padding:0; }
     li { margin: 2px 0; }
-    pre { white-space: pre-wrap; word-break: break-word; background:#071b3f; border:1px solid var(--th-border); border-radius: var(--th-radius-sm); padding: 10px; max-height: 280px; overflow:auto; }
+    pre { white-space: pre-wrap; word-break: break-word; background:#f8fbff; border:1px solid #c9dbff; border-radius: var(--th-radius-sm); padding: 10px; max-height: 280px; overflow:auto; color: #0a255f; }
+    @media (max-width: 980px) { .row { grid-template-columns: 1fr; } .grid3 { grid-template-columns: 1fr; } .brandWord { font-size: 40px; } .heroTitle { font-size: 28px; } }
   </style>
 </head>
 <body>
   <div class="wrap">
-    <h1 style="margin:0 0 8px 0;">Token Host Studio (Local)</h1>
-    <div class="muted" style="margin-bottom:14px;">Edit THS JSON, validate/lint in real-time, save/load files, and preview routes + contract surface.</div>
+    <header class="hero">
+      <div class="brandMark"><span class="brandRing"></span><span class="brandWord">token host</span></div>
+      <h1 class="heroTitle">Token Host Studio</h1>
+      <div class="heroSub">Edit THS JSON, validate/lint in real-time, save/load files, and preview routes + contract surface.</div>
+    </header>
     <section class="panel" style="margin-bottom:14px;">
       <h2 class="title">Config Manager</h2>
       <div class="grid3">
@@ -696,7 +708,7 @@ function renderStudioHtml(): string {
     function renderForm() {
       ensureState();
       const c = state.collections[selectedCollectionIndex] || makeCollection();
-      const collectionsNav = state.collections.map((col, i) => '<button data-action=\"pick-collection\" data-ci=\"' + i + '\" ' + (i === selectedCollectionIndex ? 'style=\"outline:2px solid #fff;\"' : '') + '>' + esc(col.name || ('Collection ' + (i + 1))) + '</button> <button data-action=\"del-collection\" data-ci=\"' + i + '\">x</button>').join(' ');
+      const collectionsNav = state.collections.map((col, i) => '<button data-action=\"pick-collection\" data-ci=\"' + i + '\" ' + (i === selectedCollectionIndex ? 'style=\"outline:2px solid #0d5bff;\"' : '') + '>' + esc(col.name || ('Collection ' + (i + 1))) + '</button> <button data-action=\"del-collection\" data-ci=\"' + i + '\">x</button>').join(' ');
       formRootEl.innerHTML =
         '<div class=\"card\"><div class=\"sectionTitle\">Document</div><div class=\"grid2\">' +
           '<div><label>thsVersion</label><input type=\"text\" data-bind=\"thsVersion\" value=\"' + esc(state.thsVersion) + '\"></div>' +
