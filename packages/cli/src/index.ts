@@ -385,29 +385,29 @@ function loadStudioWordmarkSvg(): string {
   return '<div class="brandWordFallback">token host</div>';
 }
 
-function loadStudioBackgroundImageCss(): string {
+function loadStudioBackgroundPngBuffer(): Buffer | null {
   const here = path.dirname(fileURLToPath(import.meta.url));
   const candidates = [
+    path.resolve(here, '../assets/studio/Token BIG-01.cfe69f33.png'),
+    path.resolve(here, '../../assets/studio/Token BIG-01.cfe69f33.png'),
     path.resolve(here, '../assets/studio/Token BIG-01@2x.png'),
-    path.resolve(here, '../assets/studio/Token BIG-01.png'),
-    path.resolve(here, '../../assets/studio/Token BIG-01@2x.png'),
-    path.resolve(here, '../../assets/studio/Token BIG-01.png')
+    path.resolve(here, '../assets/studio/Token BIG-01.png')
   ];
 
   const workspace = findUp('pnpm-workspace.yaml', process.cwd());
   if (workspace) {
     const root = path.dirname(workspace);
+    candidates.push(path.join(root, 'packages', 'cli', 'assets', 'studio', 'Token BIG-01.cfe69f33.png'));
     candidates.push(path.join(root, 'packages', 'cli', 'assets', 'studio', 'Token BIG-01@2x.png'));
     candidates.push(path.join(root, 'packages', 'cli', 'assets', 'studio', 'Token BIG-01.png'));
   }
 
   for (const candidate of candidates) {
     if (!fs.existsSync(candidate)) continue;
-    const bytes = fs.readFileSync(candidate);
-    return `url("data:image/png;base64,${bytes.toString('base64')}")`;
+    return fs.readFileSync(candidate);
   }
 
-  return 'none';
+  return null;
 }
 
 function renderStudioHtml(): string {
@@ -415,7 +415,6 @@ function renderStudioHtml(): string {
   const themeTokens = loadSharedThemeTokens();
   const cssVars = renderStudioThemeCssVars(themeTokens);
   const studioWordmarkSvg = loadStudioWordmarkSvg();
-  const studioBgImageCss = loadStudioBackgroundImageCss();
   return `<!doctype html>
 <html lang="en">
 <head>
@@ -426,9 +425,9 @@ function renderStudioHtml(): string {
     @import url('https://fonts.googleapis.com/css2?family=Montserrat:wght@400;500;600;700;800;900&display=swap');
     :root { color-scheme: light; ${cssVars}; --ok:var(--th-success); --err:var(--th-danger); --warn:var(--th-accent); }
     * { box-sizing: border-box; }
-    body { margin:0; font-family: "Montserrat", var(--th-font-body); background: radial-gradient(circle at 18% 24%, #f1f6ff 0, #f1f6ff 44%, transparent 44%), radial-gradient(circle at 18% 24%, #f7faff 0, #f7faff 52%, transparent 52%), linear-gradient(180deg, #ffffff 0%, #f6f9ff 100%); color: #021a4d; }
-    .wrap { max-width: 1400px; margin: 0 auto; padding: 28px 24px 40px; position: relative; overflow: hidden; }
-    .wrap::before { content:""; position:absolute; inset:-120px -220px auto auto; width:min(70vw, 960px); height:min(70vw, 960px); background-image: ${studioBgImageCss}; background-repeat:no-repeat; background-size:contain; opacity:.12; pointer-events:none; z-index:0; }
+    body { margin:0; font-family: "Montserrat", var(--th-font-body); background:#ffffff; color: #021a4d; position: relative; overflow-x: hidden; }
+    .top-background { position: absolute; z-index: -1; top: -30vw; left: -10vh; width: 150vw; min-width: 600px; max-width: 150vw; display: inline-block; height: 200vh; background-image: url('/static/media/Token%20BIG-01.cfe69f33.png'); background-position: 0 0; background-size: contain; background-repeat: no-repeat; }
+    .wrap { max-width: 1400px; margin: 0 auto; padding: 28px 24px 40px; position: relative; overflow: hidden; z-index: 1; }
     .hero, .panel, .row { position:relative; z-index:1; }
     .hero { margin-bottom: 18px; }
     .brandMark { margin-bottom: 6px; display:flex; align-items:center; }
@@ -437,11 +436,11 @@ function renderStudioHtml(): string {
     .heroTitle { margin: 0; font-size: 34px; font-family: "Montserrat", var(--th-font-display); font-weight: 900; color: #0a43d8; letter-spacing: .01em; line-height:1.08; }
     .heroSub { margin-top: 6px; color: #375b9d; font-size: 15px; max-width: 900px; }
     .row { display:grid; grid-template-columns: 1.6fr 1fr; gap: 14px; }
-    .panel { background: #f6f9ff; border:1px solid #d7e4ff; border-radius: var(--th-radius-lg); padding: var(--th-space-md); box-shadow: 0 8px 24px #1345ac1a; }
+    .panel { background: linear-gradient(180deg, #f4f8ff 0%, #eaf2ff 100%); border:1px solid #d7e4ff; border-radius: var(--th-radius-lg); padding: var(--th-space-md); box-shadow: 0 8px 24px #1345ac1a; }
     .title { margin:0 0 10px 0; font-size: 28px; font-family: "Montserrat", var(--th-font-display); font-weight: 900; color: #0a43d8; letter-spacing: .01em; line-height:1.1; }
     .muted { color: #4e6ea7; font-size: 13px; }
-    textarea { width:100%; min-height: 120px; border-radius: var(--th-radius-sm); border:1px solid #c9dbff; background: #f8fbff; color: #0a255f; padding: 10px; font-family: var(--th-font-mono); font-size: 13px; line-height: 1.35; }
-    input[type=text], input[type=number], select { width: 100%; border-radius: var(--th-radius-sm); border:1px solid #c9dbff; background:#f8fbff; color:#0a255f; padding: 8px; }
+    textarea { width:100%; min-height: 120px; border-radius: var(--th-radius-sm); border:1px solid #c9dbff; background: #ffffff; color: #0a255f; padding: 10px; font-family: var(--th-font-mono); font-size: 13px; line-height: 1.35; }
+    input[type=text], input[type=number], select { width: 100%; border-radius: var(--th-radius-sm); border:1px solid #c9dbff; background:#ffffff; color:#0a255f; padding: 8px; }
     input[type=text]:focus, input[type=number]:focus, select:focus, textarea:focus { outline: 2px solid #7fb5ff; outline-offset: 0; border-color: #7fb5ff; }
     label { display: block; font-size: 12px; color: #46689f; margin-bottom: 4px; font-weight: 600; }
     .grid2 { display:grid; grid-template-columns: 1fr 1fr; gap:8px; }
@@ -462,11 +461,12 @@ function renderStudioHtml(): string {
     .warn { color:#6b5300; background: #fff2c8; border-color: #f2d266;}
     ul { margin: 8px 0 0 18px; padding:0; }
     li { margin: 2px 0; }
-    pre { white-space: pre-wrap; word-break: break-word; background:#f8fbff; border:1px solid #c9dbff; border-radius: var(--th-radius-sm); padding: 10px; max-height: 280px; overflow:auto; color: #0a255f; }
+    pre { white-space: pre-wrap; word-break: break-word; background:#ffffff; border:1px solid #c9dbff; border-radius: var(--th-radius-sm); padding: 10px; max-height: 280px; overflow:auto; color: #0a255f; }
     @media (max-width: 980px) { .row { grid-template-columns: 1fr; } .grid3 { grid-template-columns: 1fr; } .heroTitle { font-size: 28px; } .brandSvg { width: min(360px, 88vw); } }
   </style>
 </head>
 <body>
+  <div class="top-background" aria-hidden="true"></div>
   <div class="wrap">
     <header class="hero">
       <div class="brandMark">${studioWordmarkSvg}</div>
@@ -2314,6 +2314,7 @@ program
     let schemaPath: string | null = opts.schema ? path.resolve(opts.schema) : null;
     let formState: ThsSchema = defaultStudioFormState();
     const workspaceRoot = process.cwd();
+    const studioBackgroundPng = loadStudioBackgroundPngBuffer();
     if (schemaPath && fs.existsSync(schemaPath)) {
       const loaded = readJsonFile(schemaPath);
       const structural = validateThsStructural(loaded);
@@ -2409,6 +2410,19 @@ program
         res.setHeader('Content-Type', 'text/html; charset=utf-8');
         res.setHeader('Cache-Control', 'no-store');
         res.end(renderStudioHtml());
+        return;
+      }
+
+      const decodedPathname = decodeURIComponent(pathname);
+      if (
+        req.method === 'GET' &&
+        (pathname === '/static/media/Token%20BIG-01.cfe69f33.png' || decodedPathname === '/static/media/Token BIG-01.cfe69f33.png')
+      ) {
+        if (!studioBackgroundPng) return sendText(res, 404, 'Not Found');
+        res.statusCode = 200;
+        res.setHeader('Content-Type', 'image/png');
+        res.setHeader('Cache-Control', 'no-store');
+        res.end(studioBackgroundPng);
         return;
       }
 
@@ -3130,12 +3144,24 @@ program
       return s.length <= maxChars ? s : s.slice(s.length - maxChars);
     }
 
+    function redactCommandArgs(args: string[]): string[] {
+      const out = [...args];
+      for (let i = 0; i < out.length; i++) {
+        const a = out[i];
+        if (a === '--etherscan-api-key' && i + 1 < out.length) {
+          out[i + 1] = '<redacted>';
+          i += 1;
+        }
+      }
+      return out;
+    }
+
     function cmdString(cmd: string, args: string[]): string {
       return [cmd, ...args].map((a) => (/\s/.test(a) ? JSON.stringify(a) : a)).join(' ');
     }
 
     function runForge(args: string[]): { ok: boolean; status: number | null; cmd: string; stdout: string; stderr: string } {
-      const cmd = cmdString('forge', args);
+      const cmd = cmdString('forge', redactCommandArgs(args));
       const res = spawnSync('forge', args, { encoding: 'utf-8' });
       const stdout = res.stdout ?? '';
       const stderr = res.stderr ?? '';
@@ -3184,7 +3210,7 @@ program
           contractId
         ];
         if (opts.dryRun) {
-          console.log(cmdString('forge', args));
+          console.log(cmdString('forge', redactCommandArgs(args)));
         } else {
           console.log(`Verifying on Etherscan (${chainName})...`);
           etherscanResult = runForge(args);
@@ -3195,7 +3221,7 @@ program
       if (wantSourcify) {
         const args = [...commonArgs, '--verifier', 'sourcify', contractAddress, contractId];
         if (opts.dryRun) {
-          console.log(cmdString('forge', args));
+          console.log(cmdString('forge', redactCommandArgs(args)));
         } else {
           console.log(`Verifying on Sourcify (${chainName})...`);
           sourcifyResult = runForge(args);
