@@ -426,7 +426,7 @@ function renderStudioHtml(): string {
     @import url('https://fonts.googleapis.com/css2?family=Montserrat:wght@400;500;600;700;800;900&display=swap');
     :root { color-scheme: light; ${cssVars}; --ok:var(--th-success); --err:var(--th-danger); --warn:var(--th-accent); }
     * { box-sizing: border-box; }
-    body { margin:0; font-family: "Montserrat", var(--th-font-body); background: #ffffff; color: #021a4d; }
+    body { margin:0; font-family: "Montserrat", var(--th-font-body); background: radial-gradient(circle at 18% 24%, #f1f6ff 0, #f1f6ff 44%, transparent 44%), radial-gradient(circle at 18% 24%, #f7faff 0, #f7faff 52%, transparent 52%), linear-gradient(180deg, #ffffff 0%, #f6f9ff 100%); color: #021a4d; }
     .wrap { max-width: 1400px; margin: 0 auto; padding: 28px 24px 40px; position: relative; overflow: hidden; }
     .wrap::before { content:""; position:absolute; inset:-120px -220px auto auto; width:min(70vw, 960px); height:min(70vw, 960px); background-image: ${studioBgImageCss}; background-repeat:no-repeat; background-size:contain; opacity:.12; pointer-events:none; z-index:0; }
     .hero, .panel, .row { position:relative; z-index:1; }
@@ -437,7 +437,7 @@ function renderStudioHtml(): string {
     .heroTitle { margin: 0; font-size: 34px; font-family: "Montserrat", var(--th-font-display); font-weight: 900; color: #0a43d8; letter-spacing: .01em; line-height:1.08; }
     .heroSub { margin-top: 6px; color: #375b9d; font-size: 15px; max-width: 900px; }
     .row { display:grid; grid-template-columns: 1.6fr 1fr; gap: 14px; }
-    .panel { background: radial-gradient(circle at 18% 24%, #f1f6ff 0, #f1f6ff 44%, transparent 44%), radial-gradient(circle at 18% 24%, #f7faff 0, #f7faff 52%, transparent 52%), linear-gradient(180deg, #ffffff 0%, #f6f9ff 100%); border:1px solid #d7e4ff; border-radius: var(--th-radius-lg); padding: var(--th-space-md); box-shadow: 0 8px 24px #1345ac1a; }
+    .panel { background: #f6f9ff; border:1px solid #d7e4ff; border-radius: var(--th-radius-lg); padding: var(--th-space-md); box-shadow: 0 8px 24px #1345ac1a; }
     .title { margin:0 0 10px 0; font-size: 28px; font-family: "Montserrat", var(--th-font-display); font-weight: 900; color: #0a43d8; letter-spacing: .01em; line-height:1.1; }
     .muted { color: #4e6ea7; font-size: 13px; }
     textarea { width:100%; min-height: 120px; border-radius: var(--th-radius-sm); border:1px solid #c9dbff; background: #f8fbff; color: #0a255f; padding: 10px; font-family: var(--th-font-mono); font-size: 13px; line-height: 1.35; }
