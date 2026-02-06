@@ -39,9 +39,9 @@ export default function RecordCard(props: { collection: ThsCollection; record: a
           <h2>
             <span className="badge">#{String(id)}</span>{' '}
             {df ? formatNumeric(titleVal, df.type, (df as any).decimals) : '(record)'}
-            {isDeleted ? <span className="badge" style={{ marginLeft: 8, color: 'var(--danger)' }}>deleted</span> : null}
+            {isDeleted ? <span className="badge" style={{ marginLeft: 8, color: 'var(--th-danger)' }}>deleted</span> : null}
           </h2>
-          <div className="muted" style={{ fontFamily: 'var(--mono)', fontSize: 12 }}>
+          <div className="muted" style={{ fontFamily: 'var(--th-font-mono)', fontSize: 12 }}>
             owner: {owner ? shortAddress(String(owner)) : '—'} · createdBy: {createdBy ? shortAddress(String(createdBy)) : '—'}
           </div>
         </div>

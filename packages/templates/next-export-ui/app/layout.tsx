@@ -18,10 +18,11 @@ export default function RootLayout(props: { children: React.ReactNode }) {
   return (
     <html lang="en">
       <body style={themeVars}>
+        <div className="topBackground" aria-hidden="true" />
         <div className="container">
-          <div className="heroGlow" />
           <div className="nav">
             <div className="brand">
+              <img className="brandWordmark" src="/static/media/Wordmark.svg" alt="Token Host" />
               <h1>{ths.app.name}</h1>
               <span className="badge">{ths.schemaVersion}</span>
             </div>
@@ -32,6 +33,7 @@ export default function RootLayout(props: { children: React.ReactNode }) {
           </div>
           <NetworkStatus />
           {props.children}
+          <footer className="siteFooter">Powered by Token Host</footer>
         </div>
       </body>
     </html>
