@@ -361,10 +361,35 @@ function renderStudioThemeCssVars(tokens: SharedThemeTokens): string {
   ].join(';');
 }
 
+function loadStudioWordmarkSvg(): string {
+  const here = path.dirname(fileURLToPath(import.meta.url));
+  const candidates = [
+    path.resolve(here, '../assets/studio/Wordmark.svg'),
+    path.resolve(here, '../../assets/studio/Wordmark.svg')
+  ];
+
+  const workspace = findUp('pnpm-workspace.yaml', process.cwd());
+  if (workspace) {
+    const root = path.dirname(workspace);
+    candidates.push(path.join(root, 'packages', 'cli', 'assets', 'studio', 'Wordmark.svg'));
+  }
+
+  for (const candidate of candidates) {
+    if (!fs.existsSync(candidate)) continue;
+    const raw = fs.readFileSync(candidate, 'utf-8');
+    if (!raw.includes('<svg')) continue;
+    if (raw.includes('class="brandSvg"')) return raw;
+    return raw.replace('<svg ', '<svg class="brandSvg" ');
+  }
+
+  return '<div class="brandWordFallback">token host</div>';
+}
+
 function renderStudioHtml(): string {
   // Keep this local-first and dependency-free for fast startup in any repo clone.
   const themeTokens = loadSharedThemeTokens();
   const cssVars = renderStudioThemeCssVars(themeTokens);
+  const studioWordmarkSvg = loadStudioWordmarkSvg();
   return `<!doctype html>
 <html lang="en">
 <head>
@@ -372,19 +397,20 @@ function renderStudioHtml(): string {
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <title>Token Host Studio (Local)</title>
   <style>
+    @import url('https://fonts.googleapis.com/css2?family=Montserrat:wght@400;500;600;700;800;900&display=swap');
     :root { color-scheme: light; ${cssVars}; --ok:var(--th-success); --err:var(--th-danger); --warn:var(--th-accent); }
     * { box-sizing: border-box; }
-    body { margin:0; font-family: var(--th-font-body); background: radial-gradient(circle at 18% 24%, #f1f6ff 0, #f1f6ff 44%, transparent 44%), radial-gradient(circle at 18% 24%, #f7faff 0, #f7faff 52%, transparent 52%), linear-gradient(180deg, #ffffff 0%, #f6f9ff 100%); color: #021a4d; }
+    body { margin:0; font-family: "Montserrat", var(--th-font-body); background: radial-gradient(circle at 18% 24%, #f1f6ff 0, #f1f6ff 44%, transparent 44%), radial-gradient(circle at 18% 24%, #f7faff 0, #f7faff 52%, transparent 52%), linear-gradient(180deg, #ffffff 0%, #f6f9ff 100%); color: #021a4d; }
     .wrap { max-width: 1400px; margin: 0 auto; padding: 28px 24px 40px; position: relative; }
     .hero { margin-bottom: 18px; }
-    .brandMark { display: flex; align-items: center; gap: 12px; margin-bottom: 6px; }
-    .brandRing { width: 42px; height: 42px; border-radius: 50%; border: 5px solid #0a4df0; border-right-color: transparent; transform: rotate(-20deg); }
-    .brandWord { font-family: var(--th-font-display); font-size: 52px; font-weight: 900; letter-spacing: .01em; color: #031f63; line-height: 1; }
-    .heroTitle { margin: 0; font-size: 34px; font-family: var(--th-font-display); font-weight: 800; color: #0a43d8; letter-spacing: .01em; }
+    .brandMark { margin-bottom: 6px; display:flex; align-items:center; }
+    .brandSvg { width: min(470px, 74vw); height: auto; display:block; }
+    .brandWordFallback { font-size: 64px; font-weight: 900; color: #001131; letter-spacing: .01em; line-height: 1; }
+    .heroTitle { margin: 0; font-size: 34px; font-family: "Montserrat", var(--th-font-display); font-weight: 900; color: #0a43d8; letter-spacing: .01em; line-height:1.08; }
     .heroSub { margin-top: 6px; color: #375b9d; font-size: 15px; max-width: 900px; }
     .row { display:grid; grid-template-columns: 1.6fr 1fr; gap: 14px; }
     .panel { background: #ffffff; border:1px solid #d7e4ff; border-radius: var(--th-radius-lg); padding: var(--th-space-md); box-shadow: 0 8px 24px #1345ac1a; }
-    .title { margin:0 0 10px 0; font-size: 28px; font-family: var(--th-font-display); font-weight: 800; color: #0a43d8; letter-spacing: .01em; }
+    .title { margin:0 0 10px 0; font-size: 28px; font-family: "Montserrat", var(--th-font-display); font-weight: 900; color: #0a43d8; letter-spacing: .01em; line-height:1.1; }
     .muted { color: #4e6ea7; font-size: 13px; }
     textarea { width:100%; min-height: 120px; border-radius: var(--th-radius-sm); border:1px solid #c9dbff; background: #f8fbff; color: #0a255f; padding: 10px; font-family: var(--th-font-mono); font-size: 13px; line-height: 1.35; }
     input[type=text], input[type=number], select { width: 100%; border-radius: var(--th-radius-sm); border:1px solid #c9dbff; background:#f8fbff; color:#0a255f; padding: 8px; }
@@ -399,7 +425,7 @@ function renderStudioHtml(): string {
     .configList { display:flex; flex-direction:column; gap:8px; max-height:260px; overflow:auto; }
     .configRow { display:grid; grid-template-columns: 1fr auto; gap:8px; align-items:center; border:1px solid #d7e4ff; border-radius: var(--th-radius-sm); padding:8px; background: #ffffff; }
     .configPath { font-family: var(--th-font-mono); font-size:12px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
-    button { border:1px solid #0f56e0; color:#ffffff; background:#0f56e0; border-radius: var(--th-radius-sm); padding:8px 10px; cursor:pointer; transition: transform var(--th-motion-fast) ease, background var(--th-motion-base) ease; font-weight: 700; }
+    button { border:1px solid #0f56e0; color:#ffffff; background:#0f56e0; border-radius: var(--th-radius-sm); padding:8px 10px; cursor:pointer; transition: transform var(--th-motion-fast) ease, background var(--th-motion-base) ease; font-weight: 800; font-family:"Montserrat", var(--th-font-display); }
     button:hover { background:#0943b8; }
     button:active { transform: translateY(1px); }
     .pill { display:inline-block; padding: 2px 8px; border-radius:999px; font-size: 12px; border:1px solid transparent; }
@@ -409,13 +435,13 @@ function renderStudioHtml(): string {
     ul { margin: 8px 0 0 18px; padding:0; }
     li { margin: 2px 0; }
     pre { white-space: pre-wrap; word-break: break-word; background:#f8fbff; border:1px solid #c9dbff; border-radius: var(--th-radius-sm); padding: 10px; max-height: 280px; overflow:auto; color: #0a255f; }
-    @media (max-width: 980px) { .row { grid-template-columns: 1fr; } .grid3 { grid-template-columns: 1fr; } .brandWord { font-size: 40px; } .heroTitle { font-size: 28px; } }
+    @media (max-width: 980px) { .row { grid-template-columns: 1fr; } .grid3 { grid-template-columns: 1fr; } .heroTitle { font-size: 28px; } .brandSvg { width: min(360px, 88vw); } }
   </style>
 </head>
 <body>
   <div class="wrap">
     <header class="hero">
-      <div class="brandMark"><span class="brandRing"></span><span class="brandWord">token host</span></div>
+      <div class="brandMark">${studioWordmarkSvg}</div>
       <h1 class="heroTitle">Token Host Studio</h1>
       <div class="heroSub">Edit THS JSON, validate/lint in real-time, save/load files, and preview routes + contract surface.</div>
     </header>
