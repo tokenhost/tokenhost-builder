@@ -24,7 +24,7 @@
     "@tokenhost/schema": "workspace:*",
     "ajv": "^8.17.1",
     "ajv-formats": "^3.0.1",
-    "commander": "^12.1.0",
+    "commander": "^14.0.3",
     "solc": "0.8.33",
     "viem": "^2.37.5"
   }
