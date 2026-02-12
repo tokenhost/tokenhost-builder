@@ -20,7 +20,7 @@
     "th": "tsx packages/cli/src/index.ts"
   },
   "dependencies": {
-    "config": "^3.3.9",
+    "config": "^4.2.1",
     "hbs": "^4.1.1",
     "prettier": "^3.8.1",
     "prettier-plugin-solidity": "^2.2.1",
