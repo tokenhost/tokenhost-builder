@@ -6,10 +6,12 @@ import { useRouter, useSearchParams } from 'next/navigation';
 import { fetchAppAbi } from '../../../src/lib/abi';
 import { assertAbiFunction, collectionId, fnGet, fnTransfer } from '../../../src/lib/app';
 import { chainFromId } from '../../../src/lib/chains';
-import { makePublicClient, makeWalletClient, requestWalletAddress } from '../../../src/lib/clients';
+import { makePublicClient } from '../../../src/lib/clients';
 import { formatNumeric, shortAddress } from '../../../src/lib/format';
 import { fetchManifest, getPrimaryDeployment } from '../../../src/lib/manifest';
 import { getCollection, transferEnabled, type ThsCollection, type ThsField } from '../../../src/lib/ths';
+import { submitWriteTx } from '../../../src/lib/tx';
+import TxStatus, { type TxPhase } from '../../../src/components/TxStatus';
 
 function getValue(record: any, key: string, fallbackIndex?: number): any {
   if (record && typeof record === 'object' && key in record) {
@@ -38,12 +40,15 @@ export default function ViewRecordPage(props: { params: { collection: string } }
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [deployment, setDeployment] = useState<any | null>(null);
+  const [manifest, setManifest] = useState<any | null>(null);
   const [abi, setAbi] = useState<any[] | null>(null);
   const [publicClient, setPublicClient] = useState<any | null>(null);
   const [record, setRecord] = useState<any | null>(null);
 
   const [transferTo, setTransferTo] = useState('');
   const [txStatus, setTxStatus] = useState<string | null>(null);
+  const [txPhase, setTxPhase] = useState<TxPhase>('idle');
+  const [txHash, setTxHash] = useState<string | null>(null);
 
   const id = useMemo(() => {
     if (!idParam) return null;
@@ -64,6 +69,7 @@ export default function ViewRecordPage(props: { params: { collection: string } }
         if (!d) throw new Error('Manifest has no deployments');
         const chain = chainFromId(Number(d.chainId));
         const pc = makePublicClient(chain, rpcOverride);
+        setManifest(manifest);
         setDeployment(d);
         setPublicClient(pc);
         setAbi(null);
@@ -138,34 +144,36 @@ export default function ViewRecordPage(props: { params: { collection: string } }
 
   async function doTransfer() {
     if (!transferTo.trim()) return;
-    if (!deployment || !abi || !publicClient || !appAddress || id === null) return;
+    if (!manifest || !deployment || !abi || !publicClient || !appAddress || id === null) return;
 
     setError(null);
     setTxStatus(null);
+    setTxPhase('idle');
+    setTxHash(null);
 
     try {
       const chain = chainFromId(Number(deployment.chainId));
-      const account = await requestWalletAddress(chain);
-      const walletClient = makeWalletClient(chain);
 
       assertAbiFunction(abi, fnTransfer(collectionName), collectionName);
-      setTxStatus('Sending transfer…');
-      const hash = await walletClient.writeContract({
+      const result = await submitWriteTx({
+        manifest,
+        deployment,
+        chain,
+        publicClient,
         address: appAddress,
         abi,
         functionName: fnTransfer(collectionName),
-        args: [id, transferTo.trim()],
-        account,
-        chain
+        contractArgs: [id, transferTo.trim()],
+        setStatus: setTxStatus,
+        onPhase: setTxPhase,
+        onHash: setTxHash
       });
-
-      setTxStatus('Waiting for confirmation…');
-      await publicClient.waitForTransactionReceipt({ hash });
-      setTxStatus('Transferred.');
+      setTxStatus(`Transferred (${result.hash.slice(0, 10)}…).`);
       await fetchRecord();
     } catch (e: any) {
       setError(String(e?.message ?? e));
       setTxStatus(null);
+      setTxPhase('failed');
     }
   }
 
@@ -312,11 +320,16 @@ export default function ViewRecordPage(props: { params: { collection: string } }
           <label className="label">to (address)</label>
           <input className="input" value={transferTo} onChange={(e) => setTransferTo(e.target.value)} placeholder="0x…" />
           <div style={{ marginTop: 12, display: 'flex', gap: 10 }}>
-            <button className="btn primary" onClick={() => void doTransfer()} disabled={!transferTo.trim()}>
+            <button
+              className="btn primary"
+              onClick={() => void doTransfer()}
+              disabled={!transferTo.trim() || txPhase === 'submitting' || txPhase === 'submitted' || txPhase === 'confirming'}
+            >
               Transfer
             </button>
           </div>
           {txStatus ? <div className="muted" style={{ marginTop: 10 }}>{txStatus}</div> : null}
+          <TxStatus phase={txPhase} hash={txHash} chainId={Number(deployment?.chainId ?? NaN)} error={error} />
         </div>
       ) : null}
 

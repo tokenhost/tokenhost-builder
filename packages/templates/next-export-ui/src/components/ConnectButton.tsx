@@ -5,7 +5,7 @@ import React, { useEffect, useMemo, useState } from 'react';
 import { chainFromId } from '../lib/chains';
 import { requestWalletAddress } from '../lib/clients';
 import { shortAddress } from '../lib/format';
-import { fetchManifest, getPrimaryDeployment } from '../lib/manifest';
+import { fetchManifest, getPrimaryDeployment, getTxMode, type TxMode } from '../lib/manifest';
 
 function hasInjectedWallet(): boolean {
   return typeof (globalThis as any).ethereum !== 'undefined';
@@ -15,6 +15,7 @@ export default function ConnectButton() {
   const [account, setAccount] = useState<string | null>(null);
   const [targetChainId, setTargetChainId] = useState<number | null>(null);
   const [status, setStatus] = useState<string | null>(null);
+  const [txMode, setTxMode] = useState<TxMode>('userPays');
 
   const canConnect = useMemo(() => hasInjectedWallet(), []);
 
@@ -33,6 +34,9 @@ export default function ConnectButton() {
     void (async () => {
       try {
         const manifest = await fetchManifest();
+        const mode = getTxMode(manifest);
+        if (!cancelled) setTxMode(mode);
+        if (mode === 'sponsored') return;
         const deployment = getPrimaryDeployment(manifest);
         const chainId = Number(deployment?.chainId ?? NaN);
         if (!cancelled && Number.isFinite(chainId)) {
@@ -79,6 +83,8 @@ export default function ConnectButton() {
   if (!canConnect) {
     return <span className="badge">No wallet</span>;
   }
+
+  if (txMode === 'sponsored') return null;
 
   if (!account) {
     return (

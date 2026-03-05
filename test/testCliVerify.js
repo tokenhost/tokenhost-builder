@@ -17,7 +17,7 @@ function runTh(args, cwd, env = {}) {
   });
 }
 
-function writeVerifyFixtureBuild(outDir) {
+function writeVerifyFixtureBuild(outDir, chainId = 11155111) {
   const manifest = {
     manifestVersion: '0.1.0',
     app: { slug: 'verify-test', title: 'Verify Test' },
@@ -29,7 +29,7 @@ function writeVerifyFixtureBuild(outDir) {
     deployments: [
       {
         role: 'primary',
-        chainId: 11155111,
+        chainId,
         deploymentEntrypointAddress: '0x1111111111111111111111111111111111111111',
         blockNumber: 1,
         txHash: '0x' + '1'.repeat(64),
@@ -111,6 +111,18 @@ describe('th verify', function () {
     const res = runTh(['verify', dir, '--chain', 'sepolia', '--verifier', 'sourcify', '--dry-run'], process.cwd());
 
     expect(res.status, res.stderr || res.stdout).to.equal(0);
+    expect(res.stdout).to.include('--verifier sourcify');
+    expect(res.stdout).to.include('Dry run complete');
+  });
+
+  it('supports filecoin calibration as a first-class chain target', function () {
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'th-verify-filecoin-calibration-'));
+    writeVerifyFixtureBuild(dir, 314159);
+
+    const res = runTh(['verify', dir, '--chain', 'filecoin_calibration', '--dry-run'], process.cwd());
+
+    expect(res.status, res.stderr || res.stdout).to.equal(0);
+    expect(res.stdout).to.include('--chain 314159');
     expect(res.stdout).to.include('--verifier sourcify');
     expect(res.stdout).to.include('Dry run complete');
   });

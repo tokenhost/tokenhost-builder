@@ -2,7 +2,7 @@
 
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 
-import { fetchManifest, getPrimaryDeployment } from '../lib/manifest';
+import { fetchManifest, getPrimaryDeployment, getTxMode } from '../lib/manifest';
 import { chainFromId } from '../lib/chains';
 import { requestWalletAddress } from '../lib/clients';
 
@@ -56,6 +56,13 @@ export default function FaucetButton() {
       try {
         const manifest = await fetchManifest();
         const deployment = getPrimaryDeployment(manifest);
+        if (getTxMode(manifest) === 'sponsored') {
+          if (!cancelled) {
+            setEnabled(false);
+            setReason(null);
+          }
+          return;
+        }
         const chainId = Number(deployment?.chainId ?? NaN);
         if (!Number.isFinite(chainId) || chainId !== 31337) {
           if (!cancelled) {

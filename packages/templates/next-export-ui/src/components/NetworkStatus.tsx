@@ -4,7 +4,7 @@ import React, { useEffect, useMemo, useState } from 'react';
 
 import { chainFromId } from '../lib/chains';
 import { ensureWalletChain } from '../lib/clients';
-import { fetchManifest, getPrimaryDeployment } from '../lib/manifest';
+import { fetchManifest, getPrimaryDeployment, getTxMode, type TxMode } from '../lib/manifest';
 
 export default function NetworkStatus() {
   const hasWallet = useMemo(() => typeof (globalThis as any).ethereum !== 'undefined', []);
@@ -12,6 +12,7 @@ export default function NetworkStatus() {
   const [walletChainId, setWalletChainId] = useState<number | null>(null);
   const [busy, setBusy] = useState(false);
   const [note, setNote] = useState<string | null>(null);
+  const [txMode, setTxMode] = useState<TxMode>('userPays');
 
   useEffect(() => {
     let cancelled = false;
@@ -20,6 +21,9 @@ export default function NetworkStatus() {
       if (!hasWallet) return;
       try {
         const manifest = await fetchManifest();
+        const mode = getTxMode(manifest);
+        if (!cancelled) setTxMode(mode);
+        if (mode === 'sponsored') return;
         const deployment = getPrimaryDeployment(manifest);
         const target = Number(deployment?.chainId ?? NaN);
         if (!Number.isFinite(target)) return;
@@ -63,6 +67,7 @@ export default function NetworkStatus() {
     }
   }
 
+  if (txMode === 'sponsored') return null;
   if (!hasWallet || !targetChainId || walletChainId === null || walletChainId === targetChainId) return null;
 
   return (

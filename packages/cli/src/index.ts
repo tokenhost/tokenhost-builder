@@ -23,7 +23,7 @@ import {
 
 import { createPublicClient, createWalletClient, encodeAbiParameters, http, isAddress, isHex, keccak256, toBytes, type Address, type Hex } from 'viem';
 import { privateKeyToAccount } from 'viem/accounts';
-import { anvil, sepolia } from 'viem/chains';
+import { anvil, filecoin, filecoinCalibration, sepolia } from 'viem/chains';
 
 const require = createRequire(import.meta.url);
 const Ajv2020 = require('ajv/dist/2020') as typeof import('ajv/dist/2020.js').default;
@@ -1192,13 +1192,19 @@ function titleFromSlug(slug: string): string {
     .join(' ');
 }
 
-type KnownChainName = 'anvil' | 'sepolia';
+type KnownChainName = 'anvil' | 'sepolia' | 'filecoin_calibration' | 'filecoin_mainnet';
 
 function resolveKnownChain(name: string): { chainName: KnownChainName; chain: any } {
-  const n = name.toLowerCase();
+  const n = name.toLowerCase().trim();
   if (n === 'anvil') return { chainName: 'anvil', chain: anvil };
   if (n === 'sepolia') return { chainName: 'sepolia', chain: sepolia };
-  throw new Error(`Unknown chain "${name}". Supported: anvil, sepolia`);
+  if (n === 'filecoincalibration' || n === 'filecoin_calibration' || n === 'calibration' || n === 'calibnet') {
+    return { chainName: 'filecoin_calibration', chain: filecoinCalibration };
+  }
+  if (n === 'filecoin' || n === 'filecoinmainnet' || n === 'filecoin_mainnet' || n === 'filecoin-mainnet') {
+    return { chainName: 'filecoin_mainnet', chain: filecoin };
+  }
+  throw new Error(`Unknown chain "${name}". Supported: anvil, sepolia, filecoin_calibration, filecoin_mainnet`);
 }
 
 function envKeyForChain(chainName: KnownChainName, suffix: string): string {
@@ -1263,6 +1269,22 @@ function buildChainConfigArtifact(args: { chainName: KnownChainName; chain: any;
       }
     ];
   }
+  if (args.chainName === 'filecoin_calibration') {
+    chainConfig.explorers = [
+      {
+        name: 'Filfox',
+        url: 'https://calibration.filfox.info'
+      }
+    ];
+  }
+  if (args.chainName === 'filecoin_mainnet') {
+    chainConfig.explorers = [
+      {
+        name: 'Filfox',
+        url: 'https://filfox.info'
+      }
+    ];
+  }
 
   return chainConfig;
 }
@@ -1298,6 +1320,10 @@ function resolvePrivateKey(chainName: KnownChainName, override?: string): Hex {
   if (env) return normalizePrivateKey(env);
 
   throw new Error(`Missing private key. Provide --private-key or set ${envKeyForChain(chainName, 'PRIVATE_KEY')} / TH_PRIVATE_KEY / PRIVATE_KEY.`);
+}
+
+function supportsEtherscanVerifier(chainName: KnownChainName): boolean {
+  return chainName === 'sepolia';
 }
 
 function normalizeAddress(addr: string, label: string): Address {
@@ -1482,11 +1508,29 @@ type FaucetConfig = {
   targetWei: bigint;
 };
 
+type TxMode = 'userPays' | 'sponsored';
+
+type RelayConfig = {
+  enabled: boolean;
+  rpcUrl: string;
+  chainId: number;
+  from: Address;
+};
+
+function resolveTxMode(mode: string | undefined, chainId: number): TxMode {
+  const normalized = String(mode ?? 'auto').toLowerCase().trim();
+  if (normalized === 'sponsored') return 'sponsored';
+  if (normalized === 'userpays' || normalized === 'user_pays' || normalized === 'user-pays') return 'userPays';
+  // auto
+  return chainId === anvil.id ? 'sponsored' : 'userPays';
+}
+
 function startUiSiteServer(args: {
   buildDir: string;
   host: string;
   port: number;
   faucet?: FaucetConfig | null;
+  relay?: RelayConfig | null;
 }): { server: nodeHttp.Server; url: string } {
   const resolvedBuildDir = path.resolve(args.buildDir);
   const uiSiteDir = path.join(resolvedBuildDir, 'ui-site');
@@ -1503,7 +1547,9 @@ function startUiSiteServer(args: {
   const port = args.port;
   const rootAbs = path.resolve(uiSiteDir);
   const faucet = args.faucet ?? null;
+  const relay = args.relay ?? null;
   const faucetPath = '/__tokenhost/faucet';
+  const relayPath = '/__tokenhost/relay';
   const faucetTargetEth = faucet?.targetWei ? Number(faucet.targetWei / 10n ** 18n) : 10;
 
   function contentTypeForPath(filePath: string): string {
@@ -1561,6 +1607,16 @@ function startUiSiteServer(args: {
   function toHexQuantity(n: bigint): string {
     if (n < 0n) throw new Error('Negative quantity not allowed.');
     return `0x${n.toString(16)}`;
+  }
+
+  async function waitForReceipt(rpcUrl: string, txHash: string, timeoutMs = 30_000): Promise<any> {
+    const started = Date.now();
+    while (Date.now() - started < timeoutMs) {
+      const receipt = await rpcRequest(rpcUrl, 'eth_getTransactionReceipt', [txHash], 2000);
+      if (receipt) return receipt;
+      await new Promise((r) => setTimeout(r, 400));
+    }
+    throw new Error(`Timed out waiting for transaction receipt: ${txHash}`);
   }
 
   async function trySetLocalBalance(rpcUrl: string, addr: string, wei: bigint): Promise<{ ok: boolean; method?: string; error?: string }> {
@@ -1692,6 +1748,68 @@ function startUiSiteServer(args: {
       return;
     }
 
+    if (pathname === relayPath) {
+      (async () => {
+        const enabled = Boolean(relay?.enabled && relay.rpcUrl && relay.chainId === anvil.id && relay.from);
+        if (req.method === 'GET' || req.method === 'HEAD') {
+          return sendJson(res, 200, {
+            ok: true,
+            enabled,
+            chainId: relay?.chainId ?? null,
+            from: relay?.from ?? null,
+            reason: enabled ? null : relay ? 'disabled' : 'not-configured'
+          });
+        }
+
+        if (req.method !== 'POST') {
+          res.setHeader('Allow', 'GET, HEAD, POST');
+          return sendText(res, 405, 'Method Not Allowed');
+        }
+
+        if (!enabled) {
+          return sendJson(res, 400, { ok: false, error: 'Relay is disabled.' });
+        }
+
+        try {
+          const raw = await readBody(req);
+          const parsed = raw.trim() ? JSON.parse(raw) : null;
+          const to = normalizeAddress(String(parsed?.to ?? ''), 'to');
+          const data = normalizeHexString(String(parsed?.data ?? ''), 'data');
+          const valueInput = parsed?.value == null ? '0x0' : String(parsed.value);
+          const value = normalizeHexString(valueInput, 'value');
+
+          const rpcChainId = await tryGetRpcChainId(relay!.rpcUrl, 1000);
+          if (rpcChainId === null) {
+            return sendJson(res, 503, { ok: false, error: `RPC not reachable at ${relay!.rpcUrl}.` });
+          }
+          if (rpcChainId !== relay!.chainId) {
+            return sendJson(res, 409, {
+              ok: false,
+              error: `RPC chainId mismatch. RPC=${rpcChainId} expected=${relay!.chainId}.`
+            });
+          }
+
+          const txHash = (await rpcRequest(
+            relay!.rpcUrl,
+            'eth_sendTransaction',
+            [{ from: relay!.from, to, data, value }],
+            8_000
+          )) as string;
+
+          const receipt = await waitForReceipt(relay!.rpcUrl, txHash, 30_000);
+          const status = String(receipt?.status ?? '').toLowerCase();
+          if (status === '0x0') {
+            return sendJson(res, 400, { ok: false, error: `Relayed tx reverted (${txHash}).`, txHash, receipt });
+          }
+
+          return sendJson(res, 200, { ok: true, txHash, receipt });
+        } catch (e: any) {
+          return sendJson(res, 400, { ok: false, error: String(e?.message ?? e) });
+        }
+      })();
+      return;
+    }
+
     if (req.method && req.method !== 'GET' && req.method !== 'HEAD') {
       res.setHeader('Allow', 'GET, HEAD');
       return sendText(res, 405, 'Method Not Allowed');
@@ -1793,7 +1911,7 @@ function startUiSiteServer(args: {
 function buildFromSchema(
   schema: ThsSchema,
   outDir: string,
-  opts: { ui: boolean; quiet?: boolean; schemaPathForHints?: string }
+  opts: { ui: boolean; quiet?: boolean; schemaPathForHints?: string; txMode?: string; relayBaseUrl?: string; targetChainId?: number }
 ): { outDir: string; uiBundleDir: string | null; uiSiteDir: string | null } {
   const resolvedOutDir = path.resolve(outDir);
   ensureDir(resolvedOutDir);
@@ -1897,6 +2015,8 @@ function buildFromSchema(
   }));
 
   const zeroAddress = '0x0000000000000000000000000000000000000000';
+  const txMode = resolveTxMode(opts.txMode, Number(opts.targetChainId ?? anvil.id));
+  const relayBaseUrl = String(opts.relayBaseUrl ?? process.env.TH_RELAY_BASE_URL ?? '/__tokenhost/relay').trim() || '/__tokenhost/relay';
 
   const manifest = {
     manifestVersion: '0.1.0',
@@ -1950,6 +2070,19 @@ function buildFromSchema(
       wellKnown: '/.well-known/tokenhost/manifest.json'
     },
     features,
+    extensions: {
+      tx:
+        txMode === 'sponsored'
+          ? {
+              mode: 'sponsored',
+              sponsored: {
+                relayBaseUrl
+              }
+            }
+          : {
+              mode: 'userPays'
+            }
+    },
     signatures: [{ alg: 'none', sig: 'UNSIGNED' }]
   };
 
@@ -1996,6 +2129,7 @@ function buildFromSchema(
     }
     console.log(`  th deploy ${resolvedOutDir} --chain anvil   # start anvil first`);
     console.log(`  th deploy ${resolvedOutDir} --chain sepolia # requires RPC + funded key`);
+    console.log(`  th deploy ${resolvedOutDir} --chain filecoin_calibration # requires RPC + funded key`);
     if (uiBundleDir) {
       console.log(`  th preview ${resolvedOutDir}                # open http://127.0.0.1:3000/`);
     }
@@ -2663,10 +2797,17 @@ program
   .argument('<schema>', 'Path to THS schema JSON file')
   .option('--out <dir>', 'Output directory', 'artifacts')
   .option('--no-ui', 'Do not generate/build UI bundle')
-  .action((schemaPath: string, opts: { out: string; ui: boolean }) => {
+  .option('--tx-mode <mode>', 'Transaction mode (auto|userPays|sponsored)', 'auto')
+  .option('--relay-base-url <url>', 'Relay base URL for sponsored mode', '/__tokenhost/relay')
+  .action((schemaPath: string, opts: { out: string; ui: boolean; txMode?: string; relayBaseUrl?: string }) => {
     try {
       const schema = loadThsSchemaOrThrow(schemaPath);
-      buildFromSchema(schema, opts.out, { ui: opts.ui, schemaPathForHints: schemaPath });
+      buildFromSchema(schema, opts.out, {
+        ui: opts.ui,
+        schemaPathForHints: schemaPath,
+        txMode: opts.txMode,
+        relayBaseUrl: opts.relayBaseUrl
+      });
     } catch (e: any) {
       console.error(String(e?.message ?? e));
       process.exitCode = 1;
@@ -2682,9 +2823,9 @@ program
   .alias('run')
   .alias('dev')
   .argument('[schema]', 'Path to THS schema JSON file (defaults to an example schema when available)')
-  .description('All-in-one local flow: validate + build + (start anvil) + deploy + preview + faucet')
+  .description('All-in-one local flow: validate + build + (start anvil) + deploy + preview + relay/faucet')
   .option('--out <dir>', 'Build output directory (defaults to artifacts/<appSlug>)')
-  .option('--chain <name>', 'Chain name (anvil|sepolia)', 'anvil')
+  .option('--chain <name>', 'Chain name (anvil|sepolia|filecoin_calibration|filecoin_mainnet)', 'anvil')
   .option('--rpc <url>', 'RPC URL override')
   .option('--private-key <hex>', 'Private key (0x...) override')
   .option('--admin <address>', 'Admin address (defaults to deployer)')
@@ -2694,6 +2835,8 @@ program
   .option('--port <n>', 'Preview port', '3000')
   .option('--interactive', 'Prompt for missing values', false)
   .option('--dry-run', 'Print what would run and exit', false)
+  .option('--tx-mode <mode>', 'Transaction mode (auto|userPays|sponsored)', 'auto')
+  .option('--relay-base-url <url>', 'Relay base URL for sponsored mode', '/__tokenhost/relay')
   .option('--no-start-anvil', 'Do not start anvil automatically (anvil chain only)')
   .option('--no-deploy', 'Skip deployment (UI will show Not deployed)')
   .option('--no-preview', 'Skip preview server')
@@ -2713,6 +2856,8 @@ program
         port: string;
         interactive: boolean;
         dryRun: boolean;
+        txMode?: string;
+        relayBaseUrl?: string;
         startAnvil: boolean;
         deploy: boolean;
         preview: boolean;
@@ -2793,6 +2938,7 @@ program
         // Resolve chain + RPC early so dry-run shows the real target.
         const { chainName, chain } = resolveKnownChain(opts.chain);
         const rpcUrl = resolveRpcUrl(chainName, chain, opts.rpc);
+        const resolvedTxMode = resolveTxMode(opts.txMode, chain.id);
 
         if (opts.dryRun) {
           console.log('Plan:');
@@ -2812,7 +2958,9 @@ program
             console.log(`  - preview:  SKIP`);
           }
           if (opts.preview) {
-            console.log(`  - faucet:   ${opts.faucet && chainName === 'anvil' ? 'ENABLED' : 'SKIP'}`);
+            console.log(`  - txMode:   ${resolvedTxMode}`);
+            console.log(`  - faucet:   ${opts.faucet && chainName === 'anvil' && resolvedTxMode !== 'sponsored' ? 'ENABLED' : 'SKIP'}`);
+            console.log(`  - relay:    ${chainName === 'anvil' && resolvedTxMode === 'sponsored' ? 'ENABLED' : 'SKIP'}`);
           }
           return;
         }
@@ -2820,6 +2968,7 @@ program
         console.log(`Schema: ${schema.app.slug} (${path.relative(process.cwd(), resolvedSchemaPath)})`);
         console.log(`Out:    ${path.relative(process.cwd(), outDir)}`);
         console.log(`Chain:  ${chainName} (${rpcUrl})`);
+        console.log(`Tx:     ${resolvedTxMode}`);
         if (opts.preview) console.log(`UI:     ${previewUrl}`);
         console.log('');
 
@@ -2834,7 +2983,14 @@ program
           chainName === 'anvil' ? ensureAnvilRunning(rpcUrl, { start: Boolean(opts.startAnvil), expectedChainId: chain.id }) : Promise.resolve({ child: null });
 
         console.log('Building…');
-        buildFromSchema(schema, outDir, { ui: true, quiet: true, schemaPathForHints: resolvedSchemaPath });
+        buildFromSchema(schema, outDir, {
+          ui: true,
+          quiet: true,
+          schemaPathForHints: resolvedSchemaPath,
+          txMode: opts.txMode,
+          relayBaseUrl: opts.relayBaseUrl,
+          targetChainId: chain.id
+        });
         console.log('Build complete.');
 
         const ensured = await anvilPromise;
@@ -2856,8 +3012,10 @@ program
 
         if (opts.preview) {
           console.log('');
-          const faucetEnabled = Boolean(opts.faucet && chainName === 'anvil');
+          const faucetEnabled = Boolean(opts.faucet && chainName === 'anvil' && resolvedTxMode !== 'sponsored');
+          const relayEnabled = Boolean(chainName === 'anvil' && resolvedTxMode === 'sponsored');
           const faucetTargetWei = 10n * 10n ** 18n;
+          const relayFrom = privateKeyToAccount(resolvePrivateKey('anvil')).address as Address;
           const { server, url } = startUiSiteServer({
             buildDir: outDir,
             host,
@@ -2868,6 +3026,14 @@ program
                   rpcUrl,
                   chainId: chain.id,
                   targetWei: faucetTargetWei
+                }
+              : null,
+            relay: relayEnabled
+              ? {
+                  enabled: true,
+                  rpcUrl,
+                  chainId: chain.id,
+                  from: relayFrom
                 }
               : null
           });
@@ -2935,9 +3101,20 @@ program
       const zeroAddress = '0x0000000000000000000000000000000000000000';
       const faucetTargetWei = 10n * 10n ** 18n;
       let faucetConfig: FaucetConfig | null = null;
+      let relayConfig: RelayConfig | null = null;
+      let txMode: TxMode = 'userPays';
+
+      if (fs.existsSync(manifestPath)) {
+        try {
+          const manifest = readJsonFile(manifestPath) as any;
+          txMode = resolveTxMode(String(manifest?.extensions?.tx?.mode ?? 'auto'), Number(manifest?.deployments?.[0]?.chainId ?? anvil.id));
+        } catch {
+          // ignore parse issues
+        }
+      }
 
       // Enable faucet when previewing an anvil build (chainId 31337) and the user hasn't disabled it.
-      if (opts.faucet && fs.existsSync(manifestPath)) {
+      if (opts.faucet && txMode !== 'sponsored' && fs.existsSync(manifestPath)) {
         try {
           const manifest = readJsonFile(manifestPath) as any;
           const deployments = Array.isArray(manifest?.deployments) ? manifest.deployments : [];
@@ -2947,6 +3124,28 @@ program
             const { chainName, chain } = resolveKnownChain('anvil');
             const rpcUrl = resolveRpcUrl(chainName, chain, opts.rpc);
             faucetConfig = { enabled: true, rpcUrl, chainId, targetWei: faucetTargetWei };
+          }
+        } catch {
+          // Ignore manifest parsing issues; serving static UI still works.
+        }
+      }
+
+      // Enable local relay in sponsored mode for anvil chains.
+      if (txMode === 'sponsored' && fs.existsSync(manifestPath)) {
+        try {
+          const manifest = readJsonFile(manifestPath) as any;
+          const deployments = Array.isArray(manifest?.deployments) ? manifest.deployments : [];
+          const d = deployments.find((x: any) => x && x.role === 'primary') ?? deployments[0] ?? null;
+          const chainId = Number(d?.chainId ?? NaN);
+          if (chainId === anvil.id) {
+            const { chainName, chain } = resolveKnownChain('anvil');
+            const rpcUrl = resolveRpcUrl(chainName, chain, opts.rpc);
+            relayConfig = {
+              enabled: true,
+              rpcUrl,
+              chainId,
+              from: privateKeyToAccount(resolvePrivateKey('anvil')).address as Address
+            };
           }
         } catch {
           // Ignore manifest parsing issues; serving static UI still works.
@@ -2977,7 +3176,13 @@ program
       }
 
       const port = Number(opts.port);
-      const { server } = startUiSiteServer({ buildDir: resolvedBuildDir, host: opts.host, port, faucet: faucetConfig });
+      const { server } = startUiSiteServer({
+        buildDir: resolvedBuildDir,
+        host: opts.host,
+        port,
+        faucet: faucetConfig,
+        relay: relayConfig
+      });
 
       const cleanup = () => {
         try {
@@ -3007,7 +3212,7 @@ program
 program
   .command('deploy')
   .argument('<buildDir>', 'Directory created by `th build` (contains manifest.json)')
-  .option('--chain <name>', 'Chain name (anvil|sepolia)', 'anvil')
+  .option('--chain <name>', 'Chain name (anvil|sepolia|filecoin_calibration|filecoin_mainnet)', 'anvil')
   .option('--rpc <url>', 'RPC URL override')
   .option('--private-key <hex>', 'Private key (0x...) override')
   .option('--admin <address>', 'Admin address (defaults to deployer)')
@@ -3026,7 +3231,7 @@ program
   .command('verify')
   .argument('<buildDir>', 'Directory created by `th build` (contains manifest.json)')
   .description('Verify deployed contracts on explorers (Etherscan + Sourcify)')
-  .option('--chain <name>', 'Chain name (anvil|sepolia)', 'sepolia')
+  .option('--chain <name>', 'Chain name (anvil|sepolia|filecoin_calibration|filecoin_mainnet)', 'sepolia')
   .option('--rpc <url>', 'RPC URL override (used by verifier tooling)')
   .option('--verifier <v>', 'Verifier to use (etherscan|sourcify|both)', 'both')
   .option('--etherscan-api-key <key>', 'Etherscan API key override')
@@ -3079,8 +3284,19 @@ program
     const contractAddress = normalizeAddress(addr, 'deploymentEntrypointAddress');
 
     const verifier = String(opts.verifier || 'both').toLowerCase();
-    const wantEtherscan = verifier === 'both' || verifier === 'etherscan';
+    let wantEtherscan = verifier === 'both' || verifier === 'etherscan';
     const wantSourcify = verifier === 'both' || verifier === 'sourcify';
+    const etherscanSupported = supportsEtherscanVerifier(chainName);
+
+    if (wantEtherscan && !etherscanSupported) {
+      if (verifier === 'etherscan') {
+        console.error(`Etherscan verification is not supported for chain "${chainName}". Use --verifier sourcify.`);
+        process.exitCode = 1;
+        return;
+      }
+      console.warn(`WARN verify: Etherscan is not supported for chain "${chainName}". Proceeding with Sourcify only.`);
+      wantEtherscan = false;
+    }
 
     const etherscanKey = (() => {
       if (!wantEtherscan) return null;

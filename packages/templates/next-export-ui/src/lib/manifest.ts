@@ -1,4 +1,5 @@
 export const WELL_KNOWN_MANIFEST_PATH = '/.well-known/tokenhost/manifest.json';
+export type TxMode = 'userPays' | 'sponsored';
 
 let cached: Promise<any> | null = null;
 
@@ -29,4 +30,16 @@ export function getPrimaryDeployment(manifest: any): any {
   const deployments = Array.isArray(manifest?.deployments) ? manifest.deployments : [];
   const primary = deployments.find((d) => d && d.role === 'primary');
   return primary ?? deployments[0] ?? null;
+}
+
+export function getTxMode(manifest: any): TxMode {
+  const mode = String(manifest?.extensions?.tx?.mode ?? '').trim();
+  if (mode === 'sponsored') return 'sponsored';
+  return 'userPays';
+}
+
+export function getRelayBaseUrl(manifest: any): string {
+  const configured = String(manifest?.extensions?.tx?.sponsored?.relayBaseUrl ?? '').trim();
+  if (configured) return configured;
+  return '/__tokenhost/relay';
 }

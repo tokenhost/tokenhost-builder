@@ -33,7 +33,7 @@ export default function RecordCard(props: { collection: ThsCollection; record: a
   const titleVal = df ? getValue(record, df.name, fieldIndex(collection, df)) : undefined;
 
   return (
-    <div className="card">
+    <div className="card recordCard">
       <div className="row">
         <div>
           <h2>

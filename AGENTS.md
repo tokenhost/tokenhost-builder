@@ -11,7 +11,8 @@ Spec-aligned (new) pipeline:
 - Contracts generator: `packages/generator` (single-contract, mapping-based CRUD `App.sol`, Solidity 0.8.24).
 - CLI: `packages/cli` (`th init|studio|validate|import-legacy|generate|build|deploy|verify|doctor`).
 - Build output: `th build <schema> --out <dir>` writes `contracts/App.sol`, `compiled/App.json`, `schema.json`, `manifest.json`.
-- Deploy: `th deploy <buildDir> --chain anvil|sepolia` (anvil + sepolia supported).
+- Deploy: `th deploy <buildDir> --chain anvil|sepolia|filecoin_calibration|filecoin_mainnet` (all supported).
+- Runtime tx mode: `manifest.extensions.tx.mode` supports `userPays|sponsored`; `th build/th up` support `--tx-mode auto|userPays|sponsored`.
 
 Legacy (deprecated path; no longer source-of-truth in this repo):
 - Input: legacy `contracts.json` shape (`contracts{}` with `fields`, `initRules`, `readRules`, `writeRules`).
@@ -150,6 +151,7 @@ Goal: replace ad-hoc scripts with a coherent CLI that runs locally and in CI.
 Phase 5 progress (done/partial):
 - Implemented: `th init`, `th studio` (local schema builder), `th validate`, `th import-legacy`, `th generate` (contracts + UI), `th build`, `th deploy`, `th verify` (Sourcify + Etherscan), `th doctor`, `th up|run|dev`.
 - `th generate --with-tests` emits generated app test scaffold and generated app CI workflow.
+- Local preview now supports a sponsored relay endpoint (`/__tokenhost/relay`) for anvil, with faucet gated off when tx mode is `sponsored`.
 
 Remaining:
 - `th publish` (if/when in scope).

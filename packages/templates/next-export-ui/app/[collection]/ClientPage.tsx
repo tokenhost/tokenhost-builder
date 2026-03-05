@@ -19,6 +19,7 @@ export default function CollectionListPage(props: { params: { collection: string
 
   const search = useSearchParams();
   const rpcOverride = search.get('rpc') ?? undefined;
+  const showDebug = search.get('debug') === '1';
 
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -207,26 +208,25 @@ export default function CollectionListPage(props: { params: { collection: string
         </div>
       ) : null}
 
-      {records.map((r, idx) => (
-        <RecordCard key={idx} collection={collection as any} record={r} />
-      ))}
+      <div className="recordList">
+        {records.map((r, idx) => (
+          <RecordCard key={idx} collection={collection as any} record={r} />
+        ))}
+      </div>
 
-      <div className="card">
-        <div className="row">
-          <div className="muted">
-            Showing {records.length} {collection.name} record(s)
-          </div>
-          <div style={{ display: 'flex', gap: 10 }}>
-            <button className="btn" onClick={() => void bootstrap()}>Refresh</button>
-            <button className="btn primary" disabled={!hasMore || loading} onClick={() => void loadNextPage(cursor)}>
-              {hasMore ? (loading ? 'Loading…' : 'Load more') : 'End'}
-            </button>
-          </div>
+      <div className="row recordListSummary">
+        <div className="muted">
+          Showing {records.length} {collection.name} record(s)
+        </div>
+        <div className="recordListActions">
+          <button className="btn" onClick={() => void bootstrap()}>Refresh</button>
+          <button className="btn primary" disabled={!hasMore || loading} onClick={() => void loadNextPage(cursor)}>
+            {hasMore ? (loading ? 'Loading…' : 'Load more') : 'End'}
+          </button>
         </div>
       </div>
 
-      {/* Debug */}
-      {manifest ? (
+      {showDebug && manifest ? (
         <div className="card">
           <h2>Deployment</h2>
           <div className="kv">

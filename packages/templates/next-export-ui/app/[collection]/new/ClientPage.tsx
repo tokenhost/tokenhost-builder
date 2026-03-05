@@ -6,10 +6,12 @@ import { useRouter, useSearchParams } from 'next/navigation';
 import { fetchAppAbi } from '../../../src/lib/abi';
 import { assertAbiFunction, fnCreate } from '../../../src/lib/app';
 import { chainFromId } from '../../../src/lib/chains';
-import { makePublicClient, makeWalletClient, requestWalletAddress } from '../../../src/lib/clients';
+import { makePublicClient } from '../../../src/lib/clients';
 import { formatWei, parseFieldValue } from '../../../src/lib/format';
 import { fetchManifest, getPrimaryDeployment } from '../../../src/lib/manifest';
 import { createFields, getCollection, hasCreatePayment, requiredFieldNames, type ThsField } from '../../../src/lib/ths';
+import { submitWriteTx } from '../../../src/lib/tx';
+import TxStatus, { type TxPhase } from '../../../src/components/TxStatus';
 
 function inputType(field: ThsField): 'text' | 'number' {
   if (field.type === 'uint256' || field.type === 'int256' || field.type === 'decimal' || field.type === 'reference') return 'number';
@@ -27,8 +29,11 @@ export default function CreateRecordPage(props: { params: { collection: string }
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [status, setStatus] = useState<string | null>(null);
+  const [txPhase, setTxPhase] = useState<TxPhase>('idle');
+  const [txHash, setTxHash] = useState<string | null>(null);
 
   const [deployment, setDeployment] = useState<any | null>(null);
+  const [manifest, setManifest] = useState<any | null>(null);
   const [abi, setAbi] = useState<any[] | null>(null);
   const [publicClient, setPublicClient] = useState<any | null>(null);
 
@@ -45,6 +50,7 @@ export default function CreateRecordPage(props: { params: { collection: string }
         const chain = chainFromId(Number(d.chainId));
         const pc = makePublicClient(chain, rpcOverride);
 
+        setManifest(manifest);
         setDeployment(d);
         setPublicClient(pc);
         setAbi(null);
@@ -100,7 +106,7 @@ export default function CreateRecordPage(props: { params: { collection: string }
   const payment = hasCreatePayment(collection);
 
   async function submit() {
-    if (!deployment || !abi || !publicClient || !appAddress) return;
+    if (!manifest || !deployment || !abi || !publicClient || !appAddress) return;
     if (appAddress.toLowerCase() === '0x0000000000000000000000000000000000000000') {
       setError('App is not deployed yet (manifest has 0x0 address).');
       return;
@@ -108,6 +114,8 @@ export default function CreateRecordPage(props: { params: { collection: string }
 
     setError(null);
     setStatus(null);
+    setTxPhase('idle');
+    setTxHash(null);
 
     for (const f of fields) {
       if (!required.has(f.name)) continue;
@@ -119,33 +127,30 @@ export default function CreateRecordPage(props: { params: { collection: string }
     }
 
     try {
-      setStatus('Connecting wallet…');
       const chain = chainFromId(Number(deployment.chainId));
-      const account = await requestWalletAddress(chain);
-      const walletClient = makeWalletClient(chain);
-
       assertAbiFunction(abi, fnCreate(collectionName), collectionName);
-      const args = fields.map((f) => parseFieldValue(form[f.name] ?? '', f.type, (f as any).decimals));
-
-      setStatus('Sending transaction…');
-      const hash = await walletClient.writeContract({
+      const contractArgs = fields.map((f) => parseFieldValue(form[f.name] ?? '', f.type, (f as any).decimals));
+      const result = await submitWriteTx({
+        manifest,
+        deployment,
+        chain,
+        publicClient,
         address: appAddress,
         abi,
         functionName: fnCreate(collectionName),
-        args,
-        account,
+        contractArgs,
         value: payment ? BigInt(payment.amountWei) : undefined,
-        chain
+        setStatus,
+        onPhase: setTxPhase,
+        onHash: setTxHash
       });
 
-      setStatus('Waiting for confirmation…');
-      await publicClient.waitForTransactionReceipt({ hash });
-
-      setStatus('Created.');
+      setStatus(`Created (${result.hash.slice(0, 10)}…).`);
       router.push(`/${collectionName}/`);
     } catch (e: any) {
       setError(String(e?.message ?? e));
       setStatus(null);
+      setTxPhase('failed');
     }
   }
 
@@ -205,13 +210,18 @@ export default function CreateRecordPage(props: { params: { collection: string }
       ))}
 
       <div style={{ marginTop: 16, display: 'flex', gap: 10 }}>
-        <button className="btn primary" onClick={() => void submit()} disabled={!abi || !publicClient || !appAddress}>
+        <button
+          className="btn primary"
+          onClick={() => void submit()}
+          disabled={!abi || !publicClient || !appAddress || txPhase === 'submitting' || txPhase === 'submitted' || txPhase === 'confirming'}
+        >
           Create
         </button>
         <button className="btn" onClick={() => router.push(`/${collectionName}/`)}>Cancel</button>
       </div>
 
       {status ? <div className="muted" style={{ marginTop: 12 }}>{status}</div> : null}
+      <TxStatus phase={txPhase} hash={txHash} chainId={Number(deployment?.chainId ?? NaN)} error={error} />
       {error ? <div className="pre" style={{ marginTop: 12 }}>{error}</div> : null}
     </div>
   );

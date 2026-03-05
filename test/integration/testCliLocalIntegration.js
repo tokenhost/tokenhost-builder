@@ -91,8 +91,8 @@ function schemaForIntegration() {
   };
 }
 
-describe('CLI local integration (anvil + preview + faucet)', function () {
-  it('builds, auto-deploys in preview, serves manifest, and funds wallet via faucet endpoint', async function () {
+describe('CLI local integration (anvil + preview + relay)', function () {
+  it('builds, auto-deploys in preview, serves manifest, and accepts sponsored relay tx', async function () {
     this.timeout(180000);
 
     if (!hasAnvil()) this.skip();
@@ -130,21 +130,39 @@ describe('CLI local integration (anvil + preview + faucet)', function () {
         '0x0000000000000000000000000000000000000000'
       );
 
-      const faucetStatus = await requestJson(`${baseUrl}/__tokenhost/faucet`);
-      expect(faucetStatus.status).to.equal(200);
-      expect(faucetStatus.json?.ok).to.equal(true);
-      expect(faucetStatus.json?.enabled).to.equal(true);
-      expect(faucetStatus.json?.chainId).to.equal(31337);
+      const relayStatus = await requestJson(`${baseUrl}/__tokenhost/relay`);
+      expect(relayStatus.status).to.equal(200);
+      expect(relayStatus.json?.ok).to.equal(true);
+      expect(relayStatus.json?.enabled).to.equal(true);
+      expect(relayStatus.json?.chainId).to.equal(31337);
 
-      const addr = '0x1111111111111111111111111111111111111111';
-      const faucetFund = await requestJson(`${baseUrl}/__tokenhost/faucet`, {
+      const manifest = manifestRes.json;
+      const contractAddress = manifest?.deployments?.[0]?.deploymentEntrypointAddress;
+      expect(contractAddress).to.match(/^0x[0-9a-fA-F]{40}$/);
+
+      const compiled = JSON.parse(fs.readFileSync(path.join(outDir, 'compiled', 'App.json'), 'utf-8'));
+      const createFn = (compiled?.abi ?? []).find((x) => x && x.type === 'function' && x.name === 'createCandidate');
+      expect(createFn).to.be.ok;
+
+      const web3AbiMod = await import('web3-eth-abi');
+      const web3Abi = web3AbiMod.default ?? web3AbiMod;
+      const calldata = web3Abi.encodeFunctionCall(
+        {
+          name: 'createCandidate',
+          type: 'function',
+          inputs: [{ type: 'string', name: 'name' }]
+        },
+        ['Relay User']
+      );
+
+      const relaySubmit = await requestJson(`${baseUrl}/__tokenhost/relay`, {
         method: 'POST',
         headers: { 'content-type': 'application/json' },
-        body: JSON.stringify({ address: addr })
+        body: JSON.stringify({ to: contractAddress, data: calldata })
       });
-      expect(faucetFund.status).to.equal(200);
-      expect(faucetFund.json?.ok).to.equal(true);
-      expect(typeof faucetFund.json?.newBalanceWei).to.equal('string');
+      expect(relaySubmit.status).to.equal(200);
+      expect(relaySubmit.json?.ok).to.equal(true);
+      expect(String(relaySubmit.json?.txHash || '')).to.match(/^0x[0-9a-fA-F]{64}$/);
     } finally {
       preview.kill('SIGINT');
     }

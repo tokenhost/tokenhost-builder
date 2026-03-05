@@ -4,6 +4,7 @@ import React from 'react';
 
 import ConnectButton from '../src/components/ConnectButton';
 import FaucetButton from '../src/components/FaucetButton';
+import FooterDeploymentMeta from '../src/components/FooterDeploymentMeta';
 import NetworkStatus from '../src/components/NetworkStatus';
 import { ths } from '../src/lib/ths';
 import { rootStyleVars } from '../src/theme';
@@ -33,7 +34,9 @@ export default function RootLayout(props: { children: React.ReactNode }) {
           </div>
           <NetworkStatus />
           {props.children}
-          <footer className="siteFooter">Powered by Token Host</footer>
+          <footer className="siteFooter">
+            <FooterDeploymentMeta />
+          </footer>
         </div>
       </body>
     </html>

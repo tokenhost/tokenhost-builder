@@ -11,6 +11,13 @@ Execution backlog and current gap-tracking is in `AGENTS.md`.
 - Legacy frontend continuity lives in `tokenhost/app-tokenhost-com-frontend`.
 - Preserved migration/behavior notes: `docs/legacy-tokenhost-web-template-notes.md`.
 
+## First-class chain targets
+
+- `anvil`
+- `sepolia`
+- `filecoin_calibration`
+- `filecoin_mainnet`
+
 ## Current generated-app testing model
 
 - `th generate <schema> --with-tests` emits generated app tests and a generated app CI workflow.
@@ -46,3 +53,25 @@ Use `th verify <buildDir>` after deployment to verify on Sourcify and/or Ethersc
 - Writes verification status back into `manifest.json` under `deployments[*].verified`
   and `manifest.extensions.verification[chainId]`.
 - Re-publishes manifest into `ui-site/` when present.
+
+## Transaction modes (generated UI)
+
+Builder supports transaction mode metadata in `manifest.extensions.tx`:
+
+- `userPays`: browser wallet signs/sends writes directly.
+- `sponsored`: generated UI posts writes to a relay endpoint.
+
+CLI controls:
+
+- `th build <schema> --tx-mode auto|userPays|sponsored`
+- `th up <schema> --tx-mode auto|userPays|sponsored`
+
+Default `auto` behavior:
+
+- anvil/local chain => `sponsored`
+- other chains => `userPays`
+
+Local preview endpoints:
+
+- `GET/POST /__tokenhost/relay` for sponsored local writes (anvil).
+- `GET/POST /__tokenhost/faucet` remains available for non-sponsored local mode.
