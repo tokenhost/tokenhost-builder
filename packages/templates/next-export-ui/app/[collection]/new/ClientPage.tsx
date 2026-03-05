@@ -129,7 +129,9 @@ export default function CreateRecordPage(props: { params: { collection: string }
     try {
       const chain = chainFromId(Number(deployment.chainId));
       assertAbiFunction(abi, fnCreate(collectionName), collectionName);
-      const contractArgs = fields.map((f) => parseFieldValue(form[f.name] ?? '', f.type, (f as any).decimals));
+      const contractInput = Object.fromEntries(
+        fields.map((f) => [f.name, parseFieldValue(form[f.name] ?? '', f.type, (f as any).decimals)])
+      );
       const result = await submitWriteTx({
         manifest,
         deployment,
@@ -138,7 +140,7 @@ export default function CreateRecordPage(props: { params: { collection: string }
         address: appAddress,
         abi,
         functionName: fnCreate(collectionName),
-        contractArgs,
+        contractArgs: [contractInput],
         value: payment ? BigInt(payment.amountWei) : undefined,
         setStatus,
         onPhase: setTxPhase,

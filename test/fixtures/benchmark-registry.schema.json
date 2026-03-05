@@ -1,0 +1,238 @@
+{
+  "thsVersion": "2025-12",
+  "schemaVersion": "0.1.0",
+  "app": {
+    "name": "Benchmark Registry",
+    "slug": "benchmark-registry",
+    "description": "Local run registry and dashboard for Filecoin Cloud benchmark history.",
+    "features": {
+      "uploads": false,
+      "onChainIndexing": true,
+      "indexer": false,
+      "delegation": false
+    }
+  },
+  "collections": [
+    {
+      "name": "BenchmarkRun",
+      "plural": "Benchmark Runs",
+      "fields": [
+        { "name": "runId", "type": "string", "required": true },
+        { "name": "mode", "type": "string", "required": true },
+        { "name": "promptVersion", "type": "string", "required": true },
+        { "name": "model", "type": "string", "required": true },
+        { "name": "repoSha", "type": "string", "required": true },
+        { "name": "docsUrl", "type": "string", "required": true },
+        { "name": "docsSnapshotHash", "type": "string" },
+        { "name": "status", "type": "string", "required": true },
+        { "name": "failurePhase", "type": "string" },
+        { "name": "startedAt", "type": "string", "required": true },
+        { "name": "endedAt", "type": "string", "required": true },
+        { "name": "outerWallTimeMs", "type": "uint256", "required": true },
+        { "name": "walletAddress", "type": "address" },
+        { "name": "fundingTxHash", "type": "string" },
+        { "name": "depositTxHash", "type": "string" },
+        { "name": "pieceCid", "type": "string" },
+        { "name": "contentMatch", "type": "bool", "required": true },
+        { "name": "artifactBundleUri", "type": "string" },
+        { "name": "artifactBundleHash", "type": "string" },
+        { "name": "artifactBundleHttpUrl", "type": "string" },
+        { "name": "operatorNotes", "type": "string" }
+      ],
+      "createRules": {
+        "required": [
+          "runId",
+          "mode",
+          "promptVersion",
+          "model",
+          "repoSha",
+          "docsUrl",
+          "status",
+          "startedAt",
+          "endedAt",
+          "outerWallTimeMs",
+          "contentMatch"
+        ],
+        "auto": {},
+        "access": "public"
+      },
+      "visibilityRules": {
+        "gets": [
+          "runId",
+          "mode",
+          "promptVersion",
+          "model",
+          "repoSha",
+          "docsUrl",
+          "docsSnapshotHash",
+          "status",
+          "failurePhase",
+          "startedAt",
+          "endedAt",
+          "outerWallTimeMs",
+          "walletAddress",
+          "fundingTxHash",
+          "depositTxHash",
+          "pieceCid",
+          "contentMatch",
+          "artifactBundleUri",
+          "artifactBundleHash",
+          "artifactBundleHttpUrl",
+          "operatorNotes"
+        ],
+        "access": "public"
+      },
+      "updateRules": {
+        "mutable": [
+          "status",
+          "failurePhase",
+          "artifactBundleUri",
+          "artifactBundleHash",
+          "artifactBundleHttpUrl",
+          "operatorNotes"
+        ],
+        "access": "owner",
+        "optimisticConcurrency": false
+      },
+      "deleteRules": {
+        "softDelete": true,
+        "access": "owner"
+      },
+      "transferRules": {
+        "access": "owner"
+      },
+      "indexes": {
+        "unique": [
+          { "field": "runId", "scope": "allTime" }
+        ],
+        "index": [
+          { "field": "status" },
+          { "field": "mode" },
+          { "field": "promptVersion" },
+          { "field": "failurePhase" },
+          { "field": "startedAt" }
+        ]
+      },
+      "relations": []
+    },
+    {
+      "name": "BenchmarkIncident",
+      "plural": "Benchmark Incidents",
+      "fields": [
+        { "name": "runId", "type": "string", "required": true },
+        { "name": "severity", "type": "string", "required": true },
+        { "name": "title", "type": "string", "required": true },
+        { "name": "status", "type": "string", "required": true },
+        { "name": "openedAt", "type": "string", "required": true },
+        { "name": "closedAt", "type": "string" },
+        { "name": "notes", "type": "string" }
+      ],
+      "createRules": {
+        "required": [
+          "runId",
+          "severity",
+          "title",
+          "status",
+          "openedAt"
+        ],
+        "auto": {},
+        "access": "public"
+      },
+      "visibilityRules": {
+        "gets": [
+          "runId",
+          "severity",
+          "title",
+          "status",
+          "openedAt",
+          "closedAt",
+          "notes"
+        ],
+        "access": "public"
+      },
+      "updateRules": {
+        "mutable": [
+          "status",
+          "closedAt",
+          "notes"
+        ],
+        "access": "owner",
+        "optimisticConcurrency": false
+      },
+      "deleteRules": {
+        "softDelete": true,
+        "access": "owner"
+      },
+      "transferRules": {
+        "access": "owner"
+      },
+      "indexes": {
+        "unique": [],
+        "index": [
+          { "field": "runId" },
+          { "field": "severity" },
+          { "field": "status" },
+          { "field": "openedAt" }
+        ]
+      },
+      "relations": []
+    },
+    {
+      "name": "BenchmarkConfig",
+      "plural": "Benchmark Configs",
+      "fields": [
+        { "name": "configKey", "type": "string", "required": true },
+        { "name": "value", "type": "string", "required": true },
+        { "name": "description", "type": "string" },
+        { "name": "active", "type": "bool", "required": true }
+      ],
+      "createRules": {
+        "required": [
+          "configKey",
+          "value",
+          "active"
+        ],
+        "auto": {},
+        "access": "public"
+      },
+      "visibilityRules": {
+        "gets": [
+          "configKey",
+          "value",
+          "description",
+          "active"
+        ],
+        "access": "public"
+      },
+      "updateRules": {
+        "mutable": [
+          "value",
+          "description",
+          "active"
+        ],
+        "access": "owner",
+        "optimisticConcurrency": false
+      },
+      "deleteRules": {
+        "softDelete": true,
+        "access": "owner"
+      },
+      "transferRules": {
+        "access": "owner"
+      },
+      "indexes": {
+        "unique": [
+          { "field": "configKey", "scope": "allTime" }
+        ],
+        "index": [
+          { "field": "active" }
+        ]
+      },
+      "relations": []
+    }
+  ],
+  "metadata": {
+    "targetChain": "filecoin_calibration",
+    "purpose": "benchmark-run-registry"
+  }
+}

@@ -235,6 +235,7 @@ export function generateAppSolidity(schema: ThsSchema): { path: string; contents
       const C = c.name;
       const cVar = pascalToVar(C);
       const record = `Record${C}`;
+      const createInputStruct = `Create${C}Input`;
       const collectionIdExpr = `keccak256(bytes("${C}"))`;
 
       w.line(`// ===== Collection: ${C} =====`);
@@ -258,11 +259,45 @@ export function generateAppSolidity(schema: ThsSchema): { path: string; contents
       });
       w.line();
 
+      w.block(`struct ${createInputStruct}`, () => {
+        for (const f of c.fields) {
+          w.line(`${solidityStorageType(f.type)} ${f.name};`);
+        }
+      });
+      w.line();
+
       // Record hashing helper (used for event integrity without stack-too-deep risk).
       // Note: this uses ABI encoding of the full record tuple; callers can recompute
       // from decoded record values.
       w.block(`function ${recordHashFnName(C)}(${record} memory r) internal pure returns (bytes32)`, () => {
         w.line(`return keccak256(abi.encode(COLLECTION_ID_${C}, r));`);
+      });
+      w.line();
+
+      w.block(`function _init${record}(${record} storage r, uint256 id) internal`, () => {
+        w.line('r.id = id;');
+        w.line('r.createdAt = block.timestamp;');
+        w.line('r.createdBy = _msgSender();');
+        w.line('r.owner = _msgSender();');
+        w.line('r.updatedAt = 0;');
+        w.line('r.updatedBy = address(0);');
+        w.line('r.isDeleted = false;');
+        w.line('r.deletedAt = 0;');
+        w.line('r.version = 0;');
+      });
+      w.line();
+
+      w.block(`function _applyCreate${C}Fields(${record} storage r, ${createInputStruct} calldata input) internal`, () => {
+        for (const f of c.fields) {
+          w.line(`r.${f.name} = input.${f.name};`);
+        }
+      });
+      w.line();
+
+      w.block(`function _emitCreated${C}(uint256 id) internal`, () => {
+        w.line(`${record} memory m = ${cVar}Records[id];`);
+        w.line(`bytes32 dataHash = ${recordHashFnName(C)}(m);`);
+        w.line(`emit RecordCreated(COLLECTION_ID_${C}, id, _msgSender(), block.timestamp, dataHash);`);
       });
       w.line();
 
@@ -376,9 +411,8 @@ export function generateAppSolidity(schema: ThsSchema): { path: string; contents
 
       // create
       const createFnName = `create${C}`;
-      const createParams = c.fields.map((f) => `${solidityParamType(f.type)} ${f.name}`).join(', ');
       const payable = hasPaidCreates(c) ? ' payable' : '';
-      w.block(`function ${createFnName}(${createParams}) external${payable} returns (uint256)`, () => {
+      w.block(`function ${createFnName}(${createInputStruct} calldata input) external${payable} returns (uint256)`, () => {
         // access control (v1: public/owner only)
         if (c.createRules.access !== 'public' && c.createRules.access !== 'owner') {
           w.line('revert Unauthorized(); // access mode not implemented in this generator version');
@@ -395,16 +429,16 @@ export function generateAppSolidity(schema: ThsSchema): { path: string; contents
           if (!f) continue;
           const st = solidityStorageType(f.type);
           if (st === 'string') {
-            w.line(`if (bytes(${req}).length == 0) revert Unauthorized(); // required field empty`);
+            w.line(`if (bytes(input.${req}).length == 0) revert Unauthorized(); // required field empty`);
           } else if (st === 'address') {
-            w.line(`if (${req} == address(0)) revert Unauthorized(); // required field empty`);
+            w.line(`if (input.${req} == address(0)) revert Unauthorized(); // required field empty`);
           }
         }
 
         // relation enforcement
         if (c.relations) {
           for (const rel of c.relations.filter((r) => r.enforce)) {
-            w.line(`_requireExists${rel.to}(${rel.field});`);
+            w.line(`_requireExists${rel.to}(input.${rel.field});`);
           }
         }
 
@@ -415,8 +449,8 @@ export function generateAppSolidity(schema: ThsSchema): { path: string; contents
           const st = solidityStorageType(f.type);
           const keyExpr =
             st === 'string'
-              ? `keccak256(bytes(${u.field}))`
-              : `keccak256(abi.encode(${u.field}))`;
+              ? `keccak256(bytes(input.${u.field}))`
+              : `keccak256(abi.encode(input.${u.field}))`;
           w.line(`bytes32 key_${u.field} = ${keyExpr};`);
           w.line(`if (unique_${C}_${u.field}[key_${u.field}] != 0) revert UniqueViolation();`);
         }
@@ -426,18 +460,8 @@ export function generateAppSolidity(schema: ThsSchema): { path: string; contents
         w.line(`activeCount${C} += 1;`);
 
         w.line(`${record} storage r = ${cVar}Records[id];`);
-        w.line('r.id = id;');
-        w.line('r.createdAt = block.timestamp;');
-        w.line('r.createdBy = _msgSender();');
-        w.line('r.owner = _msgSender();');
-        w.line('r.updatedAt = 0;');
-        w.line('r.updatedBy = address(0);');
-        w.line('r.isDeleted = false;');
-        w.line('r.deletedAt = 0;');
-        w.line('r.version = 0;');
-        for (const f of c.fields) {
-          w.line(`r.${f.name} = ${f.name};`);
-        }
+        w.line(`_init${record}(r, id);`);
+        w.line(`_applyCreate${C}Fields(r, input);`);
 
         // update unique maps after storage write
         for (const u of c.indexes.unique) {
@@ -447,13 +471,11 @@ export function generateAppSolidity(schema: ThsSchema): { path: string; contents
         // reverse index maintenance
         if (onChainIndexing && c.relations) {
           for (const rel of c.relations.filter((r) => r.reverseIndex)) {
-            w.line(`refIndex_${C}_${rel.field}[${rel.field}].push(id);`);
+            w.line(`refIndex_${C}_${rel.field}[input.${rel.field}].push(id);`);
           }
         }
 
-        w.line(`${record} memory m = r;`);
-        w.line(`bytes32 dataHash = ${recordHashFnName(C)}(m);`);
-        w.line(`emit RecordCreated(COLLECTION_ID_${C}, id, _msgSender(), block.timestamp, dataHash);`);
+        w.line(`_emitCreated${C}(id);`);
         w.line('return id;');
       });
       w.line();

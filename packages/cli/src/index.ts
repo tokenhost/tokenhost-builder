@@ -1150,29 +1150,79 @@ function loadRepoSchema(relPath: string): unknown {
   return JSON.parse(fs.readFileSync(found, 'utf-8'));
 }
 
-function compileSolidity(sourcePath: string, contents: string, contractName: string): { abi: unknown; bytecode: string; deployedBytecode: string } {
-  const input = {
-    language: 'Solidity',
-    sources: {
-      [sourcePath]: { content: contents }
-    },
-    settings: {
-      optimizer: { enabled: true, runs: 200 },
-      outputSelection: {
-        '*': {
-          '*': ['abi', 'evm.bytecode.object', 'evm.deployedBytecode.object']
+type CompileProfile = 'default' | 'large-app' | 'auto';
+const MAX_EVM_RUNTIME_CODE_BYTES = 24576;
+
+function shouldRetryWithViaIR(errors: any[]): boolean {
+  const rendered = errors
+    .map((e: any) => String(e?.formattedMessage || e?.message || ''))
+    .join('\n');
+  return /Stack too deep|YulException/i.test(rendered);
+}
+
+function deployedCodeBytes(output: any, sourcePath: string, contractName: string): number | null {
+  const object = output?.contracts?.[sourcePath]?.[contractName]?.evm?.deployedBytecode?.object;
+  if (typeof object !== 'string' || object.length === 0) return null;
+  return object.length / 2;
+}
+
+function compileSolidity(sourcePath: string, contents: string, contractName: string, options: { profile?: CompileProfile } = {}): { abi: unknown; bytecode: string; deployedBytecode: string; viaIR: boolean } {
+  const profile = options.profile ?? 'auto';
+  const compileOnce = (viaIR: boolean) => {
+    const input = {
+      language: 'Solidity',
+      sources: {
+        [sourcePath]: { content: contents }
+      },
+      settings: {
+        optimizer: { enabled: true, runs: 200 },
+        viaIR,
+        outputSelection: {
+          '*': {
+            '*': ['abi', 'evm.bytecode.object', 'evm.deployedBytecode.object']
+          }
         }
       }
-    }
+    };
+
+    const output = JSON.parse(solc.compile(JSON.stringify(input)));
+    const errors = (output.errors || []).filter((e: any) => e.severity === 'error');
+    return { output, errors, viaIR };
   };
 
-  const output = JSON.parse(solc.compile(JSON.stringify(input)));
-  const errors = (output.errors || []).filter((e: any) => e.severity === 'error');
-  if (errors.length > 0) {
-    const msg = errors.map((e: any) => e.formattedMessage || e.message).join('\n');
+  const attempts =
+    profile === 'default'
+      ? [compileOnce(false)]
+      : profile === 'large-app'
+        ? [compileOnce(true)]
+        : (() => {
+            const first = compileOnce(false);
+            const firstBytes = first.errors.length === 0 ? deployedCodeBytes(first.output, sourcePath, contractName) : null;
+            if (first.errors.length > 0 && shouldRetryWithViaIR(first.errors)) {
+              return [first, compileOnce(true)];
+            }
+            if (first.errors.length === 0 && firstBytes !== null && firstBytes > MAX_EVM_RUNTIME_CODE_BYTES) {
+              return [first, compileOnce(true)];
+            }
+            return [first];
+          })();
+
+  const successful = (() => {
+    if (attempts.length === 2 && attempts[0]!.errors.length === 0) {
+      const fallback = attempts[1]!;
+      if (fallback.errors.length === 0) {
+        return fallback;
+      }
+    }
+    return attempts.find((attempt) => attempt.errors.length === 0);
+  })();
+  if (!successful) {
+    const last = attempts[attempts.length - 1]!;
+    const msg = last.errors.map((e: any) => e.formattedMessage || e.message).join('\n');
     throw new Error(`Solidity compile failed:\n${msg}`);
   }
 
+  const output = successful.output;
   const compiled = output.contracts?.[sourcePath]?.[contractName];
   if (!compiled) {
     throw new Error(`Solidity compile output missing ${contractName} in ${sourcePath}`);
@@ -1181,7 +1231,22 @@ function compileSolidity(sourcePath: string, contents: string, contractName: str
   const abi = compiled.abi;
   const bytecode = `0x${compiled.evm.bytecode.object}`;
   const deployedBytecode = `0x${compiled.evm.deployedBytecode.object}`;
-  return { abi, bytecode, deployedBytecode };
+  return { abi, bytecode, deployedBytecode, viaIR: successful.viaIR };
+}
+
+function normalizeCompileProfile(value?: string): CompileProfile {
+  const normalized = String(value ?? 'auto').trim().toLowerCase();
+  if (normalized === 'default' || normalized === 'large-app' || normalized === 'auto') {
+    return normalized;
+  }
+  throw new Error(`Invalid compiler profile "${value}". Supported: auto, default, large-app`);
+}
+
+function compileProfileForLog(profile: CompileProfile, viaIR: boolean): string {
+  if (profile === 'auto') {
+    return viaIR ? 'auto(viaIR)' : 'auto';
+  }
+  return viaIR ? `${profile}(viaIR)` : profile;
 }
 
 function titleFromSlug(slug: string): string {
@@ -1911,7 +1976,15 @@ function startUiSiteServer(args: {
 function buildFromSchema(
   schema: ThsSchema,
   outDir: string,
-  opts: { ui: boolean; quiet?: boolean; schemaPathForHints?: string; txMode?: string; relayBaseUrl?: string; targetChainId?: number }
+  opts: {
+    ui: boolean;
+    quiet?: boolean;
+    schemaPathForHints?: string;
+    txMode?: string;
+    relayBaseUrl?: string;
+    targetChainId?: number;
+    compileProfile?: CompileProfile;
+  }
 ): { outDir: string; uiBundleDir: string | null; uiSiteDir: string | null } {
   const resolvedOutDir = path.resolve(outDir);
   ensureDir(resolvedOutDir);
@@ -1923,12 +1996,14 @@ function buildFromSchema(
 
   // 2) Compile (solc-js)
   const sourceRelPath = appSol.path.replace(/\\\\/g, '/');
-  const compiled = compileSolidity(sourceRelPath, appSol.contents, 'App');
+  const compileProfile = normalizeCompileProfile(opts.compileProfile);
+  const compiled = compileSolidity(sourceRelPath, appSol.contents, 'App', { profile: compileProfile });
   const compiledArtifact = {
     contractName: 'App',
     abi: compiled.abi,
     bytecode: compiled.bytecode,
-    deployedBytecode: compiled.deployedBytecode
+    deployedBytecode: compiled.deployedBytecode,
+    compilerProfile: compileProfileForLog(compileProfile, compiled.viaIR)
   };
   const compiledJson = JSON.stringify(compiledArtifact, null, 2);
   const compiledOutPath = path.join(resolvedOutDir, 'compiled', 'App.json');
@@ -2026,7 +2101,8 @@ function buildFromSchema(
     generatorVersion: '0.0.0',
     toolchain: {
       node: process.version.replace(/^v/, ''),
-      solc: solc.version()
+      solc: solc.version(),
+      compilerProfile: compileProfileForLog(compileProfile, compiled.viaIR)
     },
     release: {
       releaseId: `rel_local_${Date.now()}`,
@@ -2743,8 +2819,9 @@ program
   .argument('<schema>', 'Path to THS schema JSON file')
   .option('--out <dir>', 'Output directory', 'artifacts')
   .option('--no-ui', 'Do not generate UI output')
+  .option('--compiler-profile <profile>', 'Compiler profile (auto|default|large-app)', 'auto')
   .option('--with-tests', 'Emit generated app test scaffold', false)
-  .action((schemaPath: string, opts: { out: string; ui: boolean; withTests: boolean }) => {
+  .action((schemaPath: string, opts: { out: string; ui: boolean; compilerProfile?: string; withTests: boolean }) => {
     const input = readJsonFile(schemaPath);
     const structural = validateThsStructural(input);
     if (!structural.ok) {
@@ -2768,6 +2845,21 @@ program
     ensureDir(contractsDir);
     fs.writeFileSync(path.join(outDir, appSol.path), appSol.contents);
 
+    const sourceRelPath = appSol.path.replace(/\\\\/g, '/');
+    const compileProfile = normalizeCompileProfile(opts.compilerProfile);
+    const compiled = compileSolidity(sourceRelPath, appSol.contents, 'App', { profile: compileProfile });
+    const compiledArtifact = {
+      contractName: 'App',
+      abi: compiled.abi,
+      bytecode: compiled.bytecode,
+      deployedBytecode: compiled.deployedBytecode,
+      compilerProfile: compileProfileForLog(compileProfile, compiled.viaIR)
+    };
+    const compiledJson = JSON.stringify(compiledArtifact, null, 2);
+    const compiledOutPath = path.join(outDir, 'compiled', 'App.json');
+    ensureDir(path.dirname(compiledOutPath));
+    fs.writeFileSync(compiledOutPath, compiledJson);
+
     // Also persist an immutable copy of the schema input alongside the artifacts.
     ensureDir(outDir);
     fs.writeFileSync(path.join(outDir, 'schema.json'), JSON.stringify(schema, null, 2));
@@ -2781,6 +2873,10 @@ program
       ensureDir(path.dirname(thsTsPath));
       fs.writeFileSync(thsTsPath, renderThsTs(schema));
 
+      const compiledPublicPath = path.join(uiDir, 'public', 'compiled', 'App.json');
+      ensureDir(path.dirname(compiledPublicPath));
+      fs.writeFileSync(compiledPublicPath, compiledJson);
+
       if (opts.withTests) {
         addGeneratedUiTestScaffold(uiDir, templateDir);
         console.log(`Wrote ui/tests/ (generated app test scaffold)`);
@@ -2789,6 +2885,7 @@ program
       console.log(`Wrote ui/ (Next.js static export template)`);
     }
 
+    console.log(`Wrote compiled/App.json`);
     console.log(`Wrote ${appSol.path}`);
   });
 
@@ -2797,14 +2894,16 @@ program
   .argument('<schema>', 'Path to THS schema JSON file')
   .option('--out <dir>', 'Output directory', 'artifacts')
   .option('--no-ui', 'Do not generate/build UI bundle')
+  .option('--compiler-profile <profile>', 'Compiler profile (auto|default|large-app)', 'auto')
   .option('--tx-mode <mode>', 'Transaction mode (auto|userPays|sponsored)', 'auto')
   .option('--relay-base-url <url>', 'Relay base URL for sponsored mode', '/__tokenhost/relay')
-  .action((schemaPath: string, opts: { out: string; ui: boolean; txMode?: string; relayBaseUrl?: string }) => {
+  .action((schemaPath: string, opts: { out: string; ui: boolean; compilerProfile?: string; txMode?: string; relayBaseUrl?: string }) => {
     try {
       const schema = loadThsSchemaOrThrow(schemaPath);
       buildFromSchema(schema, opts.out, {
         ui: opts.ui,
         schemaPathForHints: schemaPath,
+        compileProfile: normalizeCompileProfile(opts.compilerProfile),
         txMode: opts.txMode,
         relayBaseUrl: opts.relayBaseUrl
       });
@@ -2835,6 +2934,7 @@ program
   .option('--port <n>', 'Preview port', '3000')
   .option('--interactive', 'Prompt for missing values', false)
   .option('--dry-run', 'Print what would run and exit', false)
+  .option('--compiler-profile <profile>', 'Compiler profile (auto|default|large-app)', 'auto')
   .option('--tx-mode <mode>', 'Transaction mode (auto|userPays|sponsored)', 'auto')
   .option('--relay-base-url <url>', 'Relay base URL for sponsored mode', '/__tokenhost/relay')
   .option('--no-start-anvil', 'Do not start anvil automatically (anvil chain only)')
@@ -2856,6 +2956,7 @@ program
         port: string;
         interactive: boolean;
         dryRun: boolean;
+        compilerProfile?: string;
         txMode?: string;
         relayBaseUrl?: string;
         startAnvil: boolean;
@@ -2939,11 +3040,13 @@ program
         const { chainName, chain } = resolveKnownChain(opts.chain);
         const rpcUrl = resolveRpcUrl(chainName, chain, opts.rpc);
         const resolvedTxMode = resolveTxMode(opts.txMode, chain.id);
+        const compileProfile = normalizeCompileProfile(opts.compilerProfile);
 
         if (opts.dryRun) {
           console.log('Plan:');
           console.log(`  - validate: ${resolvedSchemaPath}`);
           console.log(`  - build:    ${outDir}`);
+          console.log(`  - compile:  ${compileProfile}`);
           if (chainName === 'anvil') {
             console.log(`  - anvil:    ${opts.startAnvil ? `ensure running at ${rpcUrl}` : `SKIP (rpc=${rpcUrl})`}`);
           }
@@ -2969,6 +3072,7 @@ program
         console.log(`Out:    ${path.relative(process.cwd(), outDir)}`);
         console.log(`Chain:  ${chainName} (${rpcUrl})`);
         console.log(`Tx:     ${resolvedTxMode}`);
+        console.log(`Compile:${compileProfile}`);
         if (opts.preview) console.log(`UI:     ${previewUrl}`);
         console.log('');
 
@@ -2987,6 +3091,7 @@ program
           ui: true,
           quiet: true,
           schemaPathForHints: resolvedSchemaPath,
+          compileProfile,
           txMode: opts.txMode,
           relayBaseUrl: opts.relayBaseUrl,
           targetChainId: chain.id

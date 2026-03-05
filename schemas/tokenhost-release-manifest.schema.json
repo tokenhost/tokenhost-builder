@@ -54,6 +54,9 @@
         "solc": {
           "type": "string"
         },
+        "compilerProfile": {
+          "type": "string"
+        },
         "containerDigest": {
           "type": "string",
           "pattern": "^sha256:[0-9a-f]{64}$"
