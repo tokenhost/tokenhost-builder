@@ -41,14 +41,14 @@ async function runLiveChecks(root, baseUrl, ths) {
     if (!name) continue;
 
     await assertRoute200(baseUrl, `/${name}/`);
-    await assertRoute200(baseUrl, `/${name}/new/`);
-    await assertRoute200(baseUrl, `/${name}/view/?id=1`);
+    await assertRoute200(baseUrl, `/${name}/?mode=new`);
+    await assertRoute200(baseUrl, `/${name}/?mode=view&id=1`);
 
     const canEdit = Array.isArray(collection?.updateRules?.mutable) && collection.updateRules.mutable.length > 0;
-    if (canEdit) await assertRoute200(baseUrl, `/${name}/edit/?id=1`);
+    if (canEdit) await assertRoute200(baseUrl, `/${name}/?mode=edit&id=1`);
 
     const canDelete = Boolean(collection?.deleteRules?.softDelete);
-    if (canDelete) await assertRoute200(baseUrl, `/${name}/delete/?id=1`);
+    if (canDelete) await assertRoute200(baseUrl, `/${name}/?mode=delete&id=1`);
   }
 
   const manifestRes = await fetchOrThrow(`${baseUrl}/.well-known/tokenhost/manifest.json`);
@@ -74,13 +74,19 @@ const ths = loadGeneratedThs(root);
 for (const relPath of [
   'app/layout.tsx',
   'app/page.tsx',
-  'app/[collection]/layout.tsx',
-  'app/[collection]/page.tsx',
-  'app/[collection]/new/page.tsx',
+  'src/collection-route/CollectionLayout.tsx',
+  'src/collection-route/CollectionPage.tsx',
   'src/theme/tokens.json',
   'src/components/NetworkStatus.tsx'
 ]) {
   mustExist(root, relPath);
+}
+
+for (const collection of ths.collections || []) {
+  const name = String(collection?.name ?? '');
+  if (!name) continue;
+  mustExist(root, path.join('app', name, 'layout.tsx'));
+  mustExist(root, path.join('app', name, 'page.tsx'));
 }
 
 const baseUrlEnv = process.env.TH_UI_BASE_URL?.trim();

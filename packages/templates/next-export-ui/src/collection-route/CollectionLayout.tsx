@@ -1,23 +1,17 @@
+import type { ReactNode } from 'react';
 import Link from 'next/link';
 
-import { ths } from '../../src/lib/ths';
+import { ths } from '../lib/ths';
 
-export const dynamicParams = false;
-
-export function generateStaticParams() {
-  return ths.collections.map((c) => ({ collection: c.name }));
-}
-
-export default function CollectionLayout(props: { children: React.ReactNode; params: { collection: string } }) {
-  const collectionName = props.params.collection;
-  const collection = ths.collections.find((c) => c.name === collectionName);
+export default function CollectionLayout(props: { children: ReactNode; collectionName: string }) {
+  const collection = ths.collections.find((c) => c.name === props.collectionName);
 
   if (!collection) {
     return (
       <div className="grid">
         <div className="card">
           <h2>Unknown collection</h2>
-          <div className="pre">{collectionName}</div>
+          <div className="pre">{props.collectionName}</div>
         </div>
       </div>
     );
@@ -33,7 +27,7 @@ export default function CollectionLayout(props: { children: React.ReactNode; par
           </div>
           <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap', justifyContent: 'flex-end' }}>
             <Link className="btn" href={`/${collection.name}/`}>List</Link>
-            <Link className="btn primary" href={`/${collection.name}/new/`}>Create</Link>
+            <Link className="btn primary" href={`/${collection.name}/?mode=new`}>Create</Link>
           </div>
         </div>
       </div>

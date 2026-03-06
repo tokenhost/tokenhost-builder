@@ -96,7 +96,7 @@ describe('Job Board canonical app integration', function () {
       expect(String(appAddress).toLowerCase()).to.not.equal('0x0000000000000000000000000000000000000000');
 
       // Route health checks for canonical UI routes.
-      for (const route of ['/', '/Candidate/', '/Candidate/new/', '/JobPosting/', '/JobPosting/new/']) {
+      for (const route of ['/', '/Candidate/', '/Candidate/?mode=new', '/JobPosting/', '/JobPosting/?mode=new']) {
         const routeRes = await request(`${baseUrl}${route}`);
         expect(routeRes.status, `route ${route} should return 200`).to.equal(200);
       }
@@ -116,7 +116,11 @@ describe('Job Board canonical app integration', function () {
 
       // Candidate create + list + get + update + delete
       await app.methods
-        .createCandidate('alice', 'initial bio', 'https://example.com/alice.png')
+        .createCandidate({
+          handle: 'alice',
+          bio: 'initial bio',
+          photo: 'https://example.com/alice.png'
+        })
         .send({ from: account.address, gas: 3_000_000 });
 
       const candidateIds = await app.methods.listIdsCandidate(0, 10, false).call();
@@ -143,7 +147,11 @@ describe('Job Board canonical app integration', function () {
       // JobPosting paid creates: fail without value, then succeed with required payment.
       let unpaidCreateFailed = false;
       try {
-        await app.methods.createJobPosting('Engineer', 'Remote role', '150000').send({
+        await app.methods.createJobPosting({
+          title: 'Engineer',
+          description: 'Remote role',
+          salary: '150000'
+        }).send({
           from: account.address,
           gas: 3_000_000
         });
@@ -152,7 +160,11 @@ describe('Job Board canonical app integration', function () {
       }
       expect(unpaidCreateFailed).to.equal(true);
 
-      await app.methods.createJobPosting('Engineer', 'Remote role', '150000').send({
+      await app.methods.createJobPosting({
+        title: 'Engineer',
+        description: 'Remote role',
+        salary: '150000'
+      }).send({
         from: account.address,
         gas: 3_000_000,
         value: '10000000000000000'

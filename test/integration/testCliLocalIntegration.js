@@ -146,14 +146,7 @@ describe('CLI local integration (anvil + preview + relay)', function () {
 
       const web3AbiMod = await import('web3-eth-abi');
       const web3Abi = web3AbiMod.default ?? web3AbiMod;
-      const calldata = web3Abi.encodeFunctionCall(
-        {
-          name: 'createCandidate',
-          type: 'function',
-          inputs: [{ type: 'string', name: 'name' }]
-        },
-        ['Relay User']
-      );
+      const calldata = web3Abi.encodeFunctionCall(createFn, [{ name: 'Relay User' }]);
 
       const relaySubmit = await requestJson(`${baseUrl}/__tokenhost/relay`, {
         method: 'POST',

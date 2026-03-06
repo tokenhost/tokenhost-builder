@@ -203,7 +203,7 @@ export default function DeleteRecordPage(props: { params: { collection: string }
       <div className="card">
         <h2>Delete disabled</h2>
         <div className="muted">This collection does not allow soft deletes (schema.deleteRules.softDelete=false).</div>
-        <button className="btn" style={{ marginTop: 12 }} onClick={() => router.push(`/${collectionName}/view/?id=${String(id)}`)}>
+        <button className="btn" style={{ marginTop: 12 }} onClick={() => router.push(`/${collectionName}/?mode=view&id=${String(id)}`)}>
           Back
         </button>
       </div>
@@ -217,7 +217,7 @@ export default function DeleteRecordPage(props: { params: { collection: string }
         <div className="pre">{error}</div>
         <div style={{ marginTop: 12, display: 'flex', gap: 10 }}>
           <button className="btn" onClick={() => void fetchRecord()}>Retry</button>
-          <button className="btn" onClick={() => router.push(`/${collectionName}/view/?id=${String(id)}`)}>Back</button>
+          <button className="btn" onClick={() => router.push(`/${collectionName}/?mode=view&id=${String(id)}`)}>Back</button>
         </div>
       </div>
     );
@@ -248,7 +248,7 @@ export default function DeleteRecordPage(props: { params: { collection: string }
         >
           Confirm delete
         </button>
-        <button className="btn" onClick={() => router.push(`/${collectionName}/view/?id=${String(id)}`)}>Cancel</button>
+        <button className="btn" onClick={() => router.push(`/${collectionName}/?mode=view&id=${String(id)}`)}>Cancel</button>
       </div>
 
       {status ? <div className="muted" style={{ marginTop: 12 }}>{status}</div> : null}

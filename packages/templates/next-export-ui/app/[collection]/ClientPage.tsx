@@ -3,6 +3,10 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { useSearchParams } from 'next/navigation';
 
+import DeleteRecordPage from './delete/ClientPage';
+import EditRecordPage from './edit/ClientPage';
+import CreateRecordPage from './new/ClientPage';
+import ViewRecordPage from './view/ClientPage';
 import RecordCard from '../../src/components/RecordCard';
 import { fetchAppAbi } from '../../src/lib/abi';
 import { collectionId, listRecords } from '../../src/lib/app';
@@ -13,7 +17,30 @@ import { getCollection } from '../../src/lib/ths';
 
 const PAGE_SIZE = 10;
 
-export default function CollectionListPage(props: { params: { collection: string } }) {
+export default function CollectionPage(props: { params: { collection: string } }) {
+  const search = useSearchParams();
+  const mode = search.get('mode') ?? 'list';
+
+  if (mode === 'new') {
+    return <CreateRecordPage params={props.params} />;
+  }
+
+  if (mode === 'view') {
+    return <ViewRecordPage params={props.params} />;
+  }
+
+  if (mode === 'edit') {
+    return <EditRecordPage params={props.params} />;
+  }
+
+  if (mode === 'delete') {
+    return <DeleteRecordPage params={props.params} />;
+  }
+
+  return <CollectionListModePage params={props.params} />;
+}
+
+function CollectionListModePage(props: { params: { collection: string } }) {
   const collectionName = props.params.collection;
   const collection = useMemo(() => getCollection(collectionName), [collectionName]);
 

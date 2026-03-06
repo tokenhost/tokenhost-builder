@@ -46,8 +46,8 @@ export default function RecordCard(props: { collection: ThsCollection; record: a
           </div>
         </div>
         <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap', justifyContent: 'flex-end' }}>
-          <Link className="btn" href={`/${collection.name}/view/?id=${String(id)}`}>View</Link>
-          {canEdit ? <Link className="btn" href={`/${collection.name}/edit/?id=${String(id)}`}>Edit</Link> : null}
+          <Link className="btn" href={`/${collection.name}/?mode=view&id=${String(id)}`}>View</Link>
+          {canEdit ? <Link className="btn" href={`/${collection.name}/?mode=edit&id=${String(id)}`}>Edit</Link> : null}
         </div>
       </div>
     </div>

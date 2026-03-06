@@ -271,10 +271,10 @@ export default function ViewRecordPage(props: { params: { collection: string } }
           <div style={{ display: 'flex', gap: 10 }}>
             <button className="btn" onClick={() => void fetchRecord()}>Refresh</button>
             {canEdit ? (
-              <button className="btn" onClick={() => router.push(`/${collectionName}/edit/?id=${String(id)}`)}>Edit</button>
+              <button className="btn" onClick={() => router.push(`/${collectionName}/?mode=edit&id=${String(id)}`)}>Edit</button>
             ) : null}
             {canDelete ? (
-              <button className="btn danger" onClick={() => router.push(`/${collectionName}/delete/?id=${String(id)}`)}>Delete</button>
+              <button className="btn danger" onClick={() => router.push(`/${collectionName}/?mode=delete&id=${String(id)}`)}>Delete</button>
             ) : null}
           </div>
         </div>

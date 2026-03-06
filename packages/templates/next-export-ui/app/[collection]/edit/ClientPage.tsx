@@ -176,7 +176,7 @@ export default function EditRecordPage(props: { params: { collection: string } }
       });
 
       setStatus(`Updated (${result.hash.slice(0, 10)}…).`);
-      router.push(`/${collectionName}/view/?id=${String(id)}`);
+      router.push(`/${collectionName}/?mode=view&id=${String(id)}`);
     } catch (e: any) {
       setError(String(e?.message ?? e));
       setStatus(null);
@@ -244,7 +244,7 @@ export default function EditRecordPage(props: { params: { collection: string } }
       <div className="card">
         <h2>Edit disabled</h2>
         <div className="muted">This collection has no mutable fields in schema.updateRules.</div>
-        <button className="btn" style={{ marginTop: 12 }} onClick={() => router.push(`/${collectionName}/view/?id=${String(id)}`)}>
+        <button className="btn" style={{ marginTop: 12 }} onClick={() => router.push(`/${collectionName}/?mode=view&id=${String(id)}`)}>
           Back
         </button>
       </div>
@@ -258,7 +258,7 @@ export default function EditRecordPage(props: { params: { collection: string } }
         <div className="pre">{error}</div>
         <div style={{ marginTop: 12, display: 'flex', gap: 10 }}>
           <button className="btn" onClick={() => void fetchRecord()}>Retry</button>
-          <button className="btn" onClick={() => router.push(`/${collectionName}/view/?id=${String(id)}`)}>Back</button>
+          <button className="btn" onClick={() => router.push(`/${collectionName}/?mode=view&id=${String(id)}`)}>Back</button>
         </div>
       </div>
     );
@@ -279,7 +279,7 @@ export default function EditRecordPage(props: { params: { collection: string } }
         <h2>
           Edit {collection.name} <span className="badge">#{String(getValue(record, 'id', 0))}</span>
         </h2>
-        <button className="btn" onClick={() => router.push(`/${collectionName}/view/?id=${String(id)}`)}>Back</button>
+        <button className="btn" onClick={() => router.push(`/${collectionName}/?mode=view&id=${String(id)}`)}>Back</button>
       </div>
 
       {fields.map((f) => (
@@ -314,7 +314,7 @@ export default function EditRecordPage(props: { params: { collection: string } }
         >
           Save
         </button>
-        <button className="btn" onClick={() => router.push(`/${collectionName}/view/?id=${String(id)}`)}>Cancel</button>
+        <button className="btn" onClick={() => router.push(`/${collectionName}/?mode=view&id=${String(id)}`)}>Cancel</button>
       </div>
 
       {status ? <div className="muted" style={{ marginTop: 12 }}>{status}</div> : null}

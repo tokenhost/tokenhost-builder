@@ -1,8 +1,8 @@
 import React, { Suspense } from 'react';
 
-import ClientPage from './ClientPage';
+import ClientPage from '../../app/[collection]/ClientPage';
 
-export default function EditRecordPage(props: { params: { collection: string } }) {
+export default function CollectionPage(props: { collectionName: string }) {
   return (
     <Suspense
       fallback={
@@ -12,8 +12,7 @@ export default function EditRecordPage(props: { params: { collection: string } }
         </div>
       }
     >
-      <ClientPage params={props.params} />
+      <ClientPage params={{ collection: props.collectionName }} />
     </Suspense>
   );
 }
-

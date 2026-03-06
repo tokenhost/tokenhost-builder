@@ -21,7 +21,7 @@ export default function HomePage() {
             </div>
             <div style={{ display: 'flex', gap: 10 }}>
               <Link className="btn" href={`/${c.name}/`}>List</Link>
-              <Link className="btn primary" href={`/${c.name}/new/`}>New</Link>
+              <Link className="btn primary" href={`/${c.name}/?mode=new`}>New</Link>
             </div>
           </div>
         </div>

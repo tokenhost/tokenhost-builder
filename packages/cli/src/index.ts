@@ -108,12 +108,12 @@ function buildStudioPreview(schema: ThsSchema): {
 } {
   const collections = (schema.collections || []).map((c) => {
     const name = String(c?.name ?? '');
-    const routes = [`/${name}/`, `/${name}/new/`, `/${name}/view/?id=1`];
+    const routes = [`/${name}/`, `/${name}/?mode=new`, `/${name}/?mode=view&id=1`];
     if (Array.isArray(c?.updateRules?.mutable) && c.updateRules.mutable.length > 0) {
-      routes.push(`/${name}/edit/?id=1`);
+      routes.push(`/${name}/?mode=edit&id=1`);
     }
     if (Boolean(c?.deleteRules?.softDelete)) {
-      routes.push(`/${name}/delete/?id=1`);
+      routes.push(`/${name}/?mode=delete&id=1`);
     }
 
     const contractFns = [`listIds${name}(uint256,uint256,bool)`, `get${name}(uint256)`, `create${name}(...)`];
@@ -1083,6 +1083,61 @@ function renderThsTs(schema: ThsSchema): string {
   );
 }
 
+function collectionRouteComponentName(name: string, suffix: string): string {
+  const normalized = name.replace(/[^A-Za-z0-9_]/g, '_');
+  const base = /^[A-Za-z_]/.test(normalized) ? normalized : `Collection_${normalized || 'Route'}`;
+  return `${base}${suffix}`;
+}
+
+function materializeCollectionRoutes(uiDir: string, schema: ThsSchema) {
+  const appDir = path.join(uiDir, 'app');
+  ensureDir(appDir);
+
+  for (const entry of fs.readdirSync(appDir, { withFileTypes: true })) {
+    if (!entry.isDirectory()) continue;
+    const markerPath = path.join(appDir, entry.name, '.tokenhost-generated-route');
+    if (fs.existsSync(markerPath)) {
+      fs.rmSync(path.join(appDir, entry.name), { recursive: true, force: true });
+    }
+  }
+
+  for (const collection of schema.collections || []) {
+    const name = String(collection?.name ?? '').trim();
+    if (!name) continue;
+
+    const routeDir = path.join(appDir, name);
+    ensureDir(routeDir);
+    fs.writeFileSync(path.join(routeDir, '.tokenhost-generated-route'), `${name}\n`);
+
+    const layoutComponentName = collectionRouteComponentName(name, 'Layout');
+    const pageComponentName = collectionRouteComponentName(name, 'Page');
+
+    fs.writeFileSync(
+      path.join(routeDir, 'layout.tsx'),
+      [
+        `import type { ReactNode } from 'react';`,
+        ``,
+        `import CollectionLayout from '../../src/collection-route/CollectionLayout';`,
+        ``,
+        `export default function ${layoutComponentName}(props: { children: ReactNode }) {`,
+        `  return <CollectionLayout collectionName=${JSON.stringify(name)}>{props.children}</CollectionLayout>;`,
+        `}`
+      ].join('\n') + '\n'
+    );
+
+    fs.writeFileSync(
+      path.join(routeDir, 'page.tsx'),
+      [
+        `import CollectionPage from '../../src/collection-route/CollectionPage';`,
+        ``,
+        `export default function ${pageComponentName}() {`,
+        `  return <CollectionPage collectionName=${JSON.stringify(name)} />;`,
+        `}`
+      ].join('\n') + '\n'
+    );
+  }
+}
+
 function ensureEd25519PrivateKey(key: crypto.KeyObject): crypto.KeyObject {
   const type = (key as any).asymmetricKeyType as string | undefined;
   if (type && type !== 'ed25519') {
@@ -2041,6 +2096,7 @@ function buildFromSchema(
       const thsTsPath = path.join(uiWorkDir, 'src', 'generated', 'ths.ts');
       ensureDir(path.dirname(thsTsPath));
       fs.writeFileSync(thsTsPath, renderThsTs(schema));
+      materializeCollectionRoutes(uiWorkDir, schema);
 
       // Ship ABI alongside the UI so it can operate without additional servers.
       const compiledPublicPath = path.join(uiWorkDir, 'public', 'compiled', 'App.json');
@@ -2872,6 +2928,7 @@ program
       const thsTsPath = path.join(uiDir, 'src', 'generated', 'ths.ts');
       ensureDir(path.dirname(thsTsPath));
       fs.writeFileSync(thsTsPath, renderThsTs(schema));
+      materializeCollectionRoutes(uiDir, schema);
 
       const compiledPublicPath = path.join(uiDir, 'public', 'compiled', 'App.json');
       ensureDir(path.dirname(compiledPublicPath));
