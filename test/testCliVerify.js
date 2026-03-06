@@ -122,8 +122,24 @@ describe('th verify', function () {
     const res = runTh(['verify', dir, '--chain', 'filecoin_calibration', '--dry-run'], process.cwd());
 
     expect(res.status, res.stderr || res.stdout).to.equal(0);
+    expect(res.stdout).to.include('"verifier": "filfox"');
+    expect(res.stdout).to.include('https://calibration.filfox.info/api/v1/tools/verifyContract');
     expect(res.stdout).to.include('--chain 314159');
     expect(res.stdout).to.include('--verifier sourcify');
+    expect(res.stdout).to.include('Dry run complete');
+  });
+
+  it('supports explicit filfox dry-run verification', function () {
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'th-verify-filfox-'));
+    writeVerifyFixtureBuild(dir, 314159);
+
+    const res = runTh(['verify', dir, '--chain', 'filecoin_calibration', '--verifier', 'filfox', '--dry-run'], process.cwd());
+
+    expect(res.status, res.stderr || res.stdout).to.equal(0);
+    expect(res.stdout).to.include('"verifier": "filfox"');
+    expect(res.stdout).to.include('"compiler"');
+    expect(res.stdout).to.include('"sourceFiles"');
+    expect(res.stdout).to.include('https://calibration.filfox.info/api/v1/tools/verifyContract');
     expect(res.stdout).to.include('Dry run complete');
   });
 });

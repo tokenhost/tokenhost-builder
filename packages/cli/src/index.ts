@@ -1567,6 +1567,200 @@ function supportsEtherscanVerifier(chainName: KnownChainName): boolean {
   return chainName === 'sepolia';
 }
 
+function supportsFilfoxVerifier(chainName: KnownChainName): boolean {
+  return chainName === 'filecoin_calibration' || chainName === 'filecoin_mainnet';
+}
+
+function filfoxVerifyEndpoint(chainName: KnownChainName): string {
+  if (chainName === 'filecoin_calibration') return 'https://calibration.filfox.info/api/v1/tools/verifyContract';
+  if (chainName === 'filecoin_mainnet') return 'https://filfox.info/api/v1/tools/verifyContract';
+  throw new Error(`Filfox verification is not supported for chain "${chainName}".`);
+}
+
+function normalizeFilfoxCompilerVersion(version: string): string {
+  const trimmed = String(version || '').trim();
+  const fallback = String(solc.version() || '').trim();
+  const raw = trimmed || fallback;
+  const match = raw.match(/v?(\d+\.\d+\.\d+\+commit\.[0-9a-fA-F]+)/);
+  const normalized = (match?.[1] ?? raw.replace(/\.Emscripten\.clang$/i, '')).trim();
+  return normalized.startsWith('v') ? normalized : `v${normalized}`;
+}
+
+function compilerProfileUsesViaIR(value: unknown): boolean {
+  return String(value ?? '').toLowerCase().includes('viair');
+}
+
+function collectSoliditySources(sourceDir: string): Record<string, { content: string }> {
+  const out: Record<string, { content: string }> = {};
+  if (!fs.existsSync(sourceDir)) return out;
+
+  const walk = (dir: string) => {
+    for (const entry of fs.readdirSync(dir, { withFileTypes: true })) {
+      const abs = path.join(dir, entry.name);
+      if (entry.isDirectory()) {
+        walk(abs);
+        continue;
+      }
+      if (!entry.isFile() || !entry.name.endsWith('.sol')) continue;
+      const rel = path.relative(sourceDir, abs).replace(/\\/g, '/');
+      out[rel] = { content: fs.readFileSync(abs, 'utf-8') };
+    }
+  };
+
+  walk(sourceDir);
+  return out;
+}
+
+function filfoxLicenseFromSources(sourceFiles: Record<string, { content: string }>): string {
+  const source = Object.values(sourceFiles)[0]?.content ?? '';
+  const match = source.match(/SPDX-License-Identifier:\s*([^\s*]+)/i);
+  const id = String(match?.[1] ?? '').trim().toUpperCase();
+  if (id === 'MIT') return 'MIT License (MIT)';
+  if (id === 'UNLICENSED' || id === 'NONE') return 'No License (None)';
+  return '';
+}
+
+function buildFilfoxPayload(args: {
+  address: string;
+  manifest: any;
+  compiled: any;
+  sourceDir: string;
+}) {
+  const sourceFiles = collectSoliditySources(args.sourceDir);
+  if (Object.keys(sourceFiles).length === 0) {
+    throw new Error(`No Solidity source files found in ${args.sourceDir}`);
+  }
+
+  return {
+    address: args.address,
+    language: 'Solidity',
+    compiler: normalizeFilfoxCompilerVersion(String(args.manifest?.toolchain?.solc ?? solc.version())),
+    optimize: true,
+    optimizeRuns: 200,
+    optimizerDetails: '',
+    sourceFiles,
+    license: filfoxLicenseFromSources(sourceFiles),
+    evmVersion: 'default',
+    viaIR: Boolean(args.compiled?.viaIR ?? compilerProfileUsesViaIR(args.compiled?.compilerProfile ?? args.manifest?.toolchain?.compilerProfile)),
+    libraries: '',
+    metadata: ''
+  };
+}
+
+function tailString(s: string, maxChars = 8000): string {
+  if (!s) return '';
+  return s.length <= maxChars ? s : s.slice(s.length - maxChars);
+}
+
+function redactCommandArgs(args: string[]): string[] {
+  const out = [...args];
+  for (let i = 0; i < out.length; i++) {
+    const a = out[i];
+    if (a === '--etherscan-api-key' && i + 1 < out.length) {
+      out[i + 1] = '<redacted>';
+      i += 1;
+    }
+  }
+  return out;
+}
+
+function cmdString(cmd: string, args: string[]): string {
+  return [cmd, ...args].map((a) => (/\s/.test(a) ? JSON.stringify(a) : a)).join(' ');
+}
+
+function updateManifestVerificationState(args: {
+  manifest: any;
+  target: any;
+  chainId: number;
+  explorerKey: 'etherscan' | 'filfox';
+  explorerWanted: boolean;
+  explorerOk: boolean | null;
+  explorerResult: { status: number | null; cmd: string | null; stdout?: string; stderr?: string } | null;
+  sourcifyWanted: boolean;
+  sourcifyOk: boolean | null;
+  sourcifyResult: { status: number | null; cmd: string | null; stdout?: string; stderr?: string } | null;
+}) {
+  const explorerSatisfied = args.explorerWanted ? args.explorerOk === true : true;
+  const sourcifySatisfied = args.sourcifyWanted ? args.sourcifyOk === true : true;
+  const verified = explorerSatisfied && sourcifySatisfied;
+
+  args.target.verified = verified;
+  if (Array.isArray(args.target.contracts)) {
+    for (const c of args.target.contracts) c.verified = verified;
+  }
+
+  args.manifest.extensions = args.manifest.extensions ?? {};
+  args.manifest.extensions.verification = {
+    ...(args.manifest.extensions.verification ?? {}),
+    [String(args.chainId)]: {
+      at: new Date().toISOString(),
+      [args.explorerKey]: args.explorerWanted
+        ? {
+            ok: args.explorerOk,
+            status: args.explorerResult?.status ?? null,
+            cmd: args.explorerResult?.cmd ?? null,
+            stdoutTail: tailString(args.explorerResult?.stdout ?? ''),
+            stderrTail: tailString(args.explorerResult?.stderr ?? '')
+          }
+        : { ok: null },
+      sourcify: args.sourcifyWanted
+        ? {
+            ok: args.sourcifyOk,
+            status: args.sourcifyResult?.status ?? null,
+            cmd: args.sourcifyResult?.cmd ?? null,
+            stdoutTail: tailString(args.sourcifyResult?.stdout ?? ''),
+            stderrTail: tailString(args.sourcifyResult?.stderr ?? '')
+          }
+        : { ok: null }
+    }
+  };
+
+  return verified;
+}
+
+async function runFilfoxVerification(args: {
+  chainName: KnownChainName;
+  contractAddress: string;
+  manifest: any;
+  compiled: any;
+  sourceDir: string;
+  dryRun?: boolean;
+}): Promise<{ ok: boolean; status: number | null; cmd: string; stdout: string; stderr: string }> {
+  const endpoint = filfoxVerifyEndpoint(args.chainName);
+  const payload = buildFilfoxPayload({
+    address: args.contractAddress,
+    manifest: args.manifest,
+    compiled: args.compiled,
+    sourceDir: args.sourceDir
+  });
+
+  const cmd = `POST ${endpoint}`;
+  if (args.dryRun) {
+    console.log(JSON.stringify({ verifier: 'filfox', endpoint, payload }, null, 2));
+    return { ok: true, status: 0, cmd, stdout: JSON.stringify({ verifier: 'filfox', endpoint }, null, 2), stderr: '' };
+  }
+
+  const response = await fetch(endpoint, {
+    method: 'POST',
+    headers: {
+      'content-type': 'application/json'
+    },
+    body: JSON.stringify(payload)
+  });
+  const text = await response.text();
+
+  let parsed: any = null;
+  try {
+    parsed = JSON.parse(text);
+  } catch {}
+
+  const apiSuccess = parsed?.success === true || parsed?.errorCode === 6;
+  const ok = response.ok && apiSuccess;
+  const stdout = parsed ? JSON.stringify(parsed, null, 2) : text;
+  const stderr = ok ? '' : `Filfox verification failed (${response.status}): ${stdout}`;
+  return { ok, status: response.status, cmd, stdout, stderr };
+}
+
 function normalizeAddress(addr: string, label: string): Address {
   const trimmed = addr.trim();
   if (!isAddress(trimmed)) throw new Error(`Invalid ${label} address: ${addr}`);
@@ -2395,7 +2589,7 @@ function buildFromSchema(
 
 async function deployBuildDir(
   buildDir: string,
-  opts: { chain: string; rpc?: string; privateKey?: string; admin?: string; treasury?: string; role: string }
+  opts: { chain: string; rpc?: string; privateKey?: string; admin?: string; treasury?: string; role: string; verify?: boolean }
 ): Promise<void> {
   const resolvedBuildDir = path.resolve(buildDir);
   const manifestPath = path.join(resolvedBuildDir, 'manifest.json');
@@ -2548,6 +2742,61 @@ async function deployBuildDir(
   if (fs.existsSync(uiSiteDir)) {
     publishManifestToUiSite(uiSiteDir, manifestJsonOut);
     console.log(`Published manifest to ui-site/`);
+  }
+
+  const shouldAutoVerify = opts.verify !== false && supportsFilfoxVerifier(chainName);
+  if (shouldAutoVerify) {
+    try {
+      console.log(`Verifying on Filfox (${chainName})...`);
+      const filfoxResult = await runFilfoxVerification({
+        chainName,
+        contractAddress: deployedAddress,
+        manifest,
+        compiled,
+        sourceDir: path.join(resolvedBuildDir, 'contracts')
+      });
+      if (filfoxResult.stdout) process.stdout.write(`${filfoxResult.stdout}\n`);
+      if (filfoxResult.stderr) process.stderr.write(`${filfoxResult.stderr}\n`);
+
+      const verified = updateManifestVerificationState({
+        manifest,
+        target: deployment,
+        chainId: chain.id,
+        explorerKey: 'filfox',
+        explorerWanted: true,
+        explorerOk: filfoxResult.ok,
+        explorerResult: filfoxResult,
+        sourcifyWanted: false,
+        sourcifyOk: null,
+        sourcifyResult: null
+      });
+
+      const verificationSigningKey = loadManifestSigningKey();
+      if (verificationSigningKey) {
+        manifest.signatures = [signManifest(manifest, verificationSigningKey)];
+      } else {
+        manifest.signatures = [{ alg: 'none', sig: 'UNSIGNED' }];
+      }
+
+      const verificationValidation = validateManifest(manifest);
+      if (!verificationValidation.ok) {
+        throw new Error(`Updated manifest failed validation after Filfox verification:\n${JSON.stringify(verificationValidation.errors, null, 2)}`);
+      }
+
+      const verifiedManifestJson = JSON.stringify(manifest, null, 2);
+      fs.writeFileSync(manifestPath, verifiedManifestJson);
+      if (fs.existsSync(uiSiteDir)) {
+        publishManifestToUiSite(uiSiteDir, verifiedManifestJson);
+      }
+
+      if (verified) {
+        console.log(`Verified deployment on Filfox and updated ${manifestPath}`);
+      } else {
+        console.warn(`WARN deploy: Filfox verification did not complete successfully for ${deployedAddress}.`);
+      }
+    } catch (e: any) {
+      console.warn(`WARN deploy: automatic Filfox verification failed: ${String(e?.message ?? e)}`);
+    }
   }
 
   if (fs.existsSync(uiSiteDir)) {
@@ -3521,7 +3770,8 @@ program
   .option('--admin <address>', 'Admin address (defaults to deployer)')
   .option('--treasury <address>', 'Treasury address (defaults to deployer)')
   .option('--role <role>', 'Deployment role (primary|legacy)', 'primary')
-  .action(async (buildDir: string, opts: { chain: string; rpc?: string; privateKey?: string; admin?: string; treasury?: string; role: string }) => {
+  .option('--no-verify', 'Skip automatic explorer verification after deploy')
+  .action(async (buildDir: string, opts: { chain: string; rpc?: string; privateKey?: string; admin?: string; treasury?: string; role: string; verify?: boolean }) => {
     try {
       await deployBuildDir(buildDir, opts);
     } catch (e: any) {
@@ -3533,10 +3783,10 @@ program
 program
   .command('verify')
   .argument('<buildDir>', 'Directory created by `th build` (contains manifest.json)')
-  .description('Verify deployed contracts on explorers (Etherscan + Sourcify)')
+  .description('Verify deployed contracts on explorers (Etherscan, Filfox, Sourcify)')
   .option('--chain <name>', 'Chain name (anvil|sepolia|filecoin_calibration|filecoin_mainnet)', 'sepolia')
   .option('--rpc <url>', 'RPC URL override (used by verifier tooling)')
-  .option('--verifier <v>', 'Verifier to use (etherscan|sourcify|both)', 'both')
+  .option('--verifier <v>', 'Verifier to use (etherscan|filfox|sourcify|both)', 'both')
   .option('--etherscan-api-key <key>', 'Etherscan API key override')
   .option('--no-watch', 'Do not wait for verification results')
   .option('--dry-run', 'Print forge commands and exit', false)
@@ -3588,8 +3838,10 @@ program
 
     const verifier = String(opts.verifier || 'both').toLowerCase();
     let wantEtherscan = verifier === 'both' || verifier === 'etherscan';
+    let wantFilfox = verifier === 'filfox' || (verifier === 'both' && supportsFilfoxVerifier(chainName));
     const wantSourcify = verifier === 'both' || verifier === 'sourcify';
     const etherscanSupported = supportsEtherscanVerifier(chainName);
+    const filfoxSupported = supportsFilfoxVerifier(chainName);
 
     if (wantEtherscan && !etherscanSupported) {
       if (verifier === 'etherscan') {
@@ -3599,6 +3851,11 @@ program
       }
       console.warn(`WARN verify: Etherscan is not supported for chain "${chainName}". Proceeding with Sourcify only.`);
       wantEtherscan = false;
+    }
+    if (wantFilfox && !filfoxSupported) {
+      console.error(`Filfox verification is not supported for chain "${chainName}".`);
+      process.exitCode = 1;
+      return;
     }
 
     const etherscanKey = (() => {
@@ -3632,8 +3889,8 @@ program
       );
     })();
 
-    // Foundry is required for verification (but allow --dry-run without forge installed).
-    if (!opts.dryRun) {
+    // Foundry is required for Etherscan/Sourcify verification (but allow --dry-run without forge installed).
+    if (!opts.dryRun && (wantEtherscan || wantSourcify)) {
       const forgeVersion = spawnSync('forge', ['--version'], { encoding: 'utf-8' });
       if (forgeVersion.error && (forgeVersion.error as any).code === 'ENOENT') {
         console.error('Missing Foundry: `forge` not found on PATH.');
@@ -3656,28 +3913,8 @@ program
     ].join('\n');
 
     let etherscanOk = false;
+    let filfoxOk = false;
     let sourcifyOk = false;
-
-    function tail(s: string, maxChars = 8000): string {
-      if (!s) return '';
-      return s.length <= maxChars ? s : s.slice(s.length - maxChars);
-    }
-
-    function redactCommandArgs(args: string[]): string[] {
-      const out = [...args];
-      for (let i = 0; i < out.length; i++) {
-        const a = out[i];
-        if (a === '--etherscan-api-key' && i + 1 < out.length) {
-          out[i + 1] = '<redacted>';
-          i += 1;
-        }
-      }
-      return out;
-    }
-
-    function cmdString(cmd: string, args: string[]): string {
-      return [cmd, ...args].map((a) => (/\s/.test(a) ? JSON.stringify(a) : a)).join(' ');
-    }
 
     function runForge(args: string[]): { ok: boolean; status: number | null; cmd: string; stdout: string; stderr: string } {
       const cmd = cmdString('forge', redactCommandArgs(args));
@@ -3693,8 +3930,10 @@ program
     }
 
     let etherscanResult: ReturnType<typeof runForge> | null = null;
+    let filfoxResult: Awaited<ReturnType<typeof runFilfoxVerification>> | null = null;
     let sourcifyResult: ReturnType<typeof runForge> | null = null;
 
+    (async () => {
     try {
       ensureDir(path.join(verifyRoot, 'contracts'));
       fs.writeFileSync(path.join(verifyRoot, 'contracts', 'App.sol'), source);
@@ -3737,6 +3976,32 @@ program
         }
       }
 
+      if (wantFilfox) {
+        if (opts.dryRun) {
+          filfoxResult = await runFilfoxVerification({
+            chainName,
+            contractAddress,
+            manifest,
+            compiled,
+            sourceDir: path.join(resolvedBuildDir, 'contracts'),
+            dryRun: true
+          });
+          filfoxOk = true;
+        } else {
+          console.log(`Verifying on Filfox (${chainName})...`);
+          filfoxResult = await runFilfoxVerification({
+            chainName,
+            contractAddress,
+            manifest,
+            compiled,
+            sourceDir: path.join(resolvedBuildDir, 'contracts')
+          });
+          if (filfoxResult.stdout) process.stdout.write(`${filfoxResult.stdout}\n`);
+          if (filfoxResult.stderr) process.stderr.write(`${filfoxResult.stderr}\n`);
+          filfoxOk = filfoxResult.ok;
+        }
+      }
+
       if (wantSourcify) {
         const args = [...commonArgs, '--verifier', 'sourcify', contractAddress, contractId];
         if (opts.dryRun) {
@@ -3761,39 +4026,18 @@ program
       fs.rmSync(verifyRoot, { recursive: true, force: true });
     }
 
-    const verified = (wantEtherscan ? etherscanOk : true) && (wantSourcify ? sourcifyOk : true);
-
-    // Update manifest verification flags.
-    target.verified = verified;
-    if (Array.isArray(target.contracts)) {
-      for (const c of target.contracts) c.verified = verified;
-    }
-
-    manifest.extensions = manifest.extensions ?? {};
-    manifest.extensions.verification = {
-      ...(manifest.extensions.verification ?? {}),
-      [String(chain.id)]: {
-        at: new Date().toISOString(),
-        etherscan: wantEtherscan
-          ? {
-              ok: etherscanOk,
-              status: etherscanResult?.status ?? null,
-              cmd: etherscanResult?.cmd ?? null,
-              stdoutTail: tail(etherscanResult?.stdout ?? ''),
-              stderrTail: tail(etherscanResult?.stderr ?? '')
-            }
-          : { ok: null },
-        sourcify: wantSourcify
-          ? {
-              ok: sourcifyOk,
-              status: sourcifyResult?.status ?? null,
-              cmd: sourcifyResult?.cmd ?? null,
-              stdoutTail: tail(sourcifyResult?.stdout ?? ''),
-              stderrTail: tail(sourcifyResult?.stderr ?? '')
-            }
-          : { ok: null }
-      }
-    };
+    const verified = updateManifestVerificationState({
+      manifest,
+      target,
+      chainId: chain.id,
+      explorerKey: wantFilfox ? 'filfox' : 'etherscan',
+      explorerWanted: wantFilfox || wantEtherscan,
+      explorerOk: wantFilfox ? filfoxOk : etherscanOk,
+      explorerResult: wantFilfox ? filfoxResult : etherscanResult,
+      sourcifyWanted: wantSourcify,
+      sourcifyOk,
+      sourcifyResult
+    });
 
     // Re-sign manifest after mutating verification status.
     const signingKey = loadManifestSigningKey();
@@ -3826,6 +4070,10 @@ program
     }
 
     console.log(`Verified and updated ${manifestPath}`);
+  })().catch((e: any) => {
+      console.error(String(e?.message ?? e));
+      process.exitCode = 1;
+    });
   });
 
 program
