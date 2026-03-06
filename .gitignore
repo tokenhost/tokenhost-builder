@@ -11,3 +11,8 @@ coverage
 .env
 .env.local
 .env.*.local
+
+# Local scratch apps / planning notes
+apps/new-app/
+apps/test/
+docs/tickets/
