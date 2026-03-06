@@ -3,6 +3,7 @@ import fs from 'fs';
 import os from 'os';
 import path from 'path';
 import { spawn, spawnSync } from 'child_process';
+import Web3 from 'web3';
 
 function writeJson(filePath, value) {
   fs.mkdirSync(path.dirname(filePath), { recursive: true });
@@ -144,9 +145,9 @@ describe('CLI local integration (anvil + preview + relay)', function () {
       const createFn = (compiled?.abi ?? []).find((x) => x && x.type === 'function' && x.name === 'createCandidate');
       expect(createFn).to.be.ok;
 
-      const web3AbiMod = await import('web3-eth-abi');
-      const web3Abi = web3AbiMod.default ?? web3AbiMod;
-      const calldata = web3Abi.encodeFunctionCall(createFn, [{ name: 'Relay User' }]);
+      const web3 = new Web3();
+      const contract = new web3.eth.Contract(compiled.abi, contractAddress);
+      const calldata = contract.methods.createCandidate({ name: 'Relay User' }).encodeABI();
 
       const relaySubmit = await requestJson(`${baseUrl}/__tokenhost/relay`, {
         method: 'POST',

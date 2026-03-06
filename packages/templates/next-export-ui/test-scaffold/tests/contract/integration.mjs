@@ -74,6 +74,14 @@ function sampleValue(field, idx, forUpdate, accountAddress) {
   }
 }
 
+function buildCreateInput(fields, accountAddress) {
+  const input = {};
+  for (const [idx, field] of fields.entries()) {
+    input[field.name] = sampleValue(field, idx, false, accountAddress);
+  }
+  return input;
+}
+
 async function mustFail(promiseFactory, expectedHint) {
   let failed = false;
   try {
@@ -135,20 +143,20 @@ async function main() {
     const deleteFn = `delete${name}`;
     const transferFn = `transfer${name}`;
 
-    const createArgs = fields.map((f, idx) => sampleValue(f, idx, false, account.address));
+    const createInput = buildCreateInput(fields, account.address);
 
     if (hasPayment) {
       await mustFail(() =>
-        app.methods[createFn](...createArgs).send({ from: account.address, gas: 3_000_000 })
+        app.methods[createFn](createInput).send({ from: account.address, gas: 3_000_000 })
       );
 
-      await app.methods[createFn](...createArgs).send({
+      await app.methods[createFn](createInput).send({
         from: account.address,
         gas: 3_000_000,
         value: String(collection.createRules.payment.amountWei)
       });
     } else {
-      await app.methods[createFn](...createArgs).send({ from: account.address, gas: 3_000_000 });
+      await app.methods[createFn](createInput).send({ from: account.address, gas: 3_000_000 });
     }
 
     const ids = await app.methods[listFn](0, 20, false).call();
