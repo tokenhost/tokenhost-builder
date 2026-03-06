@@ -7,12 +7,28 @@ export interface ThsAppFeatures {
   onChainIndexing?: boolean;
 }
 
+export type ThsHomePageMode = 'generated' | 'custom';
+
+export interface ThsAppUiHomePage {
+  mode?: ThsHomePageMode;
+}
+
+export interface ThsAppUiExtensions {
+  directory?: string;
+}
+
+export interface ThsAppUi {
+  homePage?: ThsAppUiHomePage;
+  extensions?: ThsAppUiExtensions;
+}
+
 export interface ThsApp {
   name: string;
   slug: string;
   description?: string;
   theme?: Record<string, unknown>;
   features?: ThsAppFeatures;
+  ui?: ThsAppUi;
 }
 
 export type FieldType =
@@ -34,7 +50,12 @@ export interface ThsField {
   decimals?: number;
   default?: unknown;
   validation?: Record<string, unknown>;
-  ui?: Record<string, unknown>;
+  ui?: {
+    component?: 'default' | 'externalLink';
+    label?: string;
+    target?: '_blank' | '_self';
+    [key: string]: unknown;
+  };
 }
 
 export type Access = 'public' | 'owner' | 'allowlist' | 'role';
@@ -113,4 +134,3 @@ export interface ThsSchema {
   collections: Collection[];
   metadata?: Record<string, unknown>;
 }
-

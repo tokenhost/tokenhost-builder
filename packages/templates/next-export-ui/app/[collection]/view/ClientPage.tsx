@@ -9,7 +9,7 @@ import { chainFromId } from '../../../src/lib/chains';
 import { makePublicClient } from '../../../src/lib/clients';
 import { formatNumeric, shortAddress } from '../../../src/lib/format';
 import { fetchManifest, getPrimaryDeployment } from '../../../src/lib/manifest';
-import { getCollection, transferEnabled, type ThsCollection, type ThsField } from '../../../src/lib/ths';
+import { fieldLinkUi, getCollection, transferEnabled, type ThsCollection, type ThsField } from '../../../src/lib/ths';
 import { submitWriteTx } from '../../../src/lib/tx';
 import TxStatus, { type TxPhase } from '../../../src/components/TxStatus';
 
@@ -26,6 +26,26 @@ function getValue(record: any, key: string, fallbackIndex?: number): any {
 function fieldIndex(collection: ThsCollection, field: ThsField): number {
   const idx = (collection.fields as any[]).findIndex((f) => f && f.name === field.name);
   return 9 + Math.max(0, idx);
+}
+
+function renderFieldValue(field: ThsField, rendered: string) {
+  if (!rendered) return <span className="badge">—</span>;
+
+  const linkUi = fieldLinkUi(field);
+  if (field.type === 'image') {
+    // eslint-disable-next-line @next/next/no-img-element
+    return <img src={String(rendered)} alt={field.name} style={{ maxWidth: 360, borderRadius: 12, border: '1px solid var(--border)' }} />;
+  }
+
+  if (linkUi) {
+    return (
+      <a className="btn" href={String(rendered)} target={linkUi.target} rel={linkUi.target === '_blank' ? 'noreferrer' : undefined}>
+        {linkUi.label || rendered}
+      </a>
+    );
+  }
+
+  return <span className="badge">{rendered}</span>;
 }
 
 export default function ViewRecordPage(props: { params: { collection: string } }) {
@@ -299,14 +319,7 @@ export default function ViewRecordPage(props: { params: { collection: string } }
             return (
               <React.Fragment key={f.name}>
                 <div>{f.name}</div>
-                <div>
-                  {f.type === 'image' && rendered ? (
-                    // eslint-disable-next-line @next/next/no-img-element
-                    <img src={String(rendered)} alt={f.name} style={{ maxWidth: 360, borderRadius: 12, border: '1px solid var(--border)' }} />
-                  ) : (
-                    <span className="badge">{rendered || '—'}</span>
-                  )}
-                </div>
+                <div>{renderFieldValue(f, rendered)}</div>
               </React.Fragment>
             );
           })}

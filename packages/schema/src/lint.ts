@@ -67,6 +67,16 @@ function isSafeAutoExpr(expr: string): boolean {
 export function lintThs(schema: ThsSchema): Issue[] {
   const issues: Issue[] = [];
 
+  if (schema.app.ui?.homePage?.mode === 'custom' && !String(schema.app.ui?.extensions?.directory ?? '').trim()) {
+    issues.push(
+      warn(
+        '/app/ui/extensions/directory',
+        'lint.app.ui.custom_home_without_extensions',
+        'app.ui.homePage.mode is "custom" but no app.ui.extensions.directory is configured.'
+      )
+    );
+  }
+
   const collectionNames = new Set<string>();
   for (let i = 0; i < schema.collections.length; i++) {
     const c = schema.collections[i]!;
@@ -101,6 +111,16 @@ export function lintThs(schema: ThsSchema): Issue[] {
         } else if (f.decimals < 0 || f.decimals > 18) {
           issues.push(err(`${fPath}/decimals`, 'lint.field.decimal_range', '"decimals" must be in the range 0..18.'));
         }
+      }
+
+      if (f.ui?.component === 'externalLink' && !['string', 'image', 'externalReference'].includes(f.type)) {
+        issues.push(
+          warn(
+            `${fPath}/ui/component`,
+            'lint.field.ui.external_link_type',
+            `Field "${f.name}" uses ui.component="externalLink" but has type "${f.type}". Link rendering is usually intended for string/image/externalReference fields.`
+          )
+        );
       }
     }
 
@@ -200,4 +220,3 @@ export function lintThs(schema: ThsSchema): Issue[] {
 
   return issues;
 }
-

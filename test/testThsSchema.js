@@ -94,5 +94,60 @@ describe('THS schema validation + lint', function () {
     const issues = lintThs(res.data);
     expect(issues.some((i) => i.code === 'lint.relations.missing')).to.equal(true);
   });
-});
 
+  it('validateThsStructural accepts app.ui and field.ui primitives', function () {
+    const input = minimalSchema({
+      app: {
+        name: 'Test App',
+        slug: 'test-app',
+        features: { uploads: false, onChainIndexing: true },
+        ui: {
+          homePage: { mode: 'custom' },
+          extensions: { directory: 'ui-overrides' }
+        }
+      },
+      collections: [
+        {
+          name: 'Item',
+          fields: [
+            {
+              name: 'artifactUrl',
+              type: 'string',
+              ui: {
+                component: 'externalLink',
+                label: 'Open artifact',
+                target: '_blank'
+              }
+            }
+          ],
+          createRules: { required: [], access: 'public' },
+          visibilityRules: { gets: ['artifactUrl'], access: 'public' },
+          updateRules: { mutable: ['artifactUrl'], access: 'owner' },
+          deleteRules: { softDelete: true, access: 'owner' },
+          indexes: { unique: [], index: [] }
+        }
+      ]
+    });
+
+    const res = validateThsStructural(input);
+    expect(res.ok).to.equal(true);
+  });
+
+  it('lintThs warns when custom home page is configured without extensions directory', function () {
+    const input = minimalSchema({
+      app: {
+        name: 'Test App',
+        slug: 'test-app',
+        features: { uploads: false, onChainIndexing: true },
+        ui: {
+          homePage: { mode: 'custom' }
+        }
+      }
+    });
+
+    const res = validateThsStructural(input);
+    expect(res.ok).to.equal(true);
+    const issues = lintThs(res.data);
+    expect(issues.some((i) => i.code === 'lint.app.ui.custom_home_without_extensions')).to.equal(true);
+  });
+});

@@ -34,6 +34,32 @@
           "description": "Theme tokens (implementation-defined).",
           "additionalProperties": true
         },
+        "ui": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "homePage": {
+              "type": "object",
+              "additionalProperties": false,
+              "properties": {
+                "mode": {
+                  "type": "string",
+                  "enum": ["generated", "custom"]
+                }
+              }
+            },
+            "extensions": {
+              "type": "object",
+              "additionalProperties": false,
+              "properties": {
+                "directory": {
+                  "type": "string",
+                  "description": "Path to UI override files, resolved relative to the schema file."
+                }
+              }
+            }
+          }
+        },
         "features": {
           "type": "object",
           "additionalProperties": false,
@@ -124,7 +150,20 @@
         },
         "ui": {
           "type": "object",
-          "additionalProperties": true
+          "additionalProperties": true,
+          "properties": {
+            "component": {
+              "type": "string",
+              "enum": ["default", "externalLink"]
+            },
+            "label": {
+              "type": "string"
+            },
+            "target": {
+              "type": "string",
+              "enum": ["_blank", "_self"]
+            }
+          }
         }
       },
       "allOf": [

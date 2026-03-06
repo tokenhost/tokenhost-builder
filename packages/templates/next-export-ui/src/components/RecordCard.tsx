@@ -1,7 +1,7 @@
 import Link from 'next/link';
 
 import type { ThsCollection, ThsField } from '../lib/ths';
-import { displayField } from '../lib/ths';
+import { displayField, fieldLinkUi } from '../lib/ths';
 import { formatNumeric, shortAddress } from '../lib/format';
 
 function getValue(record: any, key: string, fallbackIndex?: number): any {
@@ -31,6 +31,7 @@ export default function RecordCard(props: { collection: ThsCollection; record: a
 
   const df = displayField(collection);
   const titleVal = df ? getValue(record, df.name, fieldIndex(collection, df)) : undefined;
+  const title = df?.ui?.component === 'externalLink' ? fieldLinkUi(df)?.label || formatNumeric(titleVal, df.type, (df as any).decimals) : df ? formatNumeric(titleVal, df.type, (df as any).decimals) : '(record)';
 
   return (
     <div className="card recordCard">
@@ -38,7 +39,7 @@ export default function RecordCard(props: { collection: ThsCollection; record: a
         <div>
           <h2>
             <span className="badge">#{String(id)}</span>{' '}
-            {df ? formatNumeric(titleVal, df.type, (df as any).decimals) : '(record)'}
+            {title}
             {isDeleted ? <span className="badge" style={{ marginLeft: 8, color: 'var(--th-danger)' }}>deleted</span> : null}
           </h2>
           <div className="muted" style={{ fontFamily: 'var(--th-font-mono)', fontSize: 12 }}>

@@ -17,6 +17,13 @@ export type FieldType =
 
 export type Access = 'public' | 'owner' | 'allowlist' | 'role';
 
+export interface ThsFieldUi {
+  component?: 'default' | 'externalLink';
+  label?: string;
+  target?: '_blank' | '_self';
+  [key: string]: unknown;
+}
+
 export interface ThsField {
   name: string;
   type: FieldType;
@@ -24,7 +31,7 @@ export interface ThsField {
   decimals?: number;
   default?: unknown;
   validation?: Record<string, unknown>;
-  ui?: Record<string, unknown>;
+  ui?: ThsFieldUi;
 }
 
 export interface PaymentRule {
@@ -65,6 +72,14 @@ export interface ThsSchema {
     name: string;
     slug: string;
     features?: Record<string, unknown>;
+    ui?: {
+      homePage?: {
+        mode?: 'generated' | 'custom';
+      };
+      extensions?: {
+        directory?: string;
+      };
+    };
   };
   collections: ThsCollection[];
   metadata?: Record<string, unknown>;
@@ -114,4 +129,12 @@ export function hasCreatePayment(collection: ThsCollection): { amountWei: string
 
 export function transferEnabled(collection: ThsCollection): boolean {
   return Boolean((collection as any).transferRules);
+}
+
+export function fieldLinkUi(field: ThsField): { label: string | null; target: '_blank' | '_self' } | null {
+  if (field.ui?.component !== 'externalLink') return null;
+  return {
+    label: typeof field.ui.label === 'string' && field.ui.label.trim() ? field.ui.label : null,
+    target: field.ui.target === '_self' ? '_self' : '_blank'
+  };
 }

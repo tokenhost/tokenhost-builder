@@ -78,7 +78,11 @@ function defaultStudioFormState(): ThsSchema {
       name: 'My App',
       slug: 'my-app',
       description: '',
-      features: { uploads: false, onChainIndexing: true, indexer: false, delegation: false }
+      features: { uploads: false, onChainIndexing: true, indexer: false, delegation: false },
+      ui: {
+        homePage: { mode: 'generated' },
+        extensions: {}
+      }
     },
     collections: [
       {
@@ -100,6 +104,7 @@ function defaultStudioFormState(): ThsSchema {
 
 function buildStudioPreview(schema: ThsSchema): {
   app: { name: string; slug: string };
+  ui: { homePageMode: string; extensionDirectory: string | null };
   collections: Array<{
     name: string;
     routes: string[];
@@ -135,6 +140,10 @@ function buildStudioPreview(schema: ThsSchema): {
       name: String(schema?.app?.name ?? ''),
       slug: String(schema?.app?.slug ?? '')
     },
+    ui: {
+      homePageMode: String(schema?.app?.ui?.homePage?.mode ?? 'generated'),
+      extensionDirectory: schema?.app?.ui?.extensions?.directory ? String(schema.app.ui.extensions.directory) : null
+    },
     collections
   };
 }
@@ -158,6 +167,18 @@ function normalizeStudioFormState(input: any): ThsSchema {
         onChainIndexing: Boolean(appIn.features?.onChainIndexing),
         indexer: Boolean(appIn.features?.indexer),
         delegation: Boolean(appIn.features?.delegation)
+      },
+      ui: {
+        homePage: {
+          mode: appIn.ui?.homePage?.mode === 'custom' ? 'custom' : 'generated'
+        },
+        extensions:
+          appIn.ui?.extensions && typeof appIn.ui.extensions === 'object'
+            ? {
+                directory:
+                  appIn.ui.extensions.directory == null ? undefined : String(appIn.ui.extensions.directory)
+              }
+            : undefined
       }
     },
     collections: collectionsIn.map((c: any) => {
@@ -180,7 +201,20 @@ function normalizeStudioFormState(input: any): ThsSchema {
           decimals: f?.decimals == null || f?.decimals === '' ? undefined : Number(f.decimals),
           default: f?.default,
           validation: f?.validation && typeof f.validation === 'object' ? f.validation : undefined,
-          ui: f?.ui && typeof f.ui === 'object' ? f.ui : undefined
+          ui:
+            f?.ui && typeof f.ui === 'object'
+              ? {
+                  ...(f.ui || {}),
+                  component:
+                    f.ui.component === 'externalLink'
+                      ? 'externalLink'
+                      : f.ui.component === 'default'
+                        ? 'default'
+                        : undefined,
+                  label: f.ui.label == null ? undefined : String(f.ui.label),
+                  target: f.ui.target === '_self' ? '_self' : f.ui.target === '_blank' ? '_blank' : undefined
+                }
+              : undefined
         })),
         createRules: {
           required: Array.isArray(createRules.required) ? createRules.required.map((x: any) => String(x)) : [],
@@ -631,7 +665,13 @@ function renderStudioHtml(): string {
       state = {
         thsVersion: '2025-12',
         schemaVersion: '0.0.1',
-        app: { name: 'My App', slug: 'my-app', description: '', features: { uploads: false, onChainIndexing: true, indexer: false, delegation: false } },
+        app: {
+          name: 'My App',
+          slug: 'my-app',
+          description: '',
+          features: { uploads: false, onChainIndexing: true, indexer: false, delegation: false },
+          ui: { homePage: { mode: 'generated' }, extensions: {} }
+        },
         collections: [],
         metadata: {}
       };
@@ -653,7 +693,7 @@ function renderStudioHtml(): string {
     }
 
     function makeField() {
-      return { name: 'field', type: 'string', required: false, decimals: null };
+      return { name: 'field', type: 'string', required: false, decimals: null, ui: { component: 'default', label: '', target: '_blank' } };
     }
 
     function setPath(path, value) {
@@ -713,6 +753,11 @@ function renderStudioHtml(): string {
                 '<div><label>Name</label><input type=\"text\" data-bind=\"collections.' + ci + '.fields.' + fi + '.name\" value=\"' + esc(f.name) + '\"></div>' +
                 '<div><label>Type</label><select data-bind=\"collections.' + ci + '.fields.' + fi + '.type\">' + fieldTypes.map((t) => opt(t, f.type)).join('') + '</select></div>' +
                 '<div><label>Decimals</label><input type=\"number\" data-bind=\"collections.' + ci + '.fields.' + fi + '.decimals\" value=\"' + esc(f.decimals == null ? '' : f.decimals) + '\"></div>' +
+              '</div>' +
+              '<div class=\"grid3\">' +
+                '<div><label>UI component</label><select data-bind=\"collections.' + ci + '.fields.' + fi + '.ui.component\">' + opt('default', f.ui?.component || 'default') + opt('externalLink', f.ui?.component || 'default') + '</select></div>' +
+                '<div><label>UI label</label><input type=\"text\" data-bind=\"collections.' + ci + '.fields.' + fi + '.ui.label\" value=\"' + esc(f.ui?.label || '') + '\"></div>' +
+                '<div><label>Link target</label><select data-bind=\"collections.' + ci + '.fields.' + fi + '.ui.target\">' + opt('_blank', f.ui?.target || '_blank') + opt('_self', f.ui?.target || '_blank') + '</select></div>' +
               '</div>' +
               '<label><input type=\"checkbox\" data-bind-check=\"collections.' + ci + '.fields.' + fi + '.required\" ' + (f.required ? 'checked' : '') + '> required</label> ' +
               '<button data-action=\"del-field\" data-ci=\"' + ci + '\" data-fi=\"' + fi + '\">Remove</button>' +
@@ -776,6 +821,10 @@ function renderStudioHtml(): string {
         '<label><input type=\"checkbox\" data-bind-check=\"app.features.onChainIndexing\" ' + (state.app?.features?.onChainIndexing ? 'checked' : '') + '> onChainIndexing</label>' +
         '<label><input type=\"checkbox\" data-bind-check=\"app.features.indexer\" ' + (state.app?.features?.indexer ? 'checked' : '') + '> indexer</label>' +
         '<label><input type=\"checkbox\" data-bind-check=\"app.features.delegation\" ' + (state.app?.features?.delegation ? 'checked' : '') + '> delegation</label></div>' +
+        '<div class=\"sectionTitle\">UI</div><div class=\"grid2\">' +
+        '<div><label>home page mode</label><select data-bind=\"app.ui.homePage.mode\">' + opt('generated', state.app?.ui?.homePage?.mode || 'generated') + opt('custom', state.app?.ui?.homePage?.mode || 'generated') + '</select></div>' +
+        '<div><label>extensions directory</label><input type=\"text\" data-bind=\"app.ui.extensions.directory\" value=\"' + esc(state.app?.ui?.extensions?.directory || '') + '\" placeholder=\"ui-overrides\"></div>' +
+        '</div>' +
         '</div>' +
         '<div class=\"card\"><div class=\"sectionTitle\">Collections</div><div>' + collectionsNav + '</div>' + (state.collections.length > 0 ? renderCollectionEditor(c, selectedCollectionIndex) : '<div class=\"muted\">No collections yet.</div>') + '</div>';
 
@@ -1136,6 +1185,39 @@ function materializeCollectionRoutes(uiDir: string, schema: ThsSchema) {
       ].join('\n') + '\n'
     );
   }
+}
+
+function resolveUiExtensionsDir(schema: ThsSchema, schemaPathForHints?: string): string | null {
+  const declared = String(schema.app?.ui?.extensions?.directory ?? '').trim();
+  if (!declared) return null;
+  const baseDir = schemaPathForHints ? path.dirname(path.resolve(schemaPathForHints)) : process.cwd();
+  return path.resolve(baseDir, declared);
+}
+
+function ensureUiCustomizationConfig(schema: ThsSchema, schemaPathForHints?: string) {
+  const extensionsDir = resolveUiExtensionsDir(schema, schemaPathForHints);
+  const homePageMode = schema.app?.ui?.homePage?.mode ?? 'generated';
+
+  if (homePageMode === 'custom') {
+    if (!extensionsDir) {
+      throw new Error('app.ui.homePage.mode is "custom" but app.ui.extensions.directory is not configured.');
+    }
+    const homeCandidates = ['app/page.tsx', 'app/page.jsx', 'app/page.ts', 'app/page.js'].map((relPath) => path.join(extensionsDir, relPath));
+    if (!homeCandidates.some((candidate) => fs.existsSync(candidate))) {
+      throw new Error(`app.ui.homePage.mode is "custom" but no custom home page was found in ${extensionsDir}. Expected app/page.tsx (or js/jsx/ts).`);
+    }
+  }
+
+  if (extensionsDir && !fs.existsSync(extensionsDir)) {
+    throw new Error(`Configured app.ui.extensions.directory does not exist: ${extensionsDir}`);
+  }
+}
+
+function applyUiExtensions(uiDir: string, schema: ThsSchema, schemaPathForHints?: string) {
+  ensureUiCustomizationConfig(schema, schemaPathForHints);
+  const extensionsDir = resolveUiExtensionsDir(schema, schemaPathForHints);
+  if (!extensionsDir) return;
+  copyDir(extensionsDir, uiDir);
 }
 
 function ensureEd25519PrivateKey(key: crypto.KeyObject): crypto.KeyObject {
@@ -2107,6 +2189,8 @@ function buildFromSchema(
       const bakedManifestPath = path.join(uiWorkDir, 'public', '.well-known', 'tokenhost', 'manifest.json');
       if (fs.existsSync(bakedManifestPath)) fs.rmSync(bakedManifestPath, { force: true });
 
+      applyUiExtensions(uiWorkDir, schema, opts.schemaPathForHints);
+
       runPnpmCommand(['install'], { cwd: uiWorkDir });
       runPnpmCommand(['build'], { cwd: uiWorkDir });
 
@@ -2458,6 +2542,9 @@ program
         features: {
           uploads: false,
           onChainIndexing: true
+        },
+        ui: {
+          homePage: { mode: 'generated' }
         }
       },
       collections: [
@@ -2923,6 +3010,7 @@ program
     if (opts.ui) {
       const templateDir = resolveNextExportUiTemplateDir();
       const uiDir = path.join(outDir, 'ui');
+      fs.rmSync(uiDir, { recursive: true, force: true });
       copyDir(templateDir, uiDir);
 
       const thsTsPath = path.join(uiDir, 'src', 'generated', 'ths.ts');
@@ -2938,6 +3026,8 @@ program
         addGeneratedUiTestScaffold(uiDir, templateDir);
         console.log(`Wrote ui/tests/ (generated app test scaffold)`);
       }
+
+      applyUiExtensions(uiDir, schema, schemaPath);
 
       console.log(`Wrote ui/ (Next.js static export template)`);
     }
