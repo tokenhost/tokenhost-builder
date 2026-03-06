@@ -1193,6 +1193,7 @@ function syncUiOutput(args: {
   schemaPathForHints?: string;
   withTests?: boolean;
   compiledJson: string;
+  manifestJson?: string | null;
 }) {
   const resolvedOutDir = path.resolve(args.outDir);
   const templateDir = resolveNextExportUiTemplateDir();
@@ -1209,6 +1210,12 @@ function syncUiOutput(args: {
   const compiledPublicPath = path.join(uiDir, 'public', 'compiled', 'App.json');
   ensureDir(path.dirname(compiledPublicPath));
   fs.writeFileSync(compiledPublicPath, args.compiledJson);
+
+  if (args.manifestJson) {
+    ensureDir(path.join(uiDir, 'public', '.well-known', 'tokenhost'));
+    fs.writeFileSync(path.join(uiDir, 'public', '.well-known', 'tokenhost', 'manifest.json'), args.manifestJson);
+    fs.writeFileSync(path.join(uiDir, 'public', 'manifest.json'), args.manifestJson);
+  }
 
   if (args.withTests) {
     addGeneratedUiTestScaffold(uiDir, templateDir);
@@ -3064,16 +3071,19 @@ program
     const schema = loadThsSchemaOrThrow(schemaPath);
     const outDir = path.resolve(opts.out);
     const compiledPath = path.join(outDir, 'compiled', 'App.json');
+    const manifestPath = path.join(outDir, 'manifest.json');
     if (!fs.existsSync(compiledPath)) {
       throw new Error(`Missing compiled/App.json in ${outDir}. Run \`th generate\`, \`th build\`, or \`th up\` first.`);
     }
     const compiledJson = fs.readFileSync(compiledPath, 'utf-8');
+    const manifestJson = fs.existsSync(manifestPath) ? fs.readFileSync(manifestPath, 'utf-8') : null;
     syncUiOutput({
       schema,
       outDir,
       schemaPathForHints: schemaPath,
       withTests: opts.withTests,
-      compiledJson
+      compiledJson,
+      manifestJson
     });
   });
 

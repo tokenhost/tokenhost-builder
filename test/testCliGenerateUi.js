@@ -27,6 +27,30 @@ function writeCompiledArtifact(filePath) {
   );
 }
 
+function writeManifest(filePath, overrides = {}) {
+  fs.mkdirSync(path.dirname(filePath), { recursive: true });
+  fs.writeFileSync(
+    filePath,
+    JSON.stringify(
+      {
+        appName: 'Test App',
+        appSlug: 'test-app',
+        ui: { baseUrl: 'http://127.0.0.1:3001/' },
+        deployments: [
+          {
+            chainId: 314159,
+            chainName: 'filecoin_calibration',
+            contractAddress: '0x0000000000000000000000000000000000000001'
+          }
+        ],
+        ...overrides
+      },
+      null,
+      2
+    )
+  );
+}
+
 function runTh(args, cwd) {
   const res = spawnSync('node', [path.resolve('packages/cli/dist/index.js'), ...args], {
     cwd,
@@ -270,6 +294,7 @@ describe('th ui sync', function () {
     const outDir = path.join(dir, 'out');
     writeJson(schemaPath, minimalSchema());
     writeCompiledArtifact(path.join(outDir, 'compiled', 'App.json'));
+    writeManifest(path.join(outDir, 'manifest.json'));
 
     const res = runTh(['ui', 'sync', schemaPath, '--out', outDir], process.cwd());
     expect(res.status, res.stderr || res.stdout).to.equal(0);
@@ -277,6 +302,8 @@ describe('th ui sync', function () {
     expect(fs.existsSync(path.join(outDir, 'ui', 'package.json'))).to.equal(true);
     expect(fs.existsSync(path.join(outDir, 'ui', 'src', 'generated', 'ths.ts'))).to.equal(true);
     expect(fs.existsSync(path.join(outDir, 'ui', 'public', 'compiled', 'App.json'))).to.equal(true);
+    expect(fs.existsSync(path.join(outDir, 'ui', 'public', 'manifest.json'))).to.equal(true);
+    expect(fs.existsSync(path.join(outDir, 'ui', 'public', '.well-known', 'tokenhost', 'manifest.json'))).to.equal(true);
     expect(fs.existsSync(path.join(outDir, 'contracts', 'App.sol'))).to.equal(false);
   });
 
