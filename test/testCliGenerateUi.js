@@ -9,6 +9,24 @@ function writeJson(filePath, value) {
   fs.writeFileSync(filePath, JSON.stringify(value, null, 2));
 }
 
+function writeCompiledArtifact(filePath) {
+  fs.mkdirSync(path.dirname(filePath), { recursive: true });
+  fs.writeFileSync(
+    filePath,
+    JSON.stringify(
+      {
+        contractName: 'App',
+        abi: [],
+        bytecode: '0x00',
+        deployedBytecode: '0x00',
+        compilerProfile: 'default'
+      },
+      null,
+      2
+    )
+  );
+}
+
 function runTh(args, cwd) {
   const res = spawnSync('node', [path.resolve('packages/cli/dist/index.js'), ...args], {
     cwd,
@@ -240,5 +258,70 @@ describe('th generate (UI template)', function () {
     expect(workflow).to.include('TH_SKIP_CONTRACT_TESTS');
     expect(workflow).to.include('TH_SKIP_UI_TESTS');
     expect(workflow).to.include('TH_INSTALL_BROWSER_DEPS');
+  });
+});
+
+describe('th ui sync', function () {
+  this.timeout(180000);
+
+  it('refreshes generated UI from existing compiled artifacts without regenerating contracts', function () {
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'th-ui-sync-'));
+    const schemaPath = path.join(dir, 'schema.json');
+    const outDir = path.join(dir, 'out');
+    writeJson(schemaPath, minimalSchema());
+    writeCompiledArtifact(path.join(outDir, 'compiled', 'App.json'));
+
+    const res = runTh(['ui', 'sync', schemaPath, '--out', outDir], process.cwd());
+    expect(res.status, res.stderr || res.stdout).to.equal(0);
+
+    expect(fs.existsSync(path.join(outDir, 'ui', 'package.json'))).to.equal(true);
+    expect(fs.existsSync(path.join(outDir, 'ui', 'src', 'generated', 'ths.ts'))).to.equal(true);
+    expect(fs.existsSync(path.join(outDir, 'ui', 'public', 'compiled', 'App.json'))).to.equal(true);
+    expect(fs.existsSync(path.join(outDir, 'contracts', 'App.sol'))).to.equal(false);
+  });
+
+  it('replaces stale UI output during sync and reapplies schema-declared overrides', function () {
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'th-ui-sync-overrides-'));
+    const schemaPath = path.join(dir, 'schema.json');
+    const overridesDir = path.join(dir, 'ui-overrides');
+    const outDir = path.join(dir, 'out');
+
+    writeJson(schemaPath, schemaWithUiOverrides());
+    writeCompiledArtifact(path.join(outDir, 'compiled', 'App.json'));
+    fs.mkdirSync(path.join(overridesDir, 'app', 'run'), { recursive: true });
+    fs.writeFileSync(
+      path.join(overridesDir, 'app', 'page.tsx'),
+      "export default function HomePage(){return <div>custom-home-marker</div>;}\n"
+    );
+    fs.writeFileSync(
+      path.join(overridesDir, 'app', 'run', 'page.tsx'),
+      "export default function RunPage(){return <div>custom-run-page</div>;}\n"
+    );
+
+    const first = runTh(['ui', 'sync', schemaPath, '--out', outDir], process.cwd());
+    expect(first.status, first.stderr || first.stdout).to.equal(0);
+
+    const staleFile = path.join(outDir, 'ui', 'app', 'stale-marker.txt');
+    fs.mkdirSync(path.dirname(staleFile), { recursive: true });
+    fs.writeFileSync(staleFile, 'stale');
+
+    const second = runTh(['ui', 'sync', schemaPath, '--out', outDir], process.cwd());
+    expect(second.status, second.stderr || second.stdout).to.equal(0);
+    expect(fs.existsSync(staleFile)).to.equal(false);
+
+    const homePage = fs.readFileSync(path.join(outDir, 'ui', 'app', 'page.tsx'), 'utf-8');
+    expect(homePage).to.include('custom-home-marker');
+    expect(fs.existsSync(path.join(outDir, 'ui', 'app', 'run', 'page.tsx'))).to.equal(true);
+  });
+
+  it('fails clearly when compiled artifacts are missing', function () {
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'th-ui-sync-missing-compiled-'));
+    const schemaPath = path.join(dir, 'schema.json');
+    const outDir = path.join(dir, 'out');
+    writeJson(schemaPath, minimalSchema());
+
+    const res = runTh(['ui', 'sync', schemaPath, '--out', outDir], process.cwd());
+    expect(res.status).to.not.equal(0);
+    expect(res.stderr || res.stdout).to.include('Missing compiled/App.json');
   });
 });

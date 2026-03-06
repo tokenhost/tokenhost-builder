@@ -1187,6 +1187,38 @@ function materializeCollectionRoutes(uiDir: string, schema: ThsSchema) {
   }
 }
 
+function syncUiOutput(args: {
+  schema: ThsSchema;
+  outDir: string;
+  schemaPathForHints?: string;
+  withTests?: boolean;
+  compiledJson: string;
+}) {
+  const resolvedOutDir = path.resolve(args.outDir);
+  const templateDir = resolveNextExportUiTemplateDir();
+  const uiDir = path.join(resolvedOutDir, 'ui');
+
+  fs.rmSync(uiDir, { recursive: true, force: true });
+  copyDir(templateDir, uiDir);
+
+  const thsTsPath = path.join(uiDir, 'src', 'generated', 'ths.ts');
+  ensureDir(path.dirname(thsTsPath));
+  fs.writeFileSync(thsTsPath, renderThsTs(args.schema));
+  materializeCollectionRoutes(uiDir, args.schema);
+
+  const compiledPublicPath = path.join(uiDir, 'public', 'compiled', 'App.json');
+  ensureDir(path.dirname(compiledPublicPath));
+  fs.writeFileSync(compiledPublicPath, args.compiledJson);
+
+  if (args.withTests) {
+    addGeneratedUiTestScaffold(uiDir, templateDir);
+    console.log(`Wrote ui/tests/ (generated app test scaffold)`);
+  }
+
+  applyUiExtensions(uiDir, args.schema, args.schemaPathForHints);
+  console.log(`Wrote ui/ (Next.js static export template)`);
+}
+
 function resolveUiExtensionsDir(schema: ThsSchema, schemaPathForHints?: string): string | null {
   const declared = String(schema.app?.ui?.extensions?.directory ?? '').trim();
   if (!declared) return null;
@@ -3008,32 +3040,41 @@ program
     fs.writeFileSync(path.join(outDir, 'schema.json'), JSON.stringify(schema, null, 2));
 
     if (opts.ui) {
-      const templateDir = resolveNextExportUiTemplateDir();
-      const uiDir = path.join(outDir, 'ui');
-      fs.rmSync(uiDir, { recursive: true, force: true });
-      copyDir(templateDir, uiDir);
-
-      const thsTsPath = path.join(uiDir, 'src', 'generated', 'ths.ts');
-      ensureDir(path.dirname(thsTsPath));
-      fs.writeFileSync(thsTsPath, renderThsTs(schema));
-      materializeCollectionRoutes(uiDir, schema);
-
-      const compiledPublicPath = path.join(uiDir, 'public', 'compiled', 'App.json');
-      ensureDir(path.dirname(compiledPublicPath));
-      fs.writeFileSync(compiledPublicPath, compiledJson);
-
-      if (opts.withTests) {
-        addGeneratedUiTestScaffold(uiDir, templateDir);
-        console.log(`Wrote ui/tests/ (generated app test scaffold)`);
-      }
-
-      applyUiExtensions(uiDir, schema, schemaPath);
-
-      console.log(`Wrote ui/ (Next.js static export template)`);
+      syncUiOutput({
+        schema,
+        outDir,
+        schemaPathForHints: schemaPath,
+        withTests: opts.withTests,
+        compiledJson
+      });
     }
 
     console.log(`Wrote compiled/App.json`);
     console.log(`Wrote ${appSol.path}`);
+  });
+
+program
+  .command('ui')
+  .description('UI-specific commands')
+  .command('sync')
+  .argument('<schema>', 'Path to THS schema JSON file')
+  .option('--out <dir>', 'Output directory', 'artifacts')
+  .option('--with-tests', 'Emit generated app test scaffold', false)
+  .action((schemaPath: string, opts: { out: string; withTests: boolean }) => {
+    const schema = loadThsSchemaOrThrow(schemaPath);
+    const outDir = path.resolve(opts.out);
+    const compiledPath = path.join(outDir, 'compiled', 'App.json');
+    if (!fs.existsSync(compiledPath)) {
+      throw new Error(`Missing compiled/App.json in ${outDir}. Run \`th generate\`, \`th build\`, or \`th up\` first.`);
+    }
+    const compiledJson = fs.readFileSync(compiledPath, 'utf-8');
+    syncUiOutput({
+      schema,
+      outDir,
+      schemaPathForHints: schemaPath,
+      withTests: opts.withTests,
+      compiledJson
+    });
   });
 
 program
