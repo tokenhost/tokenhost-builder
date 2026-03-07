@@ -330,27 +330,27 @@ type SharedThemeTokens = {
 function defaultSharedThemeTokens(): SharedThemeTokens {
   return {
     colors: {
-      bg: '#06122b',
-      bgAlt: '#0a1f45',
-      panel: '#0f2958cc',
-      panelStrong: '#103062',
-      border: '#7eb8ff55',
-      text: '#f3f8ff',
-      muted: '#b6caea',
-      primary: '#4cb1f7',
-      primaryStrong: '#1e8fe0',
-      accent: '#ffc700',
-      success: '#12c26d',
-      danger: '#ff5f63'
+      bg: '#f2f5f7',
+      bgAlt: '#fbfcfd',
+      panel: '#ffffff',
+      panelStrong: '#ffffff',
+      border: '#d6dfeb',
+      text: '#0f1729',
+      muted: '#66758d',
+      primary: '#ff80ff',
+      primaryStrong: '#ff67f5',
+      accent: '#1b9847',
+      success: '#1b9847',
+      danger: '#ef4444'
     },
-    radius: { sm: '10px', md: '14px', lg: '20px' },
-    spacing: { xs: '6px', sm: '10px', md: '16px', lg: '24px', xl: '36px' },
+    radius: { sm: '0px', md: '0px', lg: '0px' },
+    spacing: { xs: '6px', sm: '10px', md: '16px', lg: '24px', xl: '38px' },
     typography: {
       display: '"Montserrat", "Avenir Next", "Segoe UI", sans-serif',
-      body: '"Inter", "Segoe UI", sans-serif',
-      mono: 'ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace'
+      body: '"Montserrat", "Avenir Next", "Segoe UI", sans-serif',
+      mono: '"JetBrains Mono", "SFMono-Regular", Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace'
     },
-    motion: { fast: '120ms', base: '180ms' }
+    motion: { fast: '140ms', base: '220ms' }
   };
 }
 

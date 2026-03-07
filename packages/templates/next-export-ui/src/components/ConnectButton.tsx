@@ -81,29 +81,29 @@ export default function ConnectButton() {
   }
 
   if (!canConnect) {
-    return <span className="badge">No wallet</span>;
+    return <span className="badge controlNote">No wallet</span>;
   }
 
   if (txMode === 'sponsored') return null;
 
   if (!account) {
     return (
-      <div style={{ display: 'flex', flexDirection: 'column', gap: 6, alignItems: 'flex-end' }}>
+      <div className="statusStack">
         <button className="btn primary" onClick={() => void connect()}>
           Connect wallet
         </button>
-        {targetChainId ? <span className="badge">target chain {targetChainId}</span> : null}
-        {status ? <span className="badge">{status}</span> : null}
+        {targetChainId ? <span className="badge controlNote">target chain {targetChainId}</span> : null}
+        {status ? <span className="badge controlNote">{status}</span> : null}
       </div>
     );
   }
 
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', gap: 6, alignItems: 'flex-end' }}>
+    <div className="statusStack">
       <button className="btn" onClick={() => disconnect()} title={account}>
         {shortAddress(account)}
       </button>
-      {targetChainId ? <span className="badge">chain {targetChainId}</span> : null}
+      {targetChainId ? <span className="badge controlNote">chain {targetChainId}</span> : null}
     </div>
   );
 }

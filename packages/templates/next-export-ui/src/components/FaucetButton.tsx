@@ -161,13 +161,13 @@ export default function FaucetButton() {
   if (!enabled) return null;
 
   return (
-    <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+    <div className="statusInline">
       <button className="btn" onClick={() => void requestFaucet()} disabled={busy || Boolean(reason)} title="Local faucet (anvil)">
         {busy ? 'Funding…' : 'Get test ETH'}
       </button>
-      {reason ? <span className="badge">{reason}</span> : null}
+      {reason ? <span className="badge controlNote">{reason}</span> : null}
       {note ? (
-        <span className="badge" title={note} style={{ maxWidth: 240, overflow: 'hidden', textOverflow: 'ellipsis' }}>
+        <span className="badge controlNote" title={note} style={{ maxWidth: 240, overflow: 'hidden', textOverflow: 'ellipsis' }}>
           {note}
         </span>
       ) : null}

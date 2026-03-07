@@ -72,10 +72,10 @@ export default function NetworkStatus() {
 
   return (
     <div className="networkAlert">
-      <div>
+      <div className="networkAlertBody">
         <strong>Wrong network:</strong> wallet on chainId {walletChainId}, app deployment on chainId {targetChainId}.
       </div>
-      <div style={{ display: 'flex', gap: 10, alignItems: 'center' }}>
+      <div className="networkAlertActions">
         <button className="btn danger" disabled={busy} onClick={() => void fixNetwork()}>
           {busy ? 'Switching…' : 'Switch network'}
         </button>

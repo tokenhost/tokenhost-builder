@@ -282,31 +282,33 @@ export default function EditRecordPage(props: { params: { collection: string } }
         <button className="btn" onClick={() => router.push(`/${collectionName}/?mode=view&id=${String(id)}`)}>Back</button>
       </div>
 
-      {fields.map((f) => (
-        <div key={f.name}>
-          <label className="label">{f.name}</label>
-          {f.type === 'bool' ? (
-            <select
-              className="select"
-              value={form[f.name] ?? 'false'}
-              onChange={(e) => setForm((prev) => ({ ...prev, [f.name]: e.target.value }))}
-            >
-              <option value="false">false</option>
-              <option value="true">true</option>
-            </select>
-          ) : (
-            <input
-              className="input"
-              type={inputType(f)}
-              value={form[f.name] ?? ''}
-              onChange={(e) => setForm((prev) => ({ ...prev, [f.name]: e.target.value }))}
-              placeholder={f.type === 'reference' ? 'record id (uint256)' : f.type}
-            />
-          )}
-        </div>
-      ))}
+      <div className="formGrid">
+        {fields.map((f) => (
+          <div key={f.name} className="fieldGroup">
+            <label className="label">{f.name}</label>
+            {f.type === 'bool' ? (
+              <select
+                className="select"
+                value={form[f.name] ?? 'false'}
+                onChange={(e) => setForm((prev) => ({ ...prev, [f.name]: e.target.value }))}
+              >
+                <option value="false">false</option>
+                <option value="true">true</option>
+              </select>
+            ) : (
+              <input
+                className="input"
+                type={inputType(f)}
+                value={form[f.name] ?? ''}
+                onChange={(e) => setForm((prev) => ({ ...prev, [f.name]: e.target.value }))}
+                placeholder={f.type === 'reference' ? 'record id (uint256)' : f.type}
+              />
+            )}
+          </div>
+        ))}
+      </div>
 
-      <div style={{ marginTop: 16, display: 'flex', gap: 10 }}>
+      <div className="actionGroup" style={{ marginTop: 16 }}>
         <button
           className="btn primary"
           onClick={() => void submit()}

@@ -41,6 +41,7 @@ export default function FooterDeploymentMeta() {
 
   return (
     <div className="footerMeta">
+      <span className="eyebrow">/tokenhost/runtime</span>
       <span>Powered by Token Host</span>
       {chainId !== null ? <span className="badge">chain {String(chainId)}</span> : null}
       {address ? (
