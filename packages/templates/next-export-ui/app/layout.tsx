@@ -6,6 +6,7 @@ import Link from 'next/link';
 import ConnectButton from '../src/components/ConnectButton';
 import FaucetButton from '../src/components/FaucetButton';
 import FooterDeploymentMeta from '../src/components/FooterDeploymentMeta';
+import LivingGrid from '../src/components/LivingGrid';
 import NetworkStatus from '../src/components/NetworkStatus';
 import ThemeToggle from '../src/components/ThemeToggle';
 import { ths } from '../src/lib/ths';
@@ -42,10 +43,7 @@ export default function RootLayout(props: { children: React.ReactNode }) {
         <script dangerouslySetInnerHTML={{ __html: themeBootScript }} />
         <div className="siteBackground" aria-hidden="true">
           <div className="siteGridLayer" />
-          <div className="siteGlow siteGlowA" />
-          <div className="siteGlow siteGlowB" />
-          <div className="siteBeacon siteBeaconA" />
-          <div className="siteBeacon siteBeaconB" />
+          <LivingGrid />
         </div>
         <div className="container">
           <header className="navShell">

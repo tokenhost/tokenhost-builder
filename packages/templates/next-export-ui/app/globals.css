@@ -1,37 +1,37 @@
 @property --th-boil-x1 {
   syntax: '<percentage>';
   inherits: false;
-  initial-value: 12%;
+  initial-value: 10%;
 }
 
 @property --th-boil-y1 {
   syntax: '<percentage>';
   inherits: false;
-  initial-value: 18%;
+  initial-value: 20%;
 }
 
 @property --th-boil-x2 {
   syntax: '<percentage>';
   inherits: false;
-  initial-value: 88%;
+  initial-value: 90%;
 }
 
 @property --th-boil-y2 {
   syntax: '<percentage>';
   inherits: false;
-  initial-value: 76%;
+  initial-value: 80%;
 }
 
 @property --th-boil-x3 {
   syntax: '<percentage>';
   inherits: false;
-  initial-value: 54%;
+  initial-value: 50%;
 }
 
 @property --th-boil-y3 {
   syntax: '<percentage>';
   inherits: false;
-  initial-value: 52%;
+  initial-value: 50%;
 }
 
 :root {
@@ -131,9 +131,9 @@ body {
 
 html[data-theme='dark'] body {
   background-image:
-    radial-gradient(circle at 50% 24%, color-mix(in srgb, var(--th-glow-left) 70%, transparent) 0, transparent 64%),
-    linear-gradient(to right, var(--th-grid) 1px, transparent 1px),
-    linear-gradient(to bottom, var(--th-grid) 1px, transparent 1px);
+    radial-gradient(circle at 50% 50%, color-mix(in srgb, var(--th-primary) 5%, transparent), transparent 85%),
+    linear-gradient(to right, color-mix(in srgb, var(--th-primary) 5%, transparent) 1px, transparent 1px),
+    linear-gradient(to bottom, color-mix(in srgb, var(--th-primary) 5%, transparent) 1px, transparent 1px);
   background-size: 100% 100%, 30px 30px, 30px 30px;
 }
 
@@ -169,130 +169,59 @@ svg {
 }
 
 .siteGridLayer {
-  --th-grid-layer-min-opacity: 0.38;
-  --th-grid-layer-max-opacity: 0.54;
   inset: 0;
   position: absolute;
+  background-image:
+    linear-gradient(to right, color-mix(in srgb, var(--th-primary) 10%, transparent) 29px, transparent 29px),
+    linear-gradient(to bottom, color-mix(in srgb, var(--th-primary) 10%, transparent) 29px, transparent 29px),
+    linear-gradient(to right, color-mix(in srgb, var(--th-primary) 90%, transparent) 2px, transparent 2px),
+    linear-gradient(to bottom, color-mix(in srgb, var(--th-primary) 90%, transparent) 2px, transparent 2px);
+  background-repeat: repeat;
+  background-size: 30px 30px, 30px 30px, 30px 30px, 30px 30px;
   -webkit-mask-image:
-    radial-gradient(circle at var(--th-boil-x1) var(--th-boil-y1), black 0, transparent 52%),
-    radial-gradient(circle at var(--th-boil-x2) var(--th-boil-y2), black 0, transparent 54%),
-    radial-gradient(circle at var(--th-boil-x3) var(--th-boil-y3), black 0, transparent 62%);
+    radial-gradient(circle at var(--th-boil-x1) var(--th-boil-y1), black, transparent 55%),
+    radial-gradient(circle at var(--th-boil-x2) var(--th-boil-y2), black, transparent 55%),
+    radial-gradient(circle at var(--th-boil-x3) var(--th-boil-y3), black, transparent 65%);
   mask-image:
-    radial-gradient(circle at var(--th-boil-x1) var(--th-boil-y1), black 0, transparent 52%),
-    radial-gradient(circle at var(--th-boil-x2) var(--th-boil-y2), black 0, transparent 54%),
-    radial-gradient(circle at var(--th-boil-x3) var(--th-boil-y3), black 0, transparent 62%);
+    radial-gradient(circle at var(--th-boil-x1) var(--th-boil-y1), black, transparent 55%),
+    radial-gradient(circle at var(--th-boil-x2) var(--th-boil-y2), black, transparent 55%),
+    radial-gradient(circle at var(--th-boil-x3) var(--th-boil-y3), black, transparent 65%);
+  -webkit-mask-composite: source-over;
+  mask-composite: add;
   -webkit-mask-repeat: no-repeat;
   mask-repeat: no-repeat;
   animation:
     boilSpotOne 13s ease-in-out infinite alternate,
     boilSpotTwo 17s ease-in-out infinite alternate,
     boilSpotThree 19s ease-in-out infinite alternate,
-    gridBreathe 7s ease-in-out infinite;
+    gridBreathe 6s ease-in-out infinite;
 }
 
 html[data-theme='dark'] .siteGridLayer {
-  --th-grid-layer-min-opacity: 0.44;
-  --th-grid-layer-max-opacity: 0.62;
   background-image:
-    linear-gradient(to right, var(--th-grid-strong) 1px, transparent 1px),
-    linear-gradient(to bottom, var(--th-grid-strong) 1px, transparent 1px);
-  background-size: 30px 30px;
+    linear-gradient(to right, color-mix(in srgb, var(--th-primary) 50%, transparent) 1px, transparent 1px),
+    linear-gradient(to bottom, color-mix(in srgb, var(--th-primary) 50%, transparent) 1px, transparent 1px);
+  background-size: 30px 30px, 30px 30px;
 }
 
 html[data-theme='light'] .siteGridLayer {
-  --th-grid-layer-min-opacity: 0.34;
-  --th-grid-layer-max-opacity: 0.52;
   background-image:
-    linear-gradient(to right, var(--th-grid-strong) 1px, transparent 1px),
-    linear-gradient(to bottom, var(--th-grid-strong) 1px, transparent 1px);
-  background-size: 30px 30px;
+    linear-gradient(to right, color-mix(in srgb, var(--th-primary) 10%, transparent) 29px, transparent 29px),
+    linear-gradient(to bottom, color-mix(in srgb, var(--th-primary) 10%, transparent) 29px, transparent 29px),
+    linear-gradient(to right, color-mix(in srgb, var(--th-primary) 90%, transparent) 2px, transparent 2px),
+    linear-gradient(to bottom, color-mix(in srgb, var(--th-primary) 90%, transparent) 2px, transparent 2px);
+  background-size: 30px 30px, 30px 30px, 30px 30px, 30px 30px;
 }
 
-.siteGlow {
-  border-radius: 999px;
-  filter: blur(70px);
+.siteLivingGridCanvas {
+  inset: 0;
+  opacity: 0.7;
+  pointer-events: none;
   position: absolute;
 }
 
-.siteGlowA {
-  background: var(--th-glow-left);
-  height: 18rem;
-  left: 2rem;
-  top: 58%;
-  width: 18rem;
-}
-
-.siteGlowB {
-  background: var(--th-glow-right);
-  height: 24rem;
-  right: 5%;
-  top: 18%;
-  width: 24rem;
-}
-
-.siteBeacon {
-  opacity: 0.8;
-  position: absolute;
-}
-
-.siteBeacon::before,
-.siteBeacon::after {
-  content: '';
-  position: absolute;
-}
-
-.siteBeacon::before {
-  left: 50%;
-  top: 0;
-  transform: translateX(-50%);
-  width: 1px;
-}
-
-.siteBeacon::after {
-  left: 0;
-  top: 50%;
-  transform: translateY(-50%);
-  height: 1px;
-}
-
-.siteBeaconA {
-  bottom: 14%;
-  height: 110px;
-  left: 10%;
-  width: 110px;
-}
-
-.siteBeaconB {
-  height: 120px;
-  right: 9%;
-  top: 14%;
-  width: 120px;
-}
-
-html[data-theme='light'] .siteBeaconA::before,
-html[data-theme='light'] .siteBeaconA::after {
-  background: linear-gradient(180deg, transparent, hsl(190 100% 50% / 0.42), transparent);
-  box-shadow: 0 0 16px hsl(190 100% 50% / 0.3);
-}
-
-html[data-theme='light'] .siteBeaconB::before,
-html[data-theme='light'] .siteBeaconB::after {
-  background: linear-gradient(180deg, transparent, hsl(300 100% 75% / 0.5), transparent);
-  box-shadow: 0 0 18px hsl(300 100% 75% / 0.24);
-}
-
-html[data-theme='dark'] .siteBeacon::before,
-html[data-theme='dark'] .siteBeacon::after {
-  background: linear-gradient(180deg, transparent, hsl(190 100% 50% / 0.8), transparent);
-  box-shadow: 0 0 18px hsl(190 100% 50% / 0.38);
-}
-
-.siteBeacon::before {
-  height: 100%;
-}
-
-.siteBeacon::after {
-  width: 100%;
+html[data-theme='dark'] .siteLivingGridCanvas {
+  opacity: 0.9;
 }
 
 .container {
@@ -1314,47 +1243,47 @@ html[data-theme='dark'] .btn.primary {
 @keyframes gridBreathe {
   0%,
   100% {
-    opacity: var(--th-grid-layer-min-opacity);
+    opacity: 0.2;
   }
 
   50% {
-    opacity: var(--th-grid-layer-max-opacity);
+    opacity: 0.5;
   }
 }
 
 @keyframes boilSpotOne {
   0% {
-    --th-boil-x1: 12%;
-    --th-boil-y1: 18%;
+    --th-boil-x1: 10%;
+    --th-boil-y1: 20%;
   }
 
   100% {
-    --th-boil-x1: 78%;
-    --th-boil-y1: 36%;
+    --th-boil-x1: 80%;
+    --th-boil-y1: 40%;
   }
 }
 
 @keyframes boilSpotTwo {
   0% {
-    --th-boil-x2: 88%;
-    --th-boil-y2: 76%;
+    --th-boil-x2: 90%;
+    --th-boil-y2: 80%;
   }
 
   100% {
-    --th-boil-x2: 24%;
-    --th-boil-y2: 28%;
+    --th-boil-x2: 20%;
+    --th-boil-y2: 30%;
   }
 }
 
 @keyframes boilSpotThree {
   0% {
-    --th-boil-x3: 54%;
-    --th-boil-y3: 52%;
+    --th-boil-x3: 40%;
+    --th-boil-y3: 40%;
   }
 
   100% {
-    --th-boil-x3: 64%;
-    --th-boil-y3: 68%;
+    --th-boil-x3: 60%;
+    --th-boil-y3: 60%;
   }
 }
 
