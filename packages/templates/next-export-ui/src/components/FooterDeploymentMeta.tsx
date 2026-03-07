@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useEffect, useState } from 'react';
+import React, { type ReactNode, useEffect, useState } from 'react';
 
 import { explorerAddressUrl } from '../lib/chains';
 import { fetchManifest, getPrimaryDeployment } from '../lib/manifest';
@@ -10,7 +10,7 @@ function shortAddress(addr: string): string {
   return `${addr.slice(0, 8)}…${addr.slice(-6)}`;
 }
 
-export default function FooterDeploymentMeta() {
+export default function FooterDeploymentMeta(props: { children?: ReactNode }) {
   const [chainId, setChainId] = useState<number | null>(null);
   const [address, setAddress] = useState<string | null>(null);
 
@@ -43,6 +43,7 @@ export default function FooterDeploymentMeta() {
     <div className="footerMeta">
       <span className="eyebrow">/tokenhost/runtime</span>
       <span>Powered by Token Host</span>
+      {props.children}
       {chainId !== null ? <span className="badge">chain {String(chainId)}</span> : null}
       {address ? (
         link ? (

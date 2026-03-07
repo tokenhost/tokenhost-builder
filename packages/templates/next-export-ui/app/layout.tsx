@@ -58,7 +58,6 @@ export default function RootLayout(props: { children: React.ReactNode }) {
                       <span className="brandWordBase">token</span>
                       <span className="brandWordAccent">host</span>
                     </span>
-                    <span className="badge">schema {ths.schemaVersion}</span>
                   </div>
                 </div>
               </Link>
@@ -108,7 +107,9 @@ export default function RootLayout(props: { children: React.ReactNode }) {
                   </div>
                 </div>
               </div>
-              <FooterDeploymentMeta />
+              <FooterDeploymentMeta>
+                <span className="badge">schema {ths.schemaVersion}</span>
+              </FooterDeploymentMeta>
             </div>
           </footer>
         </div>
