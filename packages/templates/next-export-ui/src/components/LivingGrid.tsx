@@ -15,6 +15,8 @@ type SmoothEntity = {
   wavePhase: number;
 };
 
+const INACTIVITY_TIMEOUT_MS = 15000;
+
 function resolvePrimaryColor(): string {
   if (typeof window === 'undefined') return 'hsl(190 100% 50%)';
   const raw = getComputedStyle(document.documentElement).getPropertyValue('--th-primary').trim();
@@ -38,6 +40,8 @@ export default function LivingGrid() {
     if (!context) return;
 
     let animationFrameId = 0;
+    let inactivityTimeoutId = 0;
+    let isAnimating = false;
     const gridSize = 30;
 
     function resize() {
@@ -114,6 +118,16 @@ export default function LivingGrid() {
           mouseRef.current.accumulator = 0;
         }
       }
+    }
+
+    function stopAnimation() {
+      if (!isAnimating) return;
+      isAnimating = false;
+      if (animationFrameId) {
+        window.cancelAnimationFrame(animationFrameId);
+        animationFrameId = 0;
+      }
+      lastTimeRef.current = 0;
     }
 
     function animate(time: number) {
@@ -194,15 +208,67 @@ export default function LivingGrid() {
       animationFrameId = window.requestAnimationFrame(animate);
     }
 
+    function startAnimation() {
+      if (isAnimating) return;
+      if (document.visibilityState !== 'visible') return;
+      isAnimating = true;
+      animationFrameId = window.requestAnimationFrame(animate);
+    }
+
+    function scheduleInactivityPause() {
+      if (inactivityTimeoutId) window.clearTimeout(inactivityTimeoutId);
+      inactivityTimeoutId = window.setTimeout(() => {
+        stopAnimation();
+      }, INACTIVITY_TIMEOUT_MS);
+    }
+
+    function registerActivity() {
+      if (document.visibilityState !== 'visible') return;
+      scheduleInactivityPause();
+      startAnimation();
+    }
+
+    function handleMouseMove(event: MouseEvent) {
+      updateMouse(event);
+      registerActivity();
+    }
+
+    function handleGenericActivity() {
+      registerActivity();
+    }
+
+    function handleVisibilityChange() {
+      if (document.visibilityState === 'visible') {
+        registerActivity();
+        return;
+      }
+      stopAnimation();
+    }
+
     window.addEventListener('resize', resize);
-    window.addEventListener('mousemove', updateMouse);
+    window.addEventListener('mousemove', handleMouseMove);
+    window.addEventListener('mousedown', handleGenericActivity);
+    window.addEventListener('wheel', handleGenericActivity, { passive: true });
+    window.addEventListener('touchstart', handleGenericActivity, { passive: true });
+    window.addEventListener('keydown', handleGenericActivity);
+    window.addEventListener('focus', handleGenericActivity);
+    window.addEventListener('blur', stopAnimation);
+    document.addEventListener('visibilitychange', handleVisibilityChange);
     resize();
-    animationFrameId = window.requestAnimationFrame(animate);
+    registerActivity();
 
     return () => {
       window.removeEventListener('resize', resize);
-      window.removeEventListener('mousemove', updateMouse);
-      window.cancelAnimationFrame(animationFrameId);
+      window.removeEventListener('mousemove', handleMouseMove);
+      window.removeEventListener('mousedown', handleGenericActivity);
+      window.removeEventListener('wheel', handleGenericActivity);
+      window.removeEventListener('touchstart', handleGenericActivity);
+      window.removeEventListener('keydown', handleGenericActivity);
+      window.removeEventListener('focus', handleGenericActivity);
+      window.removeEventListener('blur', stopAnimation);
+      document.removeEventListener('visibilitychange', handleVisibilityChange);
+      if (inactivityTimeoutId) window.clearTimeout(inactivityTimeoutId);
+      stopAnimation();
     };
   }, []);
 
