@@ -1198,6 +1198,7 @@ function syncUiOutput(args: {
   const resolvedOutDir = path.resolve(args.outDir);
   const templateDir = resolveNextExportUiTemplateDir();
   const uiDir = path.join(resolvedOutDir, 'ui');
+  const preservedUiState = captureUiPackageManagerState(uiDir);
 
   fs.rmSync(uiDir, { recursive: true, force: true });
   copyDir(templateDir, uiDir);
@@ -1223,7 +1224,56 @@ function syncUiOutput(args: {
   }
 
   applyUiExtensions(uiDir, args.schema, args.schemaPathForHints);
+  restoreUiPackageManagerState(uiDir, preservedUiState);
   console.log(`Wrote ui/ (Next.js static export template)`);
+}
+
+type UiPackageManagerState = {
+  priorPackageJson: string | null;
+  lockfiles: Array<{ name: string; contents: Buffer }>;
+  nodeModulesDir: string | null;
+};
+
+function captureUiPackageManagerState(uiDir: string): UiPackageManagerState {
+  const packageJsonPath = path.join(uiDir, 'package.json');
+  const lockfileNames = ['pnpm-lock.yaml', 'package-lock.json', 'yarn.lock', 'bun.lockb', 'bun.lock'];
+  const lockfiles: Array<{ name: string; contents: Buffer }> = [];
+  for (const name of lockfileNames) {
+    const filePath = path.join(uiDir, name);
+    if (!fs.existsSync(filePath) || !fs.statSync(filePath).isFile()) continue;
+    lockfiles.push({ name, contents: fs.readFileSync(filePath) });
+  }
+
+  let nodeModulesDir: string | null = null;
+  const nodeModulesPath = path.join(uiDir, 'node_modules');
+  if (fs.existsSync(nodeModulesPath) && fs.statSync(nodeModulesPath).isDirectory()) {
+    nodeModulesDir = fs.mkdtempSync(path.join(os.tmpdir(), 'th-ui-sync-node-modules-'));
+    fs.renameSync(nodeModulesPath, nodeModulesDir);
+  }
+
+  return {
+    priorPackageJson: fs.existsSync(packageJsonPath) ? fs.readFileSync(packageJsonPath, 'utf-8') : null,
+    lockfiles,
+    nodeModulesDir
+  };
+}
+
+function restoreUiPackageManagerState(uiDir: string, state: UiPackageManagerState) {
+  for (const lockfile of state.lockfiles) {
+    fs.writeFileSync(path.join(uiDir, lockfile.name), lockfile.contents);
+  }
+
+  if (!state.nodeModulesDir) return;
+
+  const currentPackageJsonPath = path.join(uiDir, 'package.json');
+  const currentPackageJson = fs.existsSync(currentPackageJsonPath) ? fs.readFileSync(currentPackageJsonPath, 'utf-8') : null;
+  if (state.priorPackageJson !== null && currentPackageJson === state.priorPackageJson) {
+    fs.rmSync(path.join(uiDir, 'node_modules'), { recursive: true, force: true });
+    fs.renameSync(state.nodeModulesDir, path.join(uiDir, 'node_modules'));
+    return;
+  }
+
+  fs.rmSync(state.nodeModulesDir, { recursive: true, force: true });
 }
 
 function resolveUiExtensionsDir(schema: ThsSchema, schemaPathForHints?: string): string | null {
