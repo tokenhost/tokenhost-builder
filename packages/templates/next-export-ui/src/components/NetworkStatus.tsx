@@ -77,7 +77,7 @@ export default function NetworkStatus() {
   return (
     <div className="networkAlert">
       <div className="networkAlertBody">
-        <strong>Wrong network:</strong> wallet on chainId {walletChainId}, app deployment on chainId {targetChainId}.
+        <strong>Wrong network:</strong> wallet on chainId {walletChainId}, app deployment on chainId {targetChainId}. Read-only views still use public RPC; switch the wallet network only if you want to submit writes.
       </div>
       <div className="networkAlertActions">
         <button className="btn danger" disabled={busy} onClick={() => void fixNetwork()}>

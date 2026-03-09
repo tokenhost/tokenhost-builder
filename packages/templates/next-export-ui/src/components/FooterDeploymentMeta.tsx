@@ -44,6 +44,7 @@ export default function FooterDeploymentMeta(props: { children?: ReactNode }) {
       <span className="eyebrow">/tokenhost/runtime</span>
       <span>Powered by Token Host</span>
       {props.children}
+      <span className="badge">public RPC reads</span>
       {chainId !== null ? <span className="badge">chain {String(chainId)}</span> : null}
       {address ? (
         link ? (

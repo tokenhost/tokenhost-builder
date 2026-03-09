@@ -73,9 +73,9 @@ export default function HomePage() {
         </div>
         <div className="card featureCard">
           <div className="eyebrow">/wallet</div>
-          <h3>Wallet-native actions</h3>
+          <h3>Public reads, wallet-native writes</h3>
           <p className="muted">
-            Create, update, delete, and transfer flows stay inside the generated UI with clean chain and transaction feedback.
+            Read-only pages use the deployment chain's public RPC when available, so browsing does not require MetaMask and does not depend on the wallet being on the right network. Create, update, delete, and transfer flows still use the wallet with clean chain and transaction feedback.
           </p>
         </div>
         <div className="card featureCard">
