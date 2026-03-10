@@ -9,8 +9,8 @@ importers:
   .:
     dependencies:
       config:
-        specifier: ^3.3.9
-        version: 3.3.12
+        specifier: ^4.2.1
+        version: 4.2.1
       hbs:
         specifier: ^4.1.1
         version: 4.2.0
@@ -792,9 +792,9 @@ packages:
   confbox@0.1.8:
     resolution: {integrity: sha512-RMtmw0iFkeR4YV+fUOSucriAQNb9g8zFR52MWCtl+cCZOFRNL6zeB395vPzFhEjjn4fMxXudmELnl/KF/WrK6w==}
 
-  config@3.3.12:
-    resolution: {integrity: sha512-Vmx389R/QVM3foxqBzXO8t2tUikYZP64Q6vQxGrsMpREeJc/aWRnPRERXWsYzOHAumx/AOoILWe6nU3ZJL+6Sw==}
-    engines: {node: '>= 10.0.0'}
+  config@4.2.1:
+    resolution: {integrity: sha512-i6zeN/G0RG0x45Xd0mEYDojE/x/ISSeaFWIbCTVvTI1YctI5nE1ywQlZuTR4O/QEa05yQqVgPLxUthY0UbnpsA==}
+    engines: {node: '>= 20.0.0'}
 
   consola@3.4.2:
     resolution: {integrity: sha512-5IKcdX0nnYavi6G7TtOhwkYzyjfJlatbjMjuLSfE2kYT5pMDOilZ4OvMhi637CcDICTmz3wARPoyhqyX1Y+XvA==}
@@ -3002,7 +3002,7 @@ snapshots:
 
   confbox@0.1.8: {}
 
-  config@3.3.12:
+  config@4.2.1:
     dependencies:
       json5: 2.2.3
 
