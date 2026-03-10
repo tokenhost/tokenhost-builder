@@ -32,7 +32,9 @@ export default function DeleteRecordPage(props: { params: { collection: string }
   const idParam = search.get('id');
   const rpcOverride = search.get('rpc') ?? undefined;
 
-  const [loading, setLoading] = useState(true);
+  const [bootstrapping, setBootstrapping] = useState(true);
+  const [recordLoading, setRecordLoading] = useState(false);
+  const [initialRecordResolved, setInitialRecordResolved] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [status, setStatus] = useState<string | null>(null);
   const [txPhase, setTxPhase] = useState<TxPhase>('idle');
@@ -57,7 +59,8 @@ export default function DeleteRecordPage(props: { params: { collection: string }
 
   useEffect(() => {
     async function boot() {
-      setLoading(true);
+      setBootstrapping(true);
+      setInitialRecordResolved(false);
       setError(null);
       try {
         const manifest = await fetchManifest();
@@ -79,7 +82,7 @@ export default function DeleteRecordPage(props: { params: { collection: string }
       } catch (e: any) {
         setError(String(e?.message ?? e));
       } finally {
-        setLoading(false);
+        setBootstrapping(false);
       }
     }
     void boot();
@@ -87,8 +90,11 @@ export default function DeleteRecordPage(props: { params: { collection: string }
 
   const appAddress = deployment?.deploymentEntrypointAddress as `0x${string}` | undefined;
 
-  async function fetchRecord() {
+  async function fetchRecord(options?: { initial?: boolean }) {
     if (!publicClient || !abi || !appAddress || id === null) return;
+    const isInitial = options?.initial === true;
+    if (isInitial) setInitialRecordResolved(false);
+    setRecordLoading(true);
     setError(null);
     try {
       assertAbiFunction(abi, fnGet(collectionName), collectionName);
@@ -101,11 +107,14 @@ export default function DeleteRecordPage(props: { params: { collection: string }
       setRecord(r);
     } catch (e: any) {
       setError(String(e?.message ?? e));
+    } finally {
+      setRecordLoading(false);
+      if (isInitial) setInitialRecordResolved(true);
     }
   }
 
   useEffect(() => {
-    void fetchRecord();
+    void fetchRecord({ initial: true });
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [publicClient, abi, appAddress, idParam]);
 
@@ -170,7 +179,7 @@ export default function DeleteRecordPage(props: { params: { collection: string }
     );
   }
 
-  if (loading && !record) {
+  if ((bootstrapping || (recordLoading && !initialRecordResolved)) && !record) {
     return (
       <div className="card">
         <h2>Loading…</h2>
@@ -219,6 +228,15 @@ export default function DeleteRecordPage(props: { params: { collection: string }
           <button className="btn" onClick={() => void fetchRecord()}>Retry</button>
           <button className="btn" onClick={() => router.push(`/${collectionName}/?mode=view&id=${String(id)}`)}>Back</button>
         </div>
+      </div>
+    );
+  }
+
+  if (initialRecordResolved && !record) {
+    return (
+      <div className="card">
+        <h2>Not found</h2>
+        <div className="muted">No record returned.</div>
       </div>
     );
   }
