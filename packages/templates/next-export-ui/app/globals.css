@@ -36,7 +36,7 @@
 
 :root {
   color-scheme: light;
-  --th-bg: hsl(210 20% 96%);
+  --th-bg: hsl(0 0% 100%);
   --th-bg-alt: hsl(210 30% 98%);
   --th-panel: hsl(0 0% 100%);
   --th-panel-strong: hsl(0 0% 100%);
@@ -51,7 +51,7 @@
   --th-accent: hsl(142 70% 35%);
   --th-success: hsl(142 70% 35%);
   --th-danger: hsl(0 84% 60%);
-  --th-grid: hsl(222 47% 11% / 0.06);
+  --th-grid: hsl(214 32% 88% / 0.35);
   --th-grid-strong: hsl(300 100% 75% / 0.26);
   --th-glow-left: hsl(190 100% 50% / 0.18);
   --th-glow-right: hsl(300 100% 75% / 0.2);
@@ -206,10 +206,10 @@ html[data-theme='dark'] .siteGridLayer {
 
 html[data-theme='light'] .siteGridLayer {
   background-image:
-    linear-gradient(to right, color-mix(in srgb, var(--th-primary) 10%, transparent) 29px, transparent 29px),
-    linear-gradient(to bottom, color-mix(in srgb, var(--th-primary) 10%, transparent) 29px, transparent 29px),
-    linear-gradient(to right, color-mix(in srgb, var(--th-primary) 90%, transparent) 2px, transparent 2px),
-    linear-gradient(to bottom, color-mix(in srgb, var(--th-primary) 90%, transparent) 2px, transparent 2px);
+    linear-gradient(to right, color-mix(in srgb, var(--th-border) 16%, transparent) 29px, transparent 29px),
+    linear-gradient(to bottom, color-mix(in srgb, var(--th-border) 16%, transparent) 29px, transparent 29px),
+    linear-gradient(to right, color-mix(in srgb, var(--th-border) 75%, transparent) 2px, transparent 2px),
+    linear-gradient(to bottom, color-mix(in srgb, var(--th-border) 75%, transparent) 2px, transparent 2px);
   background-size: 30px 30px, 30px 30px, 30px 30px, 30px 30px;
 }
 
