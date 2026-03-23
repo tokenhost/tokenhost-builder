@@ -56,6 +56,13 @@ export async function submitWriteTx(args: {
     args.onHash?.(hash);
     args.onPhase?.('submitted');
     args.setStatus?.(`Submitted ${hash.slice(0, 10)}…`);
+    const relayReceipt = body.receipt ?? null;
+    if (relayReceipt) {
+      args.onPhase?.('confirmed');
+      args.setStatus?.(`Confirmed ${hash.slice(0, 10)}…`);
+      return { hash, receipt: relayReceipt };
+    }
+
     args.onPhase?.('confirming');
     args.setStatus?.('Waiting for confirmation…');
     const receipt = await args.publicClient.waitForTransactionReceipt({ hash });

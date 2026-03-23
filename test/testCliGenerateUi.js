@@ -176,6 +176,10 @@ describe('th generate (UI template)', function () {
     const generatedTokens = fs.readFileSync(path.join(outDir, 'ui', 'src', 'theme', 'tokens.json'), 'utf-8');
     expect(generatedTokens).to.equal(readTemplateThemeTokens());
     expect(generatedTokens).to.include('"primary": "#00d4ff"');
+
+    const generatedTx = fs.readFileSync(path.join(outDir, 'ui', 'src', 'lib', 'tx.ts'), 'utf-8');
+    expect(generatedTx).to.include('const relayReceipt = body.receipt ?? null;');
+    expect(generatedTx).to.include("if (relayReceipt) {");
   });
 
   it('materializes the explicit cyber-grid theme preset into generated UI output', function () {
