@@ -87,12 +87,14 @@ export default function HomePage() {
         </div>
       </section>
 
-      <section className="sectionHeading">
-        <div>
+      <section className="card sectionHeading">
+        <div className="sectionHeadingPrimary">
           <span className="eyebrow">/collections</span>
           <h2>Generated schema surfaces</h2>
         </div>
-        <p className="muted">Each collection ships with list, create, detail, and transaction-aware routes.</p>
+        <div className="sectionHeadingAside">
+          <p className="muted">Each collection ships with list, create, detail, and transaction-aware routes.</p>
+        </div>
       </section>
 
       <div className="grid">

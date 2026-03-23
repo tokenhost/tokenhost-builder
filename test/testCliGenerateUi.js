@@ -171,9 +171,11 @@ describe('th generate (UI template)', function () {
     const layoutSource = fs.readFileSync(path.join(outDir, 'ui', 'app', 'layout.tsx'), 'utf-8');
     expect(layoutSource).to.include('NetworkStatus');
     expect(layoutSource).to.include('themeBootScript');
+    expect(layoutSource).to.not.include('/tokenhost/ops');
 
     const generatedTokens = fs.readFileSync(path.join(outDir, 'ui', 'src', 'theme', 'tokens.json'), 'utf-8');
     expect(generatedTokens).to.equal(readTemplateThemeTokens());
+    expect(generatedTokens).to.include('"primary": "#00d4ff"');
   });
 
   it('materializes the explicit cyber-grid theme preset into generated UI output', function () {

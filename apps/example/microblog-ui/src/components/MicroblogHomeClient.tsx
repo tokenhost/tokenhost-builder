@@ -115,12 +115,14 @@ export default function MicroblogHomeClient() {
         </section>
       ) : null}
 
-      <section className="sectionHeading">
-        <div>
+      <section className="card sectionHeading">
+        <div className="sectionHeadingPrimary">
           <span className="eyebrow">/tags</span>
           <h2>Trending hashtags</h2>
         </div>
-        <p className="muted">Hashtags come from the native tokenized index on post bodies, not an app-specific join table.</p>
+        <div className="sectionHeadingAside">
+          <p className="muted">Hashtags come from the native tokenized index on post bodies, not an app-specific join table.</p>
+        </div>
       </section>
 
       <section className="card">
@@ -137,12 +139,14 @@ export default function MicroblogHomeClient() {
         </div>
       </section>
 
-      <section className="sectionHeading">
-        <div>
+      <section className="card sectionHeading">
+        <div className="sectionHeadingPrimary">
           <span className="eyebrow">/feed</span>
           <h2>Latest posts</h2>
         </div>
-        <p className="muted">Text-only and image posts render through the same generated `Post` collection.</p>
+        <div className="sectionHeadingAside">
+          <p className="muted">Text-only and image posts render through the same generated `Post` collection.</p>
+        </div>
       </section>
 
       {state.loading ? (

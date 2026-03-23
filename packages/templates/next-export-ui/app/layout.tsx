@@ -50,7 +50,6 @@ export default function RootLayout(props: { children: React.ReactNode }) {
             <div className="nav">
               <Link className="brand" href="/">
                 <div className="brandCopy">
-                  <div className="eyebrow">/tokenhost/ops</div>
                   <div className="brandIdentity">
                     <span className="brandWordText">
                       <span className="brandWordBase">token</span>

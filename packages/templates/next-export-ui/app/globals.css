@@ -45,14 +45,14 @@
   --th-border-strong: hsl(214 32% 82%);
   --th-text: hsl(222 47% 11%);
   --th-muted: hsl(215 16% 47%);
-  --th-primary: hsl(300 100% 75%);
-  --th-primary-strong: hsl(300 86% 69%);
-  --th-primary-foreground: hsl(300 100% 10%);
-  --th-accent: hsl(142 70% 35%);
+  --th-primary: hsl(190 100% 50%);
+  --th-primary-strong: hsl(190 100% 45%);
+  --th-primary-foreground: hsl(190 100% 10%);
+  --th-accent: hsl(300 100% 75%);
   --th-success: hsl(142 70% 35%);
   --th-danger: hsl(0 84% 60%);
   --th-grid: hsl(214 32% 88% / 0.35);
-  --th-grid-strong: hsl(300 100% 75% / 0.26);
+  --th-grid-strong: hsl(190 100% 50% / 0.26);
   --th-glow-left: hsl(190 100% 50% / 0.18);
   --th-glow-right: hsl(300 100% 75% / 0.2);
   --th-shadow: 4px 4px 0 rgba(15, 23, 42, 0.08);
@@ -88,10 +88,10 @@ html[data-theme='dark'] {
   --th-border-strong: hsl(240 6% 22%);
   --th-text: hsl(180 20% 90%);
   --th-muted: hsl(240 5% 60%);
-  --th-primary: hsl(190 100% 50%);
-  --th-primary-strong: hsl(190 100% 45%);
-  --th-primary-foreground: hsl(190 100% 10%);
-  --th-accent: hsl(300 100% 60%);
+  --th-primary: hsl(300 100% 75%);
+  --th-primary-strong: hsl(300 86% 69%);
+  --th-primary-foreground: hsl(300 100% 10%);
+  --th-accent: hsl(190 100% 50%);
   --th-success: hsl(142 70% 45%);
   --th-danger: hsl(0 100% 60%);
   --th-grid: hsl(190 100% 50% / 0.05);
@@ -326,7 +326,7 @@ html[data-theme='dark'] .themeToggle {
   justify-content: space-between;
   margin: 0 auto;
   max-width: var(--th-shell-width);
-  min-height: 64px;
+  min-height: 72px;
   padding: 0 16px;
   position: relative;
   width: 100%;
@@ -334,31 +334,33 @@ html[data-theme='dark'] .themeToggle {
 
 .brand {
   display: flex;
-  flex: 0 1 250px;
+  flex: 0 1 290px;
   min-width: 0;
 }
 
 .brandCopy {
   display: flex;
   flex-direction: column;
-  gap: 4px;
+  gap: 0;
+  justify-content: center;
   min-width: 0;
+  padding-block: 8px;
 }
 
 .brandIdentity {
   align-items: center;
   display: flex;
   flex-wrap: wrap;
-  gap: 8px;
+  gap: 10px;
 }
 
 .brandWordText {
   display: inline-flex;
-  font-size: 12px;
+  font-size: 16px;
   font-weight: 800;
-  gap: 4px;
-  letter-spacing: 0.16em;
-  line-height: 1;
+  gap: 6px;
+  letter-spacing: 0.18em;
+  line-height: 1.08;
   text-transform: uppercase;
 }
 
@@ -533,7 +535,7 @@ html[data-theme='dark'] .themeToggle {
   flex-direction: column;
   flex: 1 0 auto;
   gap: 24px;
-  padding-top: 88px;
+  padding-top: 96px;
 }
 
 .siteContent {
@@ -688,10 +690,11 @@ html[data-theme='dark'] .themeToggle {
 }
 
 .sectionHeading {
-  align-items: flex-end;
-  display: flex;
-  gap: 20px;
-  justify-content: space-between;
+  align-items: stretch;
+  display: grid;
+  gap: 14px;
+  grid-template-columns: minmax(0, 1.15fr) minmax(260px, 0.85fr);
+  padding: 16px;
 }
 
 .sectionHeading h2 {
@@ -700,6 +703,27 @@ html[data-theme='dark'] .themeToggle {
   font-weight: 800;
   letter-spacing: -0.04em;
   margin: 10px 0 0;
+}
+
+.sectionHeadingPrimary,
+.sectionHeadingAside {
+  border: 1px solid var(--th-border);
+  min-width: 0;
+  padding: 18px 20px;
+}
+
+.sectionHeadingPrimary {
+  background: var(--th-panel);
+}
+
+.sectionHeadingAside {
+  align-items: center;
+  background: var(--th-panel-muted);
+  display: flex;
+}
+
+.sectionHeadingAside p {
+  margin: 0;
 }
 
 .collectionCardHeader {
@@ -1140,7 +1164,7 @@ html[data-theme='dark'] .btn.primary {
   }
 
   .mainShell {
-    padding-top: 132px;
+    padding-top: 140px;
   }
 }
 
@@ -1150,8 +1174,7 @@ html[data-theme='dark'] .btn.primary {
   }
 
   .sectionHeading {
-    align-items: flex-start;
-    flex-direction: column;
+    grid-template-columns: 1fr;
   }
 }
 
