@@ -228,8 +228,33 @@
       "additionalProperties": false,
       "required": ["field"],
       "properties": {
-        "field": { "type": "string" }
-      }
+        "field": { "type": "string" },
+        "mode": { "type": "string", "enum": ["equality", "tokenized"] },
+        "tokenizer": { "type": "string", "enum": ["hashtag"] }
+      },
+      "allOf": [
+        {
+          "if": {
+            "properties": {
+              "mode": { "const": "tokenized" }
+            },
+            "required": ["mode"]
+          },
+          "then": {
+            "required": ["tokenizer"]
+          }
+        },
+        {
+          "if": {
+            "required": ["tokenizer"]
+          },
+          "then": {
+            "properties": {
+              "mode": { "const": "tokenized" }
+            }
+          }
+        }
+      ]
     },
     "relation": {
       "type": "object",

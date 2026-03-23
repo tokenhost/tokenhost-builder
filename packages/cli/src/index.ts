@@ -255,7 +255,14 @@ function normalizeStudioFormState(input: any): ThsSchema {
             : [],
           index: Array.isArray(indexes.index)
             ? indexes.index.map((idx: any) => ({
-                field: String(idx?.field ?? '')
+                field: String(idx?.field ?? ''),
+                mode:
+                  idx?.mode === 'tokenized'
+                    ? 'tokenized'
+                    : idx?.mode === 'equality'
+                      ? 'equality'
+                      : undefined,
+                tokenizer: idx?.tokenizer === 'hashtag' ? 'hashtag' : undefined
               }))
             : []
         },
