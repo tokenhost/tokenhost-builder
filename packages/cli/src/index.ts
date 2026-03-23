@@ -9,7 +9,7 @@ import { createRequire } from 'module';
 import { fileURLToPath, pathToFileURL } from 'url';
 import { Command } from 'commander';
 
-import { generateAppSolidity } from '@tokenhost/generator';
+import { generateAppSolidity, type GeneratorLimits } from '@tokenhost/generator';
 import {
   computeSchemaHash,
   importLegacyContractsJson,
@@ -1442,6 +1442,76 @@ function titleFromSlug(slug: string): string {
 
 type KnownChainName = 'anvil' | 'sepolia' | 'filecoin_calibration' | 'filecoin_mainnet';
 
+const DEFAULT_GENERATION_LIMITS: Required<GeneratorLimits> = {
+  listMaxLimit: 50,
+  listMaxScanSteps: 1000,
+  multicallMaxCalls: 20,
+  tokenizedIndexMaxTokens: 8,
+  tokenizedIndexMaxTokenLength: 32
+};
+
+const MAX_GENERATION_LIMITS: Required<GeneratorLimits> = {
+  listMaxLimit: 100,
+  listMaxScanSteps: 5000,
+  multicallMaxCalls: 50,
+  tokenizedIndexMaxTokens: 16,
+  tokenizedIndexMaxTokenLength: 64
+};
+
+function clampGeneratorLimit(value: number | undefined, fallback: number, cap: number): number {
+  const numeric = Number(value);
+  if (!Number.isFinite(numeric) || numeric < 1) return fallback;
+  return Math.min(Math.floor(numeric), cap);
+}
+
+function generationLimitsForChain(chainName?: KnownChainName): Required<GeneratorLimits> {
+  const chainDefaults: Partial<Record<KnownChainName, Partial<Required<GeneratorLimits>>>> = {
+    filecoin_calibration: {
+      listMaxLimit: 25,
+      listMaxScanSteps: 500,
+      multicallMaxCalls: 12,
+      tokenizedIndexMaxTokens: 6,
+      tokenizedIndexMaxTokenLength: 24
+    },
+    filecoin_mainnet: {
+      listMaxLimit: 25,
+      listMaxScanSteps: 500,
+      multicallMaxCalls: 12,
+      tokenizedIndexMaxTokens: 6,
+      tokenizedIndexMaxTokenLength: 24
+    }
+  };
+
+  const selected = {
+    ...DEFAULT_GENERATION_LIMITS,
+    ...(chainName ? chainDefaults[chainName] ?? {} : {})
+  };
+
+  return {
+    listMaxLimit: clampGeneratorLimit(selected.listMaxLimit, DEFAULT_GENERATION_LIMITS.listMaxLimit, MAX_GENERATION_LIMITS.listMaxLimit),
+    listMaxScanSteps: clampGeneratorLimit(
+      selected.listMaxScanSteps,
+      DEFAULT_GENERATION_LIMITS.listMaxScanSteps,
+      MAX_GENERATION_LIMITS.listMaxScanSteps
+    ),
+    multicallMaxCalls: clampGeneratorLimit(
+      selected.multicallMaxCalls,
+      DEFAULT_GENERATION_LIMITS.multicallMaxCalls,
+      MAX_GENERATION_LIMITS.multicallMaxCalls
+    ),
+    tokenizedIndexMaxTokens: clampGeneratorLimit(
+      selected.tokenizedIndexMaxTokens,
+      DEFAULT_GENERATION_LIMITS.tokenizedIndexMaxTokens,
+      MAX_GENERATION_LIMITS.tokenizedIndexMaxTokens
+    ),
+    tokenizedIndexMaxTokenLength: clampGeneratorLimit(
+      selected.tokenizedIndexMaxTokenLength,
+      DEFAULT_GENERATION_LIMITS.tokenizedIndexMaxTokenLength,
+      MAX_GENERATION_LIMITS.tokenizedIndexMaxTokenLength
+    )
+  };
+}
+
 function resolveKnownChain(name: string): { chainName: KnownChainName; chain: any } {
   const n = name.toLowerCase().trim();
   if (n === 'anvil') return { chainName: 'anvil', chain: anvil };
@@ -1471,6 +1541,7 @@ function resolveRpcUrl(chainName: KnownChainName, chain: any, override?: string)
 function buildChainConfigArtifact(args: { chainName: KnownChainName; chain: any; rpcUrl: string }): any {
   const now = new Date().toISOString();
   const isLocal = args.chainName === 'anvil';
+  const generationLimits = generationLimitsForChain(args.chainName);
 
   const chainConfig: any = {
     chainConfigVersion: '1.0.0',
@@ -1500,6 +1571,21 @@ function buildChainConfigArtifact(args: { chainName: KnownChainName; chain: any;
           }
         }
       ]
+    },
+    limits: {
+      lists: {
+        maxLimit: generationLimits.listMaxLimit,
+        maxScanSteps: generationLimits.listMaxScanSteps
+      },
+      multicall: {
+        maxCalls: generationLimits.multicallMaxCalls
+      },
+      indexing: {
+        tokenized: {
+          maxTokens: generationLimits.tokenizedIndexMaxTokens,
+          maxTokenLength: generationLimits.tokenizedIndexMaxTokenLength
+        }
+      }
     },
     issuer: {
       name: 'Token Host (local)',
@@ -2360,14 +2446,16 @@ function buildFromSchema(
     txMode?: string;
     relayBaseUrl?: string;
     targetChainId?: number;
+    targetChainName?: KnownChainName;
     compileProfile?: CompileProfile;
   }
 ): { outDir: string; uiBundleDir: string | null; uiSiteDir: string | null } {
   const resolvedOutDir = path.resolve(outDir);
   ensureDir(resolvedOutDir);
+  const generationLimits = generationLimitsForChain(opts.targetChainName);
 
   // 1) Generate Solidity source
-  const appSol = generateAppSolidity(schema);
+  const appSol = generateAppSolidity(schema, { limits: generationLimits });
   ensureDir(path.join(resolvedOutDir, path.dirname(appSol.path)));
   fs.writeFileSync(path.join(resolvedOutDir, appSol.path), appSol.contents);
 
@@ -2409,7 +2497,9 @@ function buildFromSchema(
     fs.rmSync(uiBundleDir, { recursive: true, force: true });
     ensureDir(uiBundleDir);
 
-    const uiWorkDir = fs.mkdtempSync(path.join(os.tmpdir(), 'tokenhost-ui-build-'));
+    const uiTempRoot = path.join(resolvedOutDir, '.tokenhost-build-tmp');
+    ensureDir(uiTempRoot);
+    const uiWorkDir = fs.mkdtempSync(path.join(uiTempRoot, 'ui-build-'));
     try {
       const templateDir = resolveNextExportUiTemplateDir();
       copyDir(templateDir, uiWorkDir);
@@ -2443,6 +2533,7 @@ function buildFromSchema(
       copyDir(exportedDir, uiBundleDir);
     } finally {
       fs.rmSync(uiWorkDir, { recursive: true, force: true });
+      fs.rmSync(uiTempRoot, { recursive: true, force: true });
     }
 
     uiBundleDigest = computeDirectoryDigest(uiBundleDir);
@@ -3257,9 +3348,10 @@ program
   .argument('<schema>', 'Path to THS schema JSON file')
   .option('--out <dir>', 'Output directory', 'artifacts')
   .option('--no-ui', 'Do not generate UI output')
+  .option('--chain <name>', 'Target chain for generation limits (anvil|sepolia|filecoin_calibration|filecoin_mainnet)')
   .option('--compiler-profile <profile>', 'Compiler profile (auto|default|large-app)', 'auto')
   .option('--with-tests', 'Emit generated app test scaffold', false)
-  .action((schemaPath: string, opts: { out: string; ui: boolean; compilerProfile?: string; withTests: boolean }) => {
+  .action((schemaPath: string, opts: { out: string; ui: boolean; chain?: string; compilerProfile?: string; withTests: boolean }) => {
     const input = readJsonFile(schemaPath);
     const structural = validateThsStructural(input);
     if (!structural.ok) {
@@ -3278,7 +3370,8 @@ program
     }
 
     const outDir = opts.out;
-    const appSol = generateAppSolidity(schema);
+    const generationLimits = generationLimitsForChain(opts.chain ? resolveKnownChain(opts.chain).chainName : undefined);
+    const appSol = generateAppSolidity(schema, { limits: generationLimits });
     const contractsDir = path.join(outDir, path.dirname(appSol.path));
     ensureDir(contractsDir);
     fs.writeFileSync(path.join(outDir, appSol.path), appSol.contents);
@@ -3348,18 +3441,22 @@ program
   .argument('<schema>', 'Path to THS schema JSON file')
   .option('--out <dir>', 'Output directory', 'artifacts')
   .option('--no-ui', 'Do not generate/build UI bundle')
+  .option('--chain <name>', 'Target chain for generation limits (anvil|sepolia|filecoin_calibration|filecoin_mainnet)')
   .option('--compiler-profile <profile>', 'Compiler profile (auto|default|large-app)', 'auto')
   .option('--tx-mode <mode>', 'Transaction mode (auto|userPays|sponsored)', 'auto')
   .option('--relay-base-url <url>', 'Relay base URL for sponsored mode', '/__tokenhost/relay')
-  .action((schemaPath: string, opts: { out: string; ui: boolean; compilerProfile?: string; txMode?: string; relayBaseUrl?: string }) => {
+  .action((schemaPath: string, opts: { out: string; ui: boolean; chain?: string; compilerProfile?: string; txMode?: string; relayBaseUrl?: string }) => {
     try {
       const schema = loadThsSchemaOrThrow(schemaPath);
+      const targetChainName = opts.chain ? resolveKnownChain(opts.chain).chainName : undefined;
       buildFromSchema(schema, opts.out, {
         ui: opts.ui,
         schemaPathForHints: schemaPath,
         compileProfile: normalizeCompileProfile(opts.compilerProfile),
         txMode: opts.txMode,
-        relayBaseUrl: opts.relayBaseUrl
+        relayBaseUrl: opts.relayBaseUrl,
+        targetChainName,
+        targetChainId: targetChainName ? resolveKnownChain(targetChainName).chain.id : undefined
       });
     } catch (e: any) {
       console.error(String(e?.message ?? e));
@@ -3548,7 +3645,8 @@ program
           compileProfile,
           txMode: opts.txMode,
           relayBaseUrl: opts.relayBaseUrl,
-          targetChainId: chain.id
+          targetChainId: chain.id,
+          targetChainName: chainName
         });
         console.log('Build complete.');
 

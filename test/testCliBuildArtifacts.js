@@ -71,5 +71,39 @@ describe('th build (artifacts)', function () {
     expect(manifest?.artifacts?.compiledContracts?.url).to.match(/^file:\/\//);
     expect(manifest?.signatures?.[0]?.sig).to.be.a('string');
   });
-});
 
+  it('uses stricter chain-targeted generation limits when build is given a target chain', function () {
+    this.timeout(60000);
+
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'th-build-chain-limits-'));
+    const schemaPath = path.join(dir, 'schema.json');
+    const outDir = path.join(dir, 'out');
+    writeJson(schemaPath, minimalSchema());
+
+    const res = runTh(['build', schemaPath, '--out', outDir, '--no-ui', '--chain', 'filecoin_calibration'], process.cwd());
+    expect(res.status, res.stderr || res.stdout).to.equal(0);
+
+    const appSol = fs.readFileSync(path.join(outDir, 'contracts', 'App.sol'), 'utf-8');
+    expect(appSol).to.include('uint256 public constant MAX_LIST_LIMIT = 25;');
+    expect(appSol).to.include('uint256 public constant MAX_SCAN_STEPS = 500;');
+    expect(appSol).to.include('uint256 public constant MAX_MULTICALL_CALLS = 12;');
+    expect(appSol).to.include('uint256 public constant MAX_TOKENIZED_INDEX_TOKENS = 6;');
+    expect(appSol).to.include('uint256 public constant MAX_TOKENIZED_INDEX_TOKEN_LENGTH = 24;');
+  });
+
+  it('cleans its temporary UI build workspace after a successful build', function () {
+    this.timeout(180000);
+
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'th-build-ui-temp-cleanup-'));
+    const schemaPath = path.join(dir, 'schema.json');
+    const outDir = path.join(dir, 'out');
+    writeJson(schemaPath, minimalSchema());
+
+    const res = runTh(['build', schemaPath, '--out', outDir], process.cwd());
+    expect(res.status, res.stderr || res.stdout).to.equal(0);
+
+    expect(fs.existsSync(path.join(outDir, '.tokenhost-build-tmp'))).to.equal(false);
+    expect(fs.existsSync(path.join(outDir, 'ui-bundle', 'index.html'))).to.equal(true);
+    expect(fs.existsSync(path.join(outDir, 'ui-site', 'index.html'))).to.equal(true);
+  });
+});

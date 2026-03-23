@@ -315,6 +315,26 @@
             }
           }
         },
+        "indexing": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "tokenized": {
+              "type": "object",
+              "additionalProperties": false,
+              "properties": {
+                "maxTokens": {
+                  "type": "integer",
+                  "minimum": 1
+                },
+                "maxTokenLength": {
+                  "type": "integer",
+                  "minimum": 1
+                }
+              }
+            }
+          }
+        },
         "realtime": {
           "type": "object",
           "additionalProperties": false,

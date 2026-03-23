@@ -1,6 +1,26 @@
 import type { Access, Collection, FieldType, QueryIndex, Relation, ThsField, ThsSchema, UniqueIndex } from '@tokenhost/schema';
 import { computeSchemaHash } from '@tokenhost/schema';
 
+export type GeneratorLimits = {
+  listMaxLimit?: number;
+  listMaxScanSteps?: number;
+  multicallMaxCalls?: number;
+  tokenizedIndexMaxTokens?: number;
+  tokenizedIndexMaxTokenLength?: number;
+};
+
+export type GenerateAppSolidityOptions = {
+  limits?: GeneratorLimits;
+};
+
+const DEFAULT_GENERATOR_LIMITS = Object.freeze({
+  listMaxLimit: 50,
+  listMaxScanSteps: 1000,
+  multicallMaxCalls: 20,
+  tokenizedIndexMaxTokens: 8,
+  tokenizedIndexMaxTokenLength: 32
+});
+
 type SolidityType = 'string' | 'uint256' | 'int256' | 'bool' | 'address' | 'bytes32';
 
 function solidityStorageType(t: FieldType): SolidityType {
@@ -114,7 +134,7 @@ function recordHashFnName(collectionName: string): string {
   return `_hashRecord${collectionName}`;
 }
 
-export function generateAppSolidity(schema: ThsSchema): { path: string; contents: string } {
+export function generateAppSolidity(schema: ThsSchema, options: GenerateAppSolidityOptions = {}): { path: string; contents: string } {
   const w = new W();
 
   const schemaHash = computeSchemaHash(schema);
@@ -122,6 +142,10 @@ export function generateAppSolidity(schema: ThsSchema): { path: string; contents
 
   const onChainIndexing = schema.app.features?.onChainIndexing ?? true;
   const anyPaidCreates = schema.collections.some(hasPaidCreates);
+  const limits = {
+    ...DEFAULT_GENERATOR_LIMITS,
+    ...(options.limits ?? {})
+  };
 
   w.line('// SPDX-License-Identifier: UNLICENSED');
   w.line('pragma solidity ^0.8.24;');
@@ -147,11 +171,11 @@ export function generateAppSolidity(schema: ThsSchema): { path: string; contents
     w.line();
 
     w.line(`bool public constant ON_CHAIN_INDEXING = ${onChainIndexing ? 'true' : 'false'};`);
-    w.line('uint256 public constant MAX_LIST_LIMIT = 50;');
-    w.line('uint256 public constant MAX_SCAN_STEPS = 1000;');
-    w.line('uint256 public constant MAX_MULTICALL_CALLS = 20;');
-    w.line('uint256 public constant MAX_TOKENIZED_INDEX_TOKENS = 8;');
-    w.line('uint256 public constant MAX_TOKENIZED_INDEX_TOKEN_LENGTH = 32;');
+    w.line(`uint256 public constant MAX_LIST_LIMIT = ${limits.listMaxLimit};`);
+    w.line(`uint256 public constant MAX_SCAN_STEPS = ${limits.listMaxScanSteps};`);
+    w.line(`uint256 public constant MAX_MULTICALL_CALLS = ${limits.multicallMaxCalls};`);
+    w.line(`uint256 public constant MAX_TOKENIZED_INDEX_TOKENS = ${limits.tokenizedIndexMaxTokens};`);
+    w.line(`uint256 public constant MAX_TOKENIZED_INDEX_TOKEN_LENGTH = ${limits.tokenizedIndexMaxTokenLength};`);
     w.line();
 
     // Errors

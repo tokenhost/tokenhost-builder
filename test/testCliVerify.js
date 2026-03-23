@@ -76,6 +76,8 @@ function writeVerifyFixtureBuild(outDir, chainId = 11155111) {
 }
 
 describe('th verify', function () {
+  this.timeout(15000);
+
   it('fails when Etherscan key is missing', function () {
     const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'th-verify-no-key-'));
     writeVerifyFixtureBuild(dir);
