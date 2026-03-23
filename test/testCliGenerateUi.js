@@ -180,6 +180,10 @@ describe('th generate (UI template)', function () {
     const generatedTx = fs.readFileSync(path.join(outDir, 'ui', 'src', 'lib', 'tx.ts'), 'utf-8');
     expect(generatedTx).to.include('const relayReceipt = body.receipt ?? null;');
     expect(generatedTx).to.include("if (relayReceipt) {");
+
+    const generatedCollectionPage = fs.readFileSync(path.join(outDir, 'ui', 'app', '[collection]', 'ClientPage.tsx'), 'utf-8');
+    expect(generatedCollectionPage).to.include('getReadRpcUrl');
+    expect(generatedCollectionPage).to.include('rpcOverride || getReadRpcUrl(m) || undefined');
   });
 
   it('materializes the explicit cyber-grid theme preset into generated UI output', function () {

@@ -12,7 +12,7 @@ import { fetchAppAbi } from '../../src/lib/abi';
 import { collectionId, listRecords } from '../../src/lib/app';
 import { chainFromId } from '../../src/lib/chains';
 import { makePublicClient } from '../../src/lib/clients';
-import { fetchManifest, getPrimaryDeployment } from '../../src/lib/manifest';
+import { fetchManifest, getPrimaryDeployment, getReadRpcUrl } from '../../src/lib/manifest';
 import { getCollection } from '../../src/lib/ths';
 
 const PAGE_SIZE = 10;
@@ -75,7 +75,7 @@ function CollectionListModePage(props: { params: { collection: string } }) {
       if (!d) throw new Error('Manifest has no deployments');
 
       const chain = chainFromId(Number(d.chainId));
-      const pc = makePublicClient(chain, rpcOverride);
+      const pc = makePublicClient(chain, rpcOverride || getReadRpcUrl(m) || undefined);
 
       setManifest(m);
       setDeployment(d);

@@ -8,7 +8,7 @@ import { assertAbiFunction, collectionId, fnGet, fnTransfer } from '../../../src
 import { chainFromId } from '../../../src/lib/chains';
 import { makePublicClient } from '../../../src/lib/clients';
 import { formatDateTime, formatFieldValue, shortAddress } from '../../../src/lib/format';
-import { fetchManifest, getPrimaryDeployment } from '../../../src/lib/manifest';
+import { fetchManifest, getPrimaryDeployment, getReadRpcUrl } from '../../../src/lib/manifest';
 import { fieldLinkUi, getCollection, transferEnabled, type ThsCollection, type ThsField } from '../../../src/lib/ths';
 import { submitWriteTx } from '../../../src/lib/tx';
 import TxStatus, { type TxPhase } from '../../../src/components/TxStatus';
@@ -91,7 +91,7 @@ export default function ViewRecordPage(props: { params: { collection: string } }
         const d = getPrimaryDeployment(manifest);
         if (!d) throw new Error('Manifest has no deployments');
         const chain = chainFromId(Number(d.chainId));
-        const pc = makePublicClient(chain, rpcOverride);
+        const pc = makePublicClient(chain, rpcOverride || getReadRpcUrl(manifest) || undefined);
         setManifest(manifest);
         setDeployment(d);
         setPublicClient(pc);
