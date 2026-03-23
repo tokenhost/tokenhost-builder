@@ -70,6 +70,13 @@ function isSafeAutoExpr(expr: string): boolean {
 
 export function lintThs(schema: ThsSchema): Issue[] {
   const issues: Issue[] = [];
+  const themePreset = String(schema.app.theme?.preset ?? '').trim();
+
+  if (themePreset && themePreset !== 'cyber-grid') {
+    issues.push(
+      err('/app/theme/preset', 'lint.app.theme.unknown_preset', `Unknown theme preset "${themePreset}". Supported presets: cyber-grid.`)
+    );
+  }
 
   if (schema.app.ui?.homePage?.mode === 'custom' && !String(schema.app.ui?.extensions?.directory ?? '').trim()) {
     issues.push(

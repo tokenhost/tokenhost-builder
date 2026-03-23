@@ -31,8 +31,14 @@
         "description": { "type": "string" },
         "theme": {
           "type": "object",
-          "description": "Theme tokens (implementation-defined).",
-          "additionalProperties": true
+          "description": "Theme preset selection and future theme options.",
+          "additionalProperties": true,
+          "properties": {
+            "preset": {
+              "type": "string",
+              "enum": ["cyber-grid"]
+            }
+          }
         },
         "ui": {
           "type": "object",

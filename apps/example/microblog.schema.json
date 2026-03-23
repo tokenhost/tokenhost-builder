@@ -4,6 +4,9 @@
   "app": {
     "name": "Microblog",
     "slug": "microblog",
+    "theme": {
+      "preset": "cyber-grid"
+    },
     "features": {
       "uploads": true,
       "onChainIndexing": true
