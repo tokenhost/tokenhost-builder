@@ -216,6 +216,27 @@ describe('th generate (UI template)', function () {
     expect(generatedThs).to.include('"directory": "ui-overrides"');
   });
 
+  it('builds the canonical microblog example UI with custom home/tag routes', function () {
+    this.timeout(180000);
+
+    const schemaPath = path.join(process.cwd(), 'apps', 'example', 'microblog.schema.json');
+    const outDir = path.join(fs.mkdtempSync(path.join(os.tmpdir(), 'th-microblog-ui-')), 'out');
+
+    const res = runTh(['generate', schemaPath, '--out', outDir], process.cwd());
+    expect(res.status, res.stderr || res.stdout).to.equal(0);
+
+    const uiDir = path.join(outDir, 'ui');
+    expect(fs.existsSync(path.join(uiDir, 'app', 'page.tsx'))).to.equal(true);
+    expect(fs.existsSync(path.join(uiDir, 'app', 'tag', 'page.tsx'))).to.equal(true);
+
+    const install = runCmd('pnpm', ['install'], uiDir);
+    expect(install.status, install.stderr || install.stdout).to.equal(0);
+
+    const build = runCmd('pnpm', ['build'], uiDir);
+    expect(build.status, build.stderr || build.stdout).to.equal(0);
+    expect(fs.existsSync(path.join(uiDir, 'out', 'index.html'))).to.equal(true);
+  });
+
   it('supports --no-ui', function () {
     const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'th-ui-gen-no-ui-'));
     const schemaPath = path.join(dir, 'schema.json');
