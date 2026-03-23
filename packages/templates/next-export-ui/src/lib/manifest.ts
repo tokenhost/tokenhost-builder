@@ -1,5 +1,6 @@
 export const WELL_KNOWN_MANIFEST_PATH = '/.well-known/tokenhost/manifest.json';
 export type TxMode = 'userPays' | 'sponsored';
+export type UploadRunnerMode = 'local' | 'remote' | 'foc-process';
 
 let cached: Promise<any> | null = null;
 
@@ -42,4 +43,35 @@ export function getRelayBaseUrl(manifest: any): string {
   const configured = String(manifest?.extensions?.tx?.sponsored?.relayBaseUrl ?? '').trim();
   if (configured) return configured;
   return '/__tokenhost/relay';
+}
+
+export function uploadsEnabled(manifest: any): boolean {
+  const extEnabled = manifest?.extensions?.uploads?.enabled;
+  if (typeof extEnabled === 'boolean') return extEnabled;
+  return Boolean(manifest?.features?.uploads);
+}
+
+export function getUploadBaseUrl(manifest: any): string {
+  const configured = String(manifest?.extensions?.uploads?.baseUrl ?? '').trim();
+  if (configured) return configured;
+  return '/__tokenhost/upload';
+}
+
+export function getUploadEndpointUrl(manifest: any): string {
+  const configured = String(manifest?.extensions?.uploads?.endpointUrl ?? '').trim();
+  if (configured) return configured;
+  return getUploadBaseUrl(manifest);
+}
+
+export function getUploadStatusUrl(manifest: any): string {
+  const configured = String(manifest?.extensions?.uploads?.statusUrl ?? '').trim();
+  if (configured) return configured;
+  return getUploadEndpointUrl(manifest);
+}
+
+export function getUploadRunnerMode(manifest: any): UploadRunnerMode {
+  const mode = String(manifest?.extensions?.uploads?.runnerMode ?? '').trim();
+  if (mode === 'remote') return 'remote';
+  if (mode === 'foc-process') return 'foc-process';
+  return 'local';
 }
