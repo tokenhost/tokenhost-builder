@@ -995,7 +995,7 @@ Token Host MUST emit, per collection:
 - `RecordDeleted(collectionId, recordId, actor, timestamp, isHardDelete)`
 - `RecordTransferred(collectionId, recordId, fromOwner, toOwner, actor, timestamp)` (only for collections with transfers enabled)
 
-`dataHash` and `changedFieldsHash` SHOULD be keccak256 of ABI-encoded values to allow indexers to detect mismatches without storing full payloads in events. Token Host MAY additionally emit field-level events for frequently queried fields.
+`dataHash` and `changedFieldsHash` SHOULD be keccak256 of ABI-encoded values to allow indexers to detect mismatches without storing full payloads in events. In v1, `changedFieldsHash` MAY carry the post-update record hash rather than a minimal delta-only hash, so long as the generator applies the rule deterministically and documents it. Token Host MAY additionally emit field-level events for frequently queried fields.
 
 #### 7.9.1 Event indexing for narrow subscriptions (normative)
 
@@ -1102,6 +1102,8 @@ In v1, Token Host SHOULD compute:
 This design ensures:
 - identical records across environments produce identical hashes,
 - indexers can recompute the hash from decoded record values to detect RPC inconsistencies.
+
+For update events, the generator MAY place this post-update `recordHash` into the `changedFieldsHash` event slot in v1. That preserves a stable event surface while still giving indexers an integrity primitive tied to the resulting stored record state.
 
 ### 7.15 Error model
 

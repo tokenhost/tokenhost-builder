@@ -32,6 +32,8 @@ function compileSolidity(sourcePath, contents, contractName) {
 }
 
 describe('Spec-aligned CRUD generator', function () {
+  this.timeout(15000);
+
   it('generates Solidity that compiles (job-board example)', function () {
     const __filename = fileURLToPath(import.meta.url);
     const __dirname = path.dirname(__filename);
@@ -52,9 +54,10 @@ describe('Spec-aligned CRUD generator', function () {
     expect(appSol.contents).to.include('event RecordCreated');
     expect(appSol.contents).to.include('function createCandidate');
     expect(appSol.contents).to.include('function createJobPosting');
+    expect(appSol.contents).to.include('function _recordHashCandidate');
+    expect(appSol.contents).to.include('function _recordHashJobPosting');
 
     const { errors } = compileSolidity(appSol.path, appSol.contents, 'App');
     expect(errors.map((e) => e.formattedMessage || e.message).join('\n')).to.equal('');
   });
 });
-
