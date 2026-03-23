@@ -5,6 +5,17 @@ Token Host Builder is a schema-to-dapp generator framework for EVM CRUD apps.
 Canonical product behavior is defined in `SPEC.md`.  
 Execution backlog and current gap-tracking is in `AGENTS.md`.
 
+## Active sprint
+
+Current sprint source of truth:
+- GitHub issue: `#62`
+- Ticket draft: `docs/tickets/011-native-hashtag-indexing-and-filecoin-image-uploads.md`
+
+Companion docs for the sprint:
+- `docs/worklogs/native-hashtag-indexing-and-filecoin-image-uploads.md`
+- `docs/spec-deltas/native-hashtag-indexing-and-filecoin-image-uploads.md`
+- `docs/native-hashtag-indexing-and-filecoin-image-uploads-memo.md`
+
 ## Legacy template status
 
 - `tokenhost-web-template/` is retired from this repo.

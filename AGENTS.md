@@ -25,6 +25,23 @@ Tests:
 - CI requires `static` and `integration-local` on PRs to `master`.
 - Canonical generated app coverage includes contract and UI scaffold verification.
 
+## Active sprint: Native hashtag indexing + Filecoin image uploads
+
+Source of truth for the current sprint:
+- GitHub issue: `#62`
+- Ticket draft: `docs/tickets/011-native-hashtag-indexing-and-filecoin-image-uploads.md`
+
+Required living docs for this sprint:
+- Work log: `docs/worklogs/native-hashtag-indexing-and-filecoin-image-uploads.md`
+- Working note / spec delta: `docs/spec-deltas/native-hashtag-indexing-and-filecoin-image-uploads.md`
+- Memo / blog draft: `docs/native-hashtag-indexing-and-filecoin-image-uploads-memo.md`
+
+Execution rules:
+- Deliver the sprint as 8 stacked PRs aligned to the ticket phases.
+- AI may prepare PRs, but PRs must not be merged until human approval.
+- The sprint ticket closes only when all 8 PRs are merged.
+- Any platform behavior change in this sprint must either update `SPEC.md` in the same change or be recorded in the working note/spec-delta document before merge.
+
 ## Phase 0 (NOW): Remediation of current snapshot (stability + security)
 
 Goal: make the current builder reproducible, safe-by-default, and testable before deeper rewrites.
