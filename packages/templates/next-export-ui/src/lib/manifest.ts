@@ -33,6 +33,12 @@ export function getPrimaryDeployment(manifest: any): any {
   return primary ?? deployments[0] ?? null;
 }
 
+export function getReadRpcUrl(manifest: any): string | null {
+  const configured = String(manifest?.extensions?.localPreview?.rpcUrl ?? '').trim();
+  if (configured) return configured;
+  return null;
+}
+
 export function getTxMode(manifest: any): TxMode {
   const mode = String(manifest?.extensions?.tx?.mode ?? '').trim();
   if (mode === 'sponsored') return 'sponsored';

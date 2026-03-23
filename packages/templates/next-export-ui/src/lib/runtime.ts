@@ -3,7 +3,7 @@ import { listRecords, listRecordsByIndex } from './app';
 import { extractHashtagTokens, hashtagIndexKey, normalizeHashtagToken } from './indexing';
 import { chainFromId } from './chains';
 import { makePublicClient } from './clients';
-import { fetchManifest, getPrimaryDeployment } from './manifest';
+import { fetchManifest, getPrimaryDeployment, getReadRpcUrl } from './manifest';
 
 export type AppRuntime = {
   manifest: any;
@@ -33,7 +33,7 @@ export async function loadAppRuntime(rpcOverride?: string): Promise<AppRuntime> 
   }
 
   const chain = chainFromId(chainId);
-  const publicClient = makePublicClient(chain, rpcOverride);
+  const publicClient = makePublicClient(chain, rpcOverride || getReadRpcUrl(manifest) || undefined);
   const abi = await fetchAppAbi();
 
   return {

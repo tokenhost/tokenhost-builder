@@ -2421,6 +2421,7 @@ function startUiSiteServer(args: {
   faucet?: FaucetConfig | null;
   relay?: RelayConfig | null;
   upload?: UploadServerConfig | null;
+  localPreviewRpcUrl?: string | null;
 }): { server: nodeHttp.Server; url: string } {
   const resolvedBuildDir = path.resolve(args.buildDir);
   const uiSiteDir = path.join(resolvedBuildDir, 'ui-site');
@@ -2439,11 +2440,13 @@ function startUiSiteServer(args: {
   const faucet = args.faucet ?? null;
   const relay = args.relay ?? null;
   const upload = args.upload ?? null;
+  const localPreviewRpcUrl = args.localPreviewRpcUrl ? String(args.localPreviewRpcUrl).trim() : '';
   const faucetPath = '/__tokenhost/faucet';
   const relayPath = '/__tokenhost/relay';
   const uploadPath = upload?.endpointUrl && upload.endpointUrl.startsWith('/') ? upload.endpointUrl : '/__tokenhost/upload';
   const uploadStatusPath = upload?.statusUrl && upload.statusUrl.startsWith('/') ? upload.statusUrl : uploadPath;
   const faucetTargetEth = faucet?.targetWei ? Number(faucet.targetWei / 10n ** 18n) : 10;
+  const manifestPaths = new Set(['/manifest.json', '/.well-known/tokenhost/manifest.json']);
 
   function contentTypeForPath(filePath: string): string {
     const ext = path.extname(filePath).toLowerCase();
@@ -2495,6 +2498,28 @@ function startUiSiteServer(args: {
     res.setHeader('Content-Type', 'application/json; charset=utf-8');
     res.setHeader('Cache-Control', 'no-store');
     res.end(JSON.stringify(value));
+  }
+
+  function buildServedManifest(): any | null {
+    const manifestCandidates = [
+      path.join(uiSiteDir, '.well-known', 'tokenhost', 'manifest.json'),
+      path.join(uiSiteDir, 'manifest.json'),
+      path.join(resolvedBuildDir, 'manifest.json')
+    ];
+    const manifestPath = manifestCandidates.find((candidate) => fs.existsSync(candidate));
+    if (!manifestPath) return null;
+    const manifest = readJsonFile(manifestPath) as any;
+    if (!localPreviewRpcUrl) return manifest;
+    const extensions = manifest?.extensions && typeof manifest.extensions === 'object' ? manifest.extensions : {};
+    return {
+      ...manifest,
+      extensions: {
+        ...extensions,
+        localPreview: {
+          rpcUrl: localPreviewRpcUrl
+        }
+      }
+    };
   }
 
   function toHexQuantity(n: bigint): string {
@@ -2811,6 +2836,16 @@ function startUiSiteServer(args: {
         }
       })();
       return;
+    }
+
+    if (manifestPaths.has(pathname)) {
+      try {
+        const manifest = buildServedManifest();
+        if (!manifest) return sendText(res, 404, 'Not Found');
+        return sendJson(res, 200, manifest);
+      } catch (e: any) {
+        return sendText(res, 500, String(e?.message ?? e ?? 'Internal Server Error'));
+      }
     }
 
     if (req.method && req.method !== 'GET' && req.method !== 'HEAD') {
@@ -4194,7 +4229,8 @@ program
                   from: relayFrom
                 }
               : null,
-            upload: uploadConfig
+            upload: uploadConfig,
+            localPreviewRpcUrl: activeRpcUrl
           });
           console.log('');
           console.log(`Ready: ${url}`);
@@ -4329,7 +4365,8 @@ program
         port,
         faucet: faucetConfig,
         relay: relayConfig,
-        upload: uploadConfig
+        upload: uploadConfig,
+        localPreviewRpcUrl: activePreviewRpcUrl
       });
 
       const cleanup = () => {

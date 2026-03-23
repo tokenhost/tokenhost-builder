@@ -161,4 +161,65 @@ describe('CLI local integration (anvil + preview + relay)', function () {
       preview.kill('SIGINT');
     }
   });
+
+  it('serves the active local preview RPC in the manifest when preview uses a non-default anvil port', async function () {
+    this.timeout(180000);
+
+    if (!hasAnvil()) this.skip();
+
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'th-integration-preview-rpc-'));
+    const schemaPath = path.join(dir, 'schema.json');
+    const outDir = path.join(dir, 'out');
+    writeJson(schemaPath, schemaForIntegration());
+
+    const buildRes = runTh(['build', schemaPath, '--out', outDir], process.cwd());
+    expect(buildRes.status, buildRes.stderr || buildRes.stdout).to.equal(0);
+
+    const rpcHost = '127.0.0.1';
+    const rpcPort = 43000 + Math.floor(Math.random() * 2000);
+    const rpcUrl = `http://${rpcHost}:${rpcPort}`;
+    const previewHost = '127.0.0.1';
+    const previewPort = 45000 + Math.floor(Math.random() * 2000);
+    const previewBaseUrl = `http://${previewHost}:${previewPort}`;
+
+    const anvil = spawn('anvil', ['--host', rpcHost, '--port', String(rpcPort), '--chain-id', '31337'], {
+      cwd: process.cwd(),
+      stdio: ['ignore', 'pipe', 'pipe']
+    });
+
+    let preview = null;
+    try {
+      await waitForOutput(anvil, /Listening on/, 30000);
+
+      const deployRes = runTh(['deploy', outDir, '--chain', 'anvil', '--rpc', rpcUrl], process.cwd());
+      expect(deployRes.status, deployRes.stderr || deployRes.stdout).to.equal(0);
+
+      preview = spawn(
+        'node',
+        [
+          path.resolve('packages/cli/dist/index.js'),
+          'preview',
+          outDir,
+          '--host',
+          previewHost,
+          '--port',
+          String(previewPort),
+          '--rpc',
+          rpcUrl,
+          '--no-deploy',
+          '--no-start-anvil'
+        ],
+        { cwd: process.cwd(), stdio: ['ignore', 'pipe', 'pipe'] }
+      );
+
+      await waitForOutput(preview, new RegExp(`${previewBaseUrl}/`), 60000);
+
+      const manifestRes = await requestJson(`${previewBaseUrl}/.well-known/tokenhost/manifest.json`);
+      expect(manifestRes.status).to.equal(200);
+      expect(manifestRes.json?.extensions?.localPreview?.rpcUrl).to.equal(rpcUrl);
+    } finally {
+      if (preview) preview.kill('SIGINT');
+      anvil.kill('SIGINT');
+    }
+  });
 });
