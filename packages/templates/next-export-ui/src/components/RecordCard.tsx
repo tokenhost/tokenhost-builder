@@ -2,7 +2,7 @@ import Link from 'next/link';
 
 import type { ThsCollection, ThsField } from '../lib/ths';
 import { displayField, fieldLinkUi } from '../lib/ths';
-import { formatNumeric, shortAddress } from '../lib/format';
+import { formatFieldValue, shortAddress } from '../lib/format';
 
 function getValue(record: any, key: string, fallbackIndex?: number): any {
   if (record && typeof record === 'object' && key in record) {
@@ -31,26 +31,62 @@ export default function RecordCard(props: { collection: ThsCollection; record: a
 
   const df = displayField(collection);
   const titleVal = df ? getValue(record, df.name, fieldIndex(collection, df)) : undefined;
-  const title = df?.ui?.component === 'externalLink' ? fieldLinkUi(df)?.label || formatNumeric(titleVal, df.type, (df as any).decimals) : df ? formatNumeric(titleVal, df.type, (df as any).decimals) : '(record)';
+  const title = df?.ui?.component === 'externalLink'
+    ? fieldLinkUi(df)?.label || formatFieldValue(titleVal, df.type, (df as any).decimals, df.name)
+    : df
+      ? formatFieldValue(titleVal, df.type, (df as any).decimals, df.name)
+      : '(record)';
+  const previewFields = collection.fields
+    .filter((field) => field.name !== df?.name)
+    .map((field) => {
+      const raw = getValue(record, field.name, fieldIndex(collection, field));
+      if (raw === undefined || raw === null || raw === '') return null;
+      return {
+        name: field.name,
+        type: field.type,
+        value: formatFieldValue(raw, field.type, (field as any).decimals, field.name)
+      };
+    })
+    .filter(Boolean)
+    .slice(0, 3) as Array<{ name: string; type: string; value: string }>;
 
   return (
     <div className="card recordCard">
-      <div className="row">
-        <div>
+      <div className="row recordCardHeader">
+        <div className="recordCardCopy">
+          <div className="eyebrow">/{collection.name}/record</div>
           <h2>
             <span className="badge">#{String(id)}</span>{' '}
             {title}
             {isDeleted ? <span className="badge" style={{ marginLeft: 8, color: 'var(--th-danger)' }}>deleted</span> : null}
           </h2>
-          <div className="muted" style={{ fontFamily: 'var(--th-font-mono)', fontSize: 12 }}>
+          <div className="muted recordMeta">
             owner: {owner ? shortAddress(String(owner)) : '—'} · createdBy: {createdBy ? shortAddress(String(createdBy)) : '—'}
           </div>
         </div>
-        <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap', justifyContent: 'flex-end' }}>
+        <div className="actionGroup">
           <Link className="btn" href={`/${collection.name}/?mode=view&id=${String(id)}`}>View</Link>
           {canEdit ? <Link className="btn" href={`/${collection.name}/?mode=edit&id=${String(id)}`}>Edit</Link> : null}
         </div>
       </div>
+
+      {previewFields.length > 0 ? (
+        <div className="recordPreviewGrid">
+          {previewFields.map((field) => (
+            <div key={field.name} className="recordPreviewCell">
+              <div className="recordPreviewLabel">{field.name}</div>
+              <div className="recordPreviewValue">
+                {field.type === 'image' ? (
+                  // eslint-disable-next-line @next/next/no-img-element
+                  <img src={field.value} alt={field.name} style={{ maxWidth: 160, borderRadius: 10, border: '1px solid var(--border)' }} />
+                ) : (
+                  field.value
+                )}
+              </div>
+            </div>
+          ))}
+        </div>
+      ) : null}
     </div>
   );
 }
