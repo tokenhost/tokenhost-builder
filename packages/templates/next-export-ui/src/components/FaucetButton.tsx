@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useEffect, useMemo, useRef, useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 
 import { fetchManifest, getPrimaryDeployment, getTxMode } from '../lib/manifest';
 import { chainFromId } from '../lib/chains';
@@ -44,15 +44,18 @@ export default function FaucetButton() {
   const [busy, setBusy] = useState(false);
   const [note, setNote] = useState<string | null>(null);
   const [reason, setReason] = useState<string | null>(null);
+  const [hasWallet, setHasWallet] = useState<boolean | null>(null);
   const targetEthRef = useRef<number>(10);
   const noteTimerRef = useRef<number | null>(null);
 
-  const hasWallet = useMemo(() => typeof (globalThis as any).ethereum !== 'undefined', []);
+  useEffect(() => {
+    setHasWallet(typeof (globalThis as any).ethereum !== 'undefined');
+  }, []);
 
   useEffect(() => {
     let cancelled = false;
     void (async () => {
-      if (!hasWallet) return;
+      if (hasWallet !== true) return;
       try {
         const manifest = await fetchManifest();
         const deployment = getPrimaryDeployment(manifest);
@@ -158,16 +161,16 @@ export default function FaucetButton() {
     }
   }
 
-  if (!enabled) return null;
+  if (hasWallet === null || !enabled) return null;
 
   return (
-    <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+    <div className="statusInline">
       <button className="btn" onClick={() => void requestFaucet()} disabled={busy || Boolean(reason)} title="Local faucet (anvil)">
         {busy ? 'Funding…' : 'Get test ETH'}
       </button>
-      {reason ? <span className="badge">{reason}</span> : null}
+      {reason ? <span className="badge controlNote">{reason}</span> : null}
       {note ? (
-        <span className="badge" title={note} style={{ maxWidth: 240, overflow: 'hidden', textOverflow: 'ellipsis' }}>
+        <span className="badge controlNote" title={note} style={{ maxWidth: 240, overflow: 'hidden', textOverflow: 'ellipsis' }}>
           {note}
         </span>
       ) : null}

@@ -7,7 +7,7 @@ import { fetchAppAbi } from '../../../src/lib/abi';
 import { assertAbiFunction, collectionId, fnGet, fnTransfer } from '../../../src/lib/app';
 import { chainFromId } from '../../../src/lib/chains';
 import { makePublicClient } from '../../../src/lib/clients';
-import { formatNumeric, shortAddress } from '../../../src/lib/format';
+import { formatDateTime, formatFieldValue, shortAddress } from '../../../src/lib/format';
 import { fetchManifest, getPrimaryDeployment } from '../../../src/lib/manifest';
 import { fieldLinkUi, getCollection, transferEnabled, type ThsCollection, type ThsField } from '../../../src/lib/ths';
 import { submitWriteTx } from '../../../src/lib/tx';
@@ -57,7 +57,9 @@ export default function ViewRecordPage(props: { params: { collection: string } }
   const idParam = search.get('id');
   const rpcOverride = search.get('rpc') ?? undefined;
 
-  const [loading, setLoading] = useState(true);
+  const [bootstrapping, setBootstrapping] = useState(true);
+  const [recordLoading, setRecordLoading] = useState(false);
+  const [initialRecordResolved, setInitialRecordResolved] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [deployment, setDeployment] = useState<any | null>(null);
   const [manifest, setManifest] = useState<any | null>(null);
@@ -81,7 +83,8 @@ export default function ViewRecordPage(props: { params: { collection: string } }
 
   useEffect(() => {
     async function boot() {
-      setLoading(true);
+      setBootstrapping(true);
+      setInitialRecordResolved(false);
       setError(null);
       try {
         const manifest = await fetchManifest();
@@ -103,7 +106,7 @@ export default function ViewRecordPage(props: { params: { collection: string } }
       } catch (e: any) {
         setError(String(e?.message ?? e));
       } finally {
-        setLoading(false);
+        setBootstrapping(false);
       }
     }
     void boot();
@@ -111,13 +114,16 @@ export default function ViewRecordPage(props: { params: { collection: string } }
 
   const appAddress = deployment?.deploymentEntrypointAddress as `0x${string}` | undefined;
 
-  async function fetchRecord() {
+  async function fetchRecord(options?: { initial?: boolean }) {
     if (!publicClient || !abi || !appAddress || id === null) return;
     if (appAddress.toLowerCase() === '0x0000000000000000000000000000000000000000') {
       setError('App is not deployed yet (manifest has 0x0 address).');
       return;
     }
 
+    const isInitial = options?.initial === true;
+    if (isInitial) setInitialRecordResolved(false);
+    setRecordLoading(true);
     setError(null);
     try {
       assertAbiFunction(abi, fnGet(collectionName), collectionName);
@@ -130,11 +136,14 @@ export default function ViewRecordPage(props: { params: { collection: string } }
       setRecord(r);
     } catch (e: any) {
       setError(String(e?.message ?? e));
+    } finally {
+      setRecordLoading(false);
+      if (isInitial) setInitialRecordResolved(true);
     }
   }
 
   useEffect(() => {
-    void fetchRecord();
+    void fetchRecord({ initial: true });
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [publicClient, abi, appAddress, idParam]);
 
@@ -224,7 +233,7 @@ export default function ViewRecordPage(props: { params: { collection: string } }
     );
   }
 
-  if (loading && !record) {
+  if ((bootstrapping || (recordLoading && !initialRecordResolved)) && !record) {
     return (
       <div className="card">
         <h2>Loading…</h2>
@@ -265,7 +274,7 @@ export default function ViewRecordPage(props: { params: { collection: string } }
     );
   }
 
-  if (!record) {
+  if (initialRecordResolved && !record) {
     return (
       <div className="card">
         <h2>Not found</h2>
@@ -304,7 +313,7 @@ export default function ViewRecordPage(props: { params: { collection: string } }
           <div>createdBy</div>
           <div>{createdBy ? shortAddress(String(createdBy)) : '—'}</div>
           <div>createdAt</div>
-          <div>{createdAt ? String(createdAt) : '—'}</div>
+          <div>{createdAt ? formatDateTime(createdAt) : '—'}</div>
           <div>version</div>
           <div>{version ? String(version) : '—'}</div>
         </div>
@@ -315,7 +324,7 @@ export default function ViewRecordPage(props: { params: { collection: string } }
         <div className="kv">
           {collection.fields.map((f) => {
             const v = getValue(record, f.name, fieldIndex(collection, f));
-            const rendered = formatNumeric(v, f.type, (f as any).decimals);
+            const rendered = formatFieldValue(v, f.type, (f as any).decimals, f.name);
             return (
               <React.Fragment key={f.name}>
                 <div>{f.name}</div>

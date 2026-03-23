@@ -170,7 +170,7 @@ describe('th generate (UI template)', function () {
 
     const layoutSource = fs.readFileSync(path.join(outDir, 'ui', 'app', 'layout.tsx'), 'utf-8');
     expect(layoutSource).to.include('NetworkStatus');
-    expect(layoutSource).to.include('rootStyleVars');
+    expect(layoutSource).to.include('themeBootScript');
 
     const generatedTokens = fs.readFileSync(path.join(outDir, 'ui', 'src', 'theme', 'tokens.json'), 'utf-8');
     expect(generatedTokens).to.equal(readTemplateThemeTokens());

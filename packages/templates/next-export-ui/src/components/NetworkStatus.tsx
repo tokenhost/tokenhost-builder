@@ -1,13 +1,13 @@
 'use client';
 
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useEffect, useState } from 'react';
 
 import { chainFromId } from '../lib/chains';
 import { ensureWalletChain } from '../lib/clients';
 import { fetchManifest, getPrimaryDeployment, getTxMode, type TxMode } from '../lib/manifest';
 
 export default function NetworkStatus() {
-  const hasWallet = useMemo(() => typeof (globalThis as any).ethereum !== 'undefined', []);
+  const [hasWallet, setHasWallet] = useState<boolean | null>(null);
   const [targetChainId, setTargetChainId] = useState<number | null>(null);
   const [walletChainId, setWalletChainId] = useState<number | null>(null);
   const [busy, setBusy] = useState(false);
@@ -15,10 +15,14 @@ export default function NetworkStatus() {
   const [txMode, setTxMode] = useState<TxMode>('userPays');
 
   useEffect(() => {
+    setHasWallet(typeof (globalThis as any).ethereum !== 'undefined');
+  }, []);
+
+  useEffect(() => {
     let cancelled = false;
 
     async function refresh() {
-      if (!hasWallet) return;
+      if (hasWallet !== true) return;
       try {
         const manifest = await fetchManifest();
         const mode = getTxMode(manifest);
@@ -67,15 +71,15 @@ export default function NetworkStatus() {
     }
   }
 
-  if (txMode === 'sponsored') return null;
+  if (hasWallet === null || txMode === 'sponsored') return null;
   if (!hasWallet || !targetChainId || walletChainId === null || walletChainId === targetChainId) return null;
 
   return (
     <div className="networkAlert">
-      <div>
-        <strong>Wrong network:</strong> wallet on chainId {walletChainId}, app deployment on chainId {targetChainId}.
+      <div className="networkAlertBody">
+        <strong>Wrong network:</strong> wallet on chainId {walletChainId}, app deployment on chainId {targetChainId}. Read-only views still use public RPC; switch the wallet network only if you want to submit writes.
       </div>
-      <div style={{ display: 'flex', gap: 10, alignItems: 'center' }}>
+      <div className="networkAlertActions">
         <button className="btn danger" disabled={busy} onClick={() => void fixNetwork()}>
           {busy ? 'Switching…' : 'Switch network'}
         </button>

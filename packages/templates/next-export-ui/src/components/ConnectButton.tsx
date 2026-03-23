@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useEffect, useState } from 'react';
 
 import { chainFromId } from '../lib/chains';
 import { requestWalletAddress } from '../lib/clients';
@@ -16,8 +16,11 @@ export default function ConnectButton() {
   const [targetChainId, setTargetChainId] = useState<number | null>(null);
   const [status, setStatus] = useState<string | null>(null);
   const [txMode, setTxMode] = useState<TxMode>('userPays');
+  const [walletState, setWalletState] = useState<'unknown' | 'present' | 'missing'>('unknown');
 
-  const canConnect = useMemo(() => hasInjectedWallet(), []);
+  useEffect(() => {
+    setWalletState(hasInjectedWallet() ? 'present' : 'missing');
+  }, []);
 
   useEffect(() => {
     // Best-effort: hydrate from localStorage.
@@ -52,7 +55,7 @@ export default function ConnectButton() {
   }, []);
 
   async function connect() {
-    if (!canConnect) return;
+    if (walletState !== 'present') return;
     try {
       setStatus('Connecting wallet...');
       const target = targetChainId && Number.isFinite(targetChainId) ? chainFromId(targetChainId) : null;
@@ -80,30 +83,34 @@ export default function ConnectButton() {
     }
   }
 
-  if (!canConnect) {
-    return <span className="badge">No wallet</span>;
+  if (walletState === 'unknown') return null;
+
+  if (walletState === 'missing') {
+    return <span className="badge controlNote">No wallet needed for reads</span>;
   }
 
   if (txMode === 'sponsored') return null;
 
   if (!account) {
     return (
-      <div style={{ display: 'flex', flexDirection: 'column', gap: 6, alignItems: 'flex-end' }}>
+      <div className="statusStack">
         <button className="btn primary" onClick={() => void connect()}>
           Connect wallet
         </button>
-        {targetChainId ? <span className="badge">target chain {targetChainId}</span> : null}
-        {status ? <span className="badge">{status}</span> : null}
+        <span className="badge controlNote">Reads use public RPC; wallet only needed for writes</span>
+        {targetChainId ? <span className="badge controlNote">target chain {targetChainId}</span> : null}
+        {status ? <span className="badge controlNote">{status}</span> : null}
       </div>
     );
   }
 
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', gap: 6, alignItems: 'flex-end' }}>
+    <div className="statusStack">
       <button className="btn" onClick={() => disconnect()} title={account}>
         {shortAddress(account)}
       </button>
-      {targetChainId ? <span className="badge">chain {targetChainId}</span> : null}
+      <span className="badge controlNote">Browsing still reads from public RPC</span>
+      {targetChainId ? <span className="badge controlNote">chain {targetChainId}</span> : null}
     </div>
   );
 }
