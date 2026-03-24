@@ -1,7 +1,7 @@
 import type { ReactNode } from 'react';
 import Link from 'next/link';
 
-import { displayField, hasCreatePayment, mutableFields, ths, transferEnabled } from '../lib/ths';
+import { displayField, fieldDisplayName, hasCreatePayment, mutableFields, ths, transferEnabled } from '../lib/ths';
 
 export default function CollectionLayout(props: { children: ReactNode; collectionName: string }) {
   const collection = ths.collections.find((c) => c.name === props.collectionName);
@@ -43,7 +43,7 @@ export default function CollectionLayout(props: { children: ReactNode; collectio
             <div className="fieldPillRow">
               {collection.fields.slice(0, 6).map((field) => (
                 <span key={field.name} className="fieldPill">
-                  {field.name}
+                  {fieldDisplayName(field)}
                 </span>
               ))}
             </div>
@@ -63,7 +63,7 @@ export default function CollectionLayout(props: { children: ReactNode; collectio
             </div>
             <div className="heroMeta">
               <span className="badge">
-                display {displayField(collection)?.name ?? 'auto'}
+                display {displayField(collection) ? fieldDisplayName(displayField(collection)!) : 'auto'}
               </span>
               {hasCreatePayment(collection) ? <span className="badge">paid create</span> : <span className="badge">free create</span>}
             </div>

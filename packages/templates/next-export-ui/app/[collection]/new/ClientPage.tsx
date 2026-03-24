@@ -9,7 +9,7 @@ import { chainFromId } from '../../../src/lib/chains';
 import { chainWithRpcOverride, makePublicClient } from '../../../src/lib/clients';
 import { formatWei, parseFieldValue } from '../../../src/lib/format';
 import { fetchManifest, getPrimaryDeployment, getReadRpcUrl } from '../../../src/lib/manifest';
-import { createFields, getCollection, hasCreatePayment, requiredFieldNames, type ThsField } from '../../../src/lib/ths';
+import { createFields, fieldDisplayName, getCollection, hasCreatePayment, requiredFieldNames, type ThsField } from '../../../src/lib/ths';
 import { submitWriteTx } from '../../../src/lib/tx';
 import TxStatus, { type TxPhase } from '../../../src/components/TxStatus';
 import ImageFieldInput from '../../../src/components/ImageFieldInput';
@@ -143,7 +143,7 @@ export default function CreateRecordPage(props: { params: { collection: string }
       if (!required.has(f.name)) continue;
       const v = (form[f.name] ?? '').trim();
       if (!v) {
-        setError(`Missing required field: ${f.name}`);
+        setError(`Missing required field: ${fieldDisplayName(f)}`);
         return;
       }
     }
@@ -224,9 +224,6 @@ export default function CreateRecordPage(props: { params: { collection: string }
           <button className="btn primary" onClick={() => router.push(`/${activeReferenceGate.relatedCollection.name}/?mode=new`)}>
             Create {activeReferenceGate.relatedCollection.name}
           </button>
-          <button className="btn" onClick={() => router.push(`/${activeReferenceGate.relatedCollection.name}/`)}>
-            Browse {activeReferenceGate.relatedCollection.name}
-          </button>
         </div>
       </div>
     );
@@ -247,7 +244,7 @@ export default function CreateRecordPage(props: { params: { collection: string }
         {fields.map((f) => (
           <div key={f.name} className="fieldGroup">
             <label className="label">
-              {f.name} {required.has(f.name) ? <span className="badge">required</span> : null}
+              {fieldDisplayName(f)} {required.has(f.name) ? <span className="badge">required</span> : null}
             </label>
             {f.type === 'bool' ? (
               <select

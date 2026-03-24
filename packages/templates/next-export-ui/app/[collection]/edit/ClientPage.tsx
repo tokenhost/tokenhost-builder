@@ -9,7 +9,7 @@ import { chainFromId } from '../../../src/lib/chains';
 import { chainWithRpcOverride, makePublicClient } from '../../../src/lib/clients';
 import { formatNumeric, parseFieldValue } from '../../../src/lib/format';
 import { fetchManifest, getPrimaryDeployment, getReadRpcUrl } from '../../../src/lib/manifest';
-import { getCollection, mutableFields, type ThsCollection, type ThsField } from '../../../src/lib/ths';
+import { fieldDisplayName, getCollection, mutableFields, type ThsCollection, type ThsField } from '../../../src/lib/ths';
 import { submitWriteTx } from '../../../src/lib/tx';
 import TxStatus, { type TxPhase } from '../../../src/components/TxStatus';
 import ImageFieldInput from '../../../src/components/ImageFieldInput';
@@ -305,7 +305,7 @@ export default function EditRecordPage(props: { params: { collection: string } }
       <div className="formGrid">
         {fields.map((f) => (
           <div key={f.name} className="fieldGroup">
-            <label className="label">{f.name}</label>
+            <label className="label">{fieldDisplayName(f)}</label>
             {f.type === 'bool' ? (
               <select
                 className="select"

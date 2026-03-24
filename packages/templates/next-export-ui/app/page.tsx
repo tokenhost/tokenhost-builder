@@ -1,7 +1,7 @@
 import Link from 'next/link';
 
 import GeneratedHomePageClient from '../src/components/GeneratedHomePageClient';
-import { displayField, hasCreatePayment, mutableFields, ths, transferEnabled } from '../src/lib/ths';
+import { displayField, fieldDisplayName, hasCreatePayment, mutableFields, ths, transferEnabled } from '../src/lib/ths';
 
 export default function HomePage() {
   if (Array.isArray(ths.app.ui?.generated?.homeSections) && ths.app.ui.generated.homeSections.length > 0) {
@@ -136,7 +136,7 @@ export default function HomePage() {
                   <h3>{collection.name}</h3>
                   <p className="muted">
                     {collection.fields.length} field{collection.fields.length === 1 ? '' : 's'}
-                    {display ? ` · display field ${display.name}` : ''}
+                    {display ? ` · display field ${fieldDisplayName(display)}` : ''}
                   </p>
                 </div>
                 <span className="badge">{collection.plural || collection.name}</span>
@@ -155,7 +155,7 @@ export default function HomePage() {
               <div className="fieldPillRow">
                 {fieldPreview.map((field) => (
                   <span key={field.name} className="fieldPill">
-                    {field.name}
+                    {fieldDisplayName(field)}
                   </span>
                 ))}
                 {collection.fields.length > fieldPreview.length ? <span className="fieldPill">+{collection.fields.length - fieldPreview.length} more</span> : null}

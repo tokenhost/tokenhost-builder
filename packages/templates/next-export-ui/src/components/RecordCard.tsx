@@ -1,7 +1,7 @@
 import Link from 'next/link';
 
 import type { ThsCollection, ThsField } from '../lib/ths';
-import { displayField, fieldLinkUi } from '../lib/ths';
+import { displayField, fieldDisplayName, fieldLinkUi } from '../lib/ths';
 import { formatFieldValue, shortAddress } from '../lib/format';
 import ResolvedReferenceValue from './ResolvedReferenceValue';
 
@@ -82,7 +82,9 @@ export default function RecordCard(props: {
         <div className="recordPreviewGrid">
           {previewFields.map((field) => (
             <div key={field.name} className="recordPreviewCell">
-              <div className="recordPreviewLabel">{field.name}</div>
+              <div className="recordPreviewLabel">
+                {fieldDisplayName(collection.fields.find((candidate) => candidate.name === field.name) ?? { name: field.name, type: 'string' })}
+              </div>
               <div className="recordPreviewValue">
                 {field.type === 'image' ? (
                   // eslint-disable-next-line @next/next/no-img-element

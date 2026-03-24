@@ -203,3 +203,8 @@ export function fieldLinkUi(field: ThsField): { label: string | null; target: '_
     target: field.ui.target === '_self' ? '_self' : '_blank'
   };
 }
+
+export function fieldDisplayName(field: ThsField): string {
+  if (typeof field.ui?.label === 'string' && field.ui.label.trim()) return field.ui.label.trim();
+  return field.name;
+}

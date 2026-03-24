@@ -72,7 +72,7 @@
     {
       "name": "Profile",
       "fields": [
-        { "name": "handle", "type": "string", "required": true },
+        { "name": "handle", "type": "string", "required": true, "ui": { "label": "username" } },
         { "name": "displayName", "type": "string" },
         { "name": "bio", "type": "string" },
         { "name": "avatar", "type": "image" }

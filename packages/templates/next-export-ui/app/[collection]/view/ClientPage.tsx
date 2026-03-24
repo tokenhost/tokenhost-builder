@@ -9,7 +9,7 @@ import { chainFromId } from '../../../src/lib/chains';
 import { chainWithRpcOverride, makePublicClient } from '../../../src/lib/clients';
 import { formatDateTime, formatFieldValue, shortAddress } from '../../../src/lib/format';
 import { fetchManifest, getPrimaryDeployment, getReadRpcUrl } from '../../../src/lib/manifest';
-import { fieldLinkUi, getCollection, transferEnabled, type ThsCollection, type ThsField } from '../../../src/lib/ths';
+import { fieldDisplayName, fieldLinkUi, getCollection, transferEnabled, type ThsCollection, type ThsField } from '../../../src/lib/ths';
 import { submitWriteTx } from '../../../src/lib/tx';
 import TxStatus, { type TxPhase } from '../../../src/components/TxStatus';
 import ResolvedReferenceValue from '../../../src/components/ResolvedReferenceValue';
@@ -354,7 +354,7 @@ export default function ViewRecordPage(props: { params: { collection: string } }
             const rendered = formatFieldValue(v, f.type, (f as any).decimals, f.name);
             return (
               <React.Fragment key={f.name}>
-                <div>{f.name}</div>
+                <div>{fieldDisplayName(f)}</div>
                 <div>{renderFieldValue({ collection, field: f, rendered, raw: v, abi, publicClient, address: appAddress })}</div>
               </React.Fragment>
             );
