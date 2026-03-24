@@ -184,11 +184,6 @@ svg {
   mask-composite: add;
   -webkit-mask-repeat: no-repeat;
   mask-repeat: no-repeat;
-  animation:
-    boilSpotOne 13s ease-in-out infinite alternate,
-    boilSpotTwo 17s ease-in-out infinite alternate,
-    boilSpotThree 19s ease-in-out infinite alternate,
-    gridBreathe 6s ease-in-out infinite;
 }
 
 .siteLivingGridCanvas {
@@ -1365,53 +1360,6 @@ html[data-theme='dark'] .btn.primary {
 
   .pageStack > *:nth-child(4) {
     animation-delay: 150ms;
-  }
-}
-
-@keyframes gridBreathe {
-  0%,
-  100% {
-    opacity: 0.2;
-  }
-
-  50% {
-    opacity: 0.5;
-  }
-}
-
-@keyframes boilSpotOne {
-  0% {
-    --th-boil-x1: 10%;
-    --th-boil-y1: 20%;
-  }
-
-  100% {
-    --th-boil-x1: 80%;
-    --th-boil-y1: 40%;
-  }
-}
-
-@keyframes boilSpotTwo {
-  0% {
-    --th-boil-x2: 90%;
-    --th-boil-y2: 80%;
-  }
-
-  100% {
-    --th-boil-x2: 20%;
-    --th-boil-y2: 30%;
-  }
-}
-
-@keyframes boilSpotThree {
-  0% {
-    --th-boil-x3: 40%;
-    --th-boil-y3: 40%;
-  }
-
-  100% {
-    --th-boil-x3: 60%;
-    --th-boil-y3: 60%;
   }
 }
 
