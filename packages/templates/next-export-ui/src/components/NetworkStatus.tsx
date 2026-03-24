@@ -3,12 +3,13 @@
 import React, { useEffect, useState } from 'react';
 
 import { chainFromId } from '../lib/chains';
-import { ensureWalletChain } from '../lib/clients';
-import { fetchManifest, getPrimaryDeployment, getTxMode, type TxMode } from '../lib/manifest';
+import { chainWithRpcOverride, ensureWalletChain } from '../lib/clients';
+import { fetchManifest, getPrimaryDeployment, getReadRpcUrl, getTxMode, type TxMode } from '../lib/manifest';
 
 export default function NetworkStatus() {
   const [hasWallet, setHasWallet] = useState<boolean | null>(null);
   const [targetChainId, setTargetChainId] = useState<number | null>(null);
+  const [targetRpcUrl, setTargetRpcUrl] = useState<string | null>(null);
   const [walletChainId, setWalletChainId] = useState<number | null>(null);
   const [busy, setBusy] = useState(false);
   const [note, setNote] = useState<string | null>(null);
@@ -31,11 +32,13 @@ export default function NetworkStatus() {
         const deployment = getPrimaryDeployment(manifest);
         const target = Number(deployment?.chainId ?? NaN);
         if (!Number.isFinite(target)) return;
+        const rpcUrl = getReadRpcUrl(manifest);
         const eth = (globalThis as any).ethereum as any;
         const current = await eth.request({ method: 'eth_chainId' });
         const parsed = Number.parseInt(String(current), 16);
         if (!cancelled) {
           setTargetChainId(target);
+          setTargetRpcUrl(rpcUrl);
           setWalletChainId(Number.isFinite(parsed) ? parsed : null);
         }
       } catch {
@@ -61,7 +64,7 @@ export default function NetworkStatus() {
     setBusy(true);
     setNote(null);
     try {
-      await ensureWalletChain(chainFromId(targetChainId));
+      await ensureWalletChain(chainWithRpcOverride(chainFromId(targetChainId), targetRpcUrl || undefined));
       setWalletChainId(targetChainId);
       setNote('Wallet switched to expected network.');
     } catch (e: any) {

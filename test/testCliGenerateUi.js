@@ -267,8 +267,11 @@ describe('th generate (UI template)', function () {
     const uiDir = path.join(outDir, 'ui');
     expect(fs.existsSync(path.join(uiDir, 'app', 'page.tsx'))).to.equal(true);
     expect(fs.existsSync(path.join(uiDir, 'app', 'tag', 'page.tsx'))).to.equal(true);
+    expect(fs.existsSync(path.join(uiDir, 'app', 'Post', 'page.tsx'))).to.equal(true);
     const generatedThs = fs.readFileSync(path.join(uiDir, 'src', 'generated', 'ths.ts'), 'utf-8');
     expect(generatedThs).to.include('"preset": "cyber-grid"');
+    expect(generatedThs).to.include('"authorProfile"');
+    expect(generatedThs).to.not.include('"authorHandle"');
 
     const install = runCmd('pnpm', ['install'], uiDir);
     expect(install.status, install.stderr || install.stdout).to.equal(0);

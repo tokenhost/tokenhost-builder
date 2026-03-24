@@ -2,9 +2,9 @@
 
 import React, { useEffect, useRef, useState } from 'react';
 
-import { fetchManifest, getPrimaryDeployment, getTxMode } from '../lib/manifest';
+import { fetchManifest, getPrimaryDeployment, getReadRpcUrl, getTxMode } from '../lib/manifest';
 import { chainFromId } from '../lib/chains';
-import { requestWalletAddress } from '../lib/clients';
+import { chainWithRpcOverride, requestWalletAddress } from '../lib/clients';
 
 type FaucetStatus = {
   ok: boolean;
@@ -131,7 +131,7 @@ export default function FaucetButton() {
       const chainId = Number(deployment?.chainId ?? NaN);
       if (!Number.isFinite(chainId)) throw new Error('Missing chainId in manifest deployment.');
 
-      const chain = chainFromId(chainId);
+      const chain = chainWithRpcOverride(chainFromId(chainId), getReadRpcUrl(manifest) || undefined);
       const address = await requestWalletAddress(chain);
 
       const res = await fetch('/__tokenhost/faucet', {

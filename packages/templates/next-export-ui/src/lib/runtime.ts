@@ -2,7 +2,7 @@ import { fetchAppAbi } from './abi';
 import { listRecords, listRecordsByIndex } from './app';
 import { extractHashtagTokens, hashtagIndexKey, normalizeHashtagToken } from './indexing';
 import { chainFromId } from './chains';
-import { makePublicClient } from './clients';
+import { chainWithRpcOverride, makePublicClient } from './clients';
 import { fetchManifest, getPrimaryDeployment, getReadRpcUrl } from './manifest';
 
 export type AppRuntime = {
@@ -32,8 +32,9 @@ export async function loadAppRuntime(rpcOverride?: string): Promise<AppRuntime> 
     throw new Error('App is not deployed yet (manifest has 0x0 address).');
   }
 
-  const chain = chainFromId(chainId);
-  const publicClient = makePublicClient(chain, rpcOverride || getReadRpcUrl(manifest) || undefined);
+  const resolvedRpcUrl = rpcOverride || getReadRpcUrl(manifest) || undefined;
+  const chain = chainWithRpcOverride(chainFromId(chainId), resolvedRpcUrl);
+  const publicClient = makePublicClient(chain, resolvedRpcUrl);
   const abi = await fetchAppAbi();
 
   return {

@@ -6,7 +6,7 @@ import { useRouter, useSearchParams } from 'next/navigation';
 import { fetchAppAbi } from '../../../src/lib/abi';
 import { assertAbiFunction, collectionId, fnGet, fnTransfer } from '../../../src/lib/app';
 import { chainFromId } from '../../../src/lib/chains';
-import { makePublicClient } from '../../../src/lib/clients';
+import { chainWithRpcOverride, makePublicClient } from '../../../src/lib/clients';
 import { formatDateTime, formatFieldValue, shortAddress } from '../../../src/lib/format';
 import { fetchManifest, getPrimaryDeployment, getReadRpcUrl } from '../../../src/lib/manifest';
 import { fieldLinkUi, getCollection, transferEnabled, type ThsCollection, type ThsField } from '../../../src/lib/ths';
@@ -90,7 +90,7 @@ export default function ViewRecordPage(props: { params: { collection: string } }
         const manifest = await fetchManifest();
         const d = getPrimaryDeployment(manifest);
         if (!d) throw new Error('Manifest has no deployments');
-        const chain = chainFromId(Number(d.chainId));
+        const chain = chainWithRpcOverride(chainFromId(Number(d.chainId)), rpcOverride || getReadRpcUrl(manifest) || undefined);
         const pc = makePublicClient(chain, rpcOverride || getReadRpcUrl(manifest) || undefined);
         setManifest(manifest);
         setDeployment(d);
@@ -181,7 +181,10 @@ export default function ViewRecordPage(props: { params: { collection: string } }
     setTxHash(null);
 
     try {
-      const chain = chainFromId(Number(deployment.chainId));
+      const chain = chainWithRpcOverride(
+        chainFromId(Number(deployment.chainId)),
+        rpcOverride || getReadRpcUrl(manifest) || undefined
+      );
 
       assertAbiFunction(abi, fnTransfer(collectionName), collectionName);
       const result = await submitWriteTx({

@@ -4,8 +4,9 @@ import Link from 'next/link';
 import { useEffect, useState } from 'react';
 import { useSearchParams } from 'next/navigation';
 
-import { listHashtagRecords, loadAppRuntime } from '../lib/runtime';
-import PostStream, { sortFeedItemsDesc, type FeedItem } from './PostStream';
+import { resolveFeedItemsWithProfiles, loadMicroblogRuntime, type FeedItem } from '../lib/microblog';
+import { listHashtagRecords } from '../lib/runtime';
+import PostStream, { sortFeedItemsDesc } from './PostStream';
 
 type TagState = {
   hashtag: string;
@@ -29,7 +30,7 @@ export default function MicroblogTagClient() {
       }
 
       try {
-        const runtime = await loadAppRuntime();
+        const runtime = await loadMicroblogRuntime();
         const page = await listHashtagRecords({
           publicClient: runtime.publicClient,
           abi: runtime.abi,
@@ -42,7 +43,13 @@ export default function MicroblogTagClient() {
 
         if (cancelled) return;
 
-        const items = sortFeedItemsDesc(page.ids.map((id, index) => ({ id, record: page.records[index] })));
+        const resolved = await resolveFeedItemsWithProfiles(
+          runtime,
+          page.ids.map((id, index) => ({ id, record: page.records[index] }))
+        );
+        if (cancelled) return;
+
+        const items = sortFeedItemsDesc(resolved);
         setState({ hashtag: page.hashtag, items, loading: false, error: null });
       } catch (error: any) {
         if (cancelled) return;
@@ -74,7 +81,7 @@ export default function MicroblogTagClient() {
             </h2>
             <p className="lead">
               Token Host queries the generated <span className="badge">listByIndexPost_body</span> accessor, then filters current records
-              against live post content.
+              against live post content and resolves each post&apos;s current author profile at render time.
             </p>
             <div className="actionGroup">
               <Link className="btn primary" href="/Post/?mode=new">Compose tagged post</Link>

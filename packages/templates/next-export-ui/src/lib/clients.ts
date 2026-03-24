@@ -1,9 +1,27 @@
 import { createPublicClient, createWalletClient, custom, http } from 'viem';
 import type { Chain } from 'viem';
 
+export function chainWithRpcOverride(chain: Chain, rpcUrl?: string): Chain {
+  if (!rpcUrl) return chain;
+  return {
+    ...chain,
+    rpcUrls: {
+      ...chain.rpcUrls,
+      default: {
+        ...(chain.rpcUrls?.default ?? {}),
+        http: [rpcUrl]
+      },
+      public: {
+        ...(chain.rpcUrls?.public ?? chain.rpcUrls?.default ?? {}),
+        http: [rpcUrl]
+      }
+    }
+  } as Chain;
+}
+
 export function resolveRpcUrl(chain: Chain, override?: string): string | null {
-  if (override) return override;
-  const httpUrls = chain.rpcUrls?.default?.http;
+  const resolvedChain = chainWithRpcOverride(chain, override);
+  const httpUrls = resolvedChain.rpcUrls?.default?.http;
   if (Array.isArray(httpUrls) && httpUrls.length > 0) return httpUrls[0] ?? null;
   return null;
 }
@@ -11,10 +29,11 @@ export function resolveRpcUrl(chain: Chain, override?: string): string | null {
 export function makePublicClient(chain: Chain, rpcUrl?: string): any {
   // Prefer explicit HTTP RPC for reads so chain mismatch in the user's wallet
   // doesn't silently read from the wrong network.
-  const url = resolveRpcUrl(chain, rpcUrl);
+  const resolvedChain = chainWithRpcOverride(chain, rpcUrl);
+  const url = resolveRpcUrl(resolvedChain);
   if (url) {
     return createPublicClient({
-      chain,
+      chain: resolvedChain,
       transport: http(url)
     });
   }
@@ -23,7 +42,7 @@ export function makePublicClient(chain: Chain, rpcUrl?: string): any {
   const eth = (globalThis as any).ethereum as any;
   if (eth) {
     return createPublicClient({
-      chain,
+      chain: resolvedChain,
       transport: custom(eth)
     });
   }
