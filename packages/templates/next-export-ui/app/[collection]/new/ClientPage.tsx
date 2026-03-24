@@ -13,9 +13,10 @@ import { createFields, getCollection, hasCreatePayment, requiredFieldNames, type
 import { submitWriteTx } from '../../../src/lib/tx';
 import TxStatus, { type TxPhase } from '../../../src/components/TxStatus';
 import ImageFieldInput from '../../../src/components/ImageFieldInput';
+import ReferenceFieldInput from '../../../src/components/ReferenceFieldInput';
 
 function inputType(field: ThsField): 'text' | 'number' {
-  if (field.type === 'uint256' || field.type === 'int256' || field.type === 'decimal' || field.type === 'reference') return 'number';
+  if (field.type === 'uint256' || field.type === 'int256' || field.type === 'decimal') return 'number';
   return 'text';
 }
 
@@ -210,13 +211,25 @@ export default function CreateRecordPage(props: { params: { collection: string }
                 value={form[f.name] ?? ''}
                 onChange={(next) => setForm((prev) => ({ ...prev, [f.name]: next }))}
               />
+            ) : f.type === 'reference' ? (
+              <ReferenceFieldInput
+                manifest={manifest}
+                publicClient={publicClient}
+                abi={abi}
+                address={appAddress}
+                collection={collection}
+                field={f}
+                value={form[f.name] ?? ''}
+                disabled={txPhase === 'submitting' || txPhase === 'submitted' || txPhase === 'confirming'}
+                onChange={(next) => setForm((prev) => ({ ...prev, [f.name]: next }))}
+              />
             ) : (
               <input
                 className="input"
                 type={inputType(f)}
                 value={form[f.name] ?? ''}
                 onChange={(e) => setForm((prev) => ({ ...prev, [f.name]: e.target.value }))}
-                placeholder={f.type === 'reference' ? 'record id (uint256)' : f.type}
+                placeholder={f.type}
               />
             )}
           </div>

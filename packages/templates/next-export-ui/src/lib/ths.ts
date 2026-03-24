@@ -39,6 +39,13 @@ export interface PaymentRule {
   amountWei: string;
 }
 
+export interface ThsRelation {
+  field: string;
+  to: string;
+  enforce?: boolean;
+  reverseIndex?: boolean;
+}
+
 export interface ThsCollection {
   name: string;
   plural?: string;
@@ -60,7 +67,7 @@ export interface ThsCollection {
   transferRules?: {
     access: Access;
   };
-  relations?: Array<Record<string, unknown>>;
+  relations?: ThsRelation[];
   indexes?: Record<string, unknown>;
   ui?: Record<string, unknown>;
 }
@@ -93,6 +100,17 @@ export function getCollection(name: string): ThsCollection | null {
 
 export function getField(collection: ThsCollection, fieldName: string): ThsField | null {
   return (collection.fields as any[]).find((f) => f && f.name === fieldName) ?? null;
+}
+
+export function getRelationForField(collection: ThsCollection, fieldName: string): ThsRelation | null {
+  const relations = Array.isArray(collection.relations) ? collection.relations : [];
+  return relations.find((relation) => relation && relation.field === fieldName) ?? null;
+}
+
+export function getRelatedCollection(collection: ThsCollection, fieldName: string): ThsCollection | null {
+  const relation = getRelationForField(collection, fieldName);
+  if (!relation?.to) return null;
+  return getCollection(relation.to);
 }
 
 export function displayField(collection: ThsCollection): ThsField | null {

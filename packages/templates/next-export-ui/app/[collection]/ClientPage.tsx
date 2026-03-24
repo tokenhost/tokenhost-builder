@@ -244,7 +244,7 @@ function CollectionListModePage(props: { params: { collection: string } }) {
 
       <div className="recordList">
         {records.map((r, idx) => (
-          <RecordCard key={idx} collection={collection as any} record={r} />
+          <RecordCard key={idx} collection={collection as any} record={r} abi={abi} publicClient={publicClient} address={appAddress} />
         ))}
       </div>
 

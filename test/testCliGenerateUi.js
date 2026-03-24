@@ -143,6 +143,44 @@ function schemaWithUiOverrides() {
   };
 }
 
+function schemaWithReferenceRelation() {
+  return {
+    thsVersion: '2025-12',
+    schemaVersion: '0.0.1',
+    app: {
+      name: 'Reference App',
+      slug: 'reference-app',
+      features: { uploads: false, onChainIndexing: true }
+    },
+    collections: [
+      {
+        name: 'Profile',
+        fields: [{ name: 'handle', type: 'string', required: true }],
+        createRules: { required: ['handle'], access: 'public' },
+        visibilityRules: { gets: ['handle'], access: 'public' },
+        updateRules: { mutable: ['handle'], access: 'owner' },
+        deleteRules: { softDelete: true, access: 'owner' },
+        transferRules: { access: 'owner' },
+        indexes: { unique: [{ field: 'handle', scope: 'allTime' }], index: [] }
+      },
+      {
+        name: 'Post',
+        fields: [
+          { name: 'authorProfile', type: 'reference', required: true },
+          { name: 'body', type: 'string', required: true }
+        ],
+        createRules: { required: ['authorProfile', 'body'], access: 'public' },
+        visibilityRules: { gets: ['authorProfile', 'body'], access: 'public' },
+        updateRules: { mutable: ['body'], access: 'owner' },
+        deleteRules: { softDelete: true, access: 'owner' },
+        transferRules: { access: 'owner' },
+        indexes: { unique: [], index: [{ field: 'authorProfile' }] },
+        relations: [{ field: 'authorProfile', to: 'Profile', enforce: true, reverseIndex: true }]
+      }
+    ]
+  };
+}
+
 describe('th generate (UI template)', function () {
   this.timeout(180000);
 
@@ -223,6 +261,43 @@ describe('th generate (UI template)', function () {
 
     const generatedTokens = fs.readFileSync(path.join(outDir, 'ui', 'src', 'theme', 'tokens.json'), 'utf-8');
     expect(generatedTokens).to.equal(readTemplateThemeTokens());
+  });
+
+  it('upstreams relation metadata into reference-aware generated CRUD UI', function () {
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'th-ui-reference-'));
+    const schemaPath = path.join(dir, 'schema.json');
+    const outDir = path.join(dir, 'out');
+    writeJson(schemaPath, schemaWithReferenceRelation());
+
+    const res = runTh(['generate', schemaPath, '--out', outDir], process.cwd());
+    expect(res.status, res.stderr || res.stdout).to.equal(0);
+
+    const generatedThs = fs.readFileSync(path.join(outDir, 'ui', 'src', 'generated', 'ths.ts'), 'utf-8');
+    expect(generatedThs).to.include('"relations"');
+    expect(generatedThs).to.include('"authorProfile"');
+    expect(generatedThs).to.include('"to": "Profile"');
+
+    const generatedReferenceField = fs.readFileSync(path.join(outDir, 'ui', 'src', 'components', 'ReferenceFieldInput.tsx'), 'utf-8');
+    expect(generatedReferenceField).to.include("window.localStorage.getItem('TH_ACCOUNT')");
+    expect(generatedReferenceField).to.include('listAllRecords');
+    expect(generatedReferenceField).to.include('Owned records appear first');
+
+    const generatedResolvedReference = fs.readFileSync(path.join(outDir, 'ui', 'src', 'components', 'ResolvedReferenceValue.tsx'), 'utf-8');
+    expect(generatedResolvedReference).to.include('getRelatedCollection');
+    expect(generatedResolvedReference).to.include("href={`/${relatedCollection.name}/?mode=view&id=${String(id)}`}");
+
+    const generatedNewPage = fs.readFileSync(path.join(outDir, 'ui', 'app', '[collection]', 'new', 'ClientPage.tsx'), 'utf-8');
+    expect(generatedNewPage).to.include('ReferenceFieldInput');
+    expect(generatedNewPage).to.include("f.type === 'reference'");
+
+    const generatedEditPage = fs.readFileSync(path.join(outDir, 'ui', 'app', '[collection]', 'edit', 'ClientPage.tsx'), 'utf-8');
+    expect(generatedEditPage).to.include('ReferenceFieldInput');
+
+    const generatedViewPage = fs.readFileSync(path.join(outDir, 'ui', 'app', '[collection]', 'view', 'ClientPage.tsx'), 'utf-8');
+    expect(generatedViewPage).to.include('ResolvedReferenceValue');
+
+    const generatedRecordCard = fs.readFileSync(path.join(outDir, 'ui', 'src', 'components', 'RecordCard.tsx'), 'utf-8');
+    expect(generatedRecordCard).to.include('ResolvedReferenceValue');
   });
 
   it('generated UI builds (next export)', function () {

@@ -12,6 +12,7 @@ import { fetchManifest, getPrimaryDeployment, getReadRpcUrl } from '../../../src
 import { fieldLinkUi, getCollection, transferEnabled, type ThsCollection, type ThsField } from '../../../src/lib/ths';
 import { submitWriteTx } from '../../../src/lib/tx';
 import TxStatus, { type TxPhase } from '../../../src/components/TxStatus';
+import ResolvedReferenceValue from '../../../src/components/ResolvedReferenceValue';
 
 function getValue(record: any, key: string, fallbackIndex?: number): any {
   if (record && typeof record === 'object' && key in record) {
@@ -28,7 +29,16 @@ function fieldIndex(collection: ThsCollection, field: ThsField): number {
   return 9 + Math.max(0, idx);
 }
 
-function renderFieldValue(field: ThsField, rendered: string) {
+function renderFieldValue(args: {
+  collection: ThsCollection;
+  field: ThsField;
+  rendered: string;
+  raw: unknown;
+  abi: any[] | null;
+  publicClient: any | null;
+  address: `0x${string}` | undefined;
+}) {
+  const { collection, field, rendered, raw, abi, publicClient, address } = args;
   if (!rendered) return <span className="badge">—</span>;
 
   const linkUi = fieldLinkUi(field);
@@ -42,6 +52,20 @@ function renderFieldValue(field: ThsField, rendered: string) {
       <a className="btn" href={String(rendered)} target={linkUi.target} rel={linkUi.target === '_blank' ? 'noreferrer' : undefined}>
         {linkUi.label || rendered}
       </a>
+    );
+  }
+
+  if (field.type === 'reference') {
+    return (
+      <ResolvedReferenceValue
+        collection={collection}
+        field={field}
+        value={raw}
+        abi={abi}
+        publicClient={publicClient}
+        address={address}
+        fallback={rendered}
+      />
     );
   }
 
@@ -331,7 +355,7 @@ export default function ViewRecordPage(props: { params: { collection: string } }
             return (
               <React.Fragment key={f.name}>
                 <div>{f.name}</div>
-                <div>{renderFieldValue(f, rendered)}</div>
+                <div>{renderFieldValue({ collection, field: f, rendered, raw: v, abi, publicClient, address: appAddress })}</div>
               </React.Fragment>
             );
           })}

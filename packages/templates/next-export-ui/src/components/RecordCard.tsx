@@ -3,6 +3,7 @@ import Link from 'next/link';
 import type { ThsCollection, ThsField } from '../lib/ths';
 import { displayField, fieldLinkUi } from '../lib/ths';
 import { formatFieldValue, shortAddress } from '../lib/format';
+import ResolvedReferenceValue from './ResolvedReferenceValue';
 
 function getValue(record: any, key: string, fallbackIndex?: number): any {
   if (record && typeof record === 'object' && key in record) {
@@ -21,8 +22,14 @@ function fieldIndex(collection: ThsCollection, field: ThsField): number {
   return 9 + Math.max(0, idx);
 }
 
-export default function RecordCard(props: { collection: ThsCollection; record: any }) {
-  const { collection, record } = props;
+export default function RecordCard(props: {
+  collection: ThsCollection;
+  record: any;
+  abi?: any[] | null;
+  publicClient?: any | null;
+  address?: `0x${string}`;
+}) {
+  const { collection, record, abi = null, publicClient = null, address } = props;
   const id = getValue(record, 'id', 0);
   const owner = getValue(record, 'owner', 3);
   const createdBy = getValue(record, 'createdBy', 2);
@@ -44,11 +51,12 @@ export default function RecordCard(props: { collection: ThsCollection; record: a
       return {
         name: field.name,
         type: field.type,
+        raw,
         value: formatFieldValue(raw, field.type, (field as any).decimals, field.name)
       };
     })
     .filter(Boolean)
-    .slice(0, 3) as Array<{ name: string; type: string; value: string }>;
+    .slice(0, 3) as Array<{ name: string; type: string; raw: unknown; value: string }>;
 
   return (
     <div className="card recordCard">
@@ -79,6 +87,16 @@ export default function RecordCard(props: { collection: ThsCollection; record: a
                 {field.type === 'image' ? (
                   // eslint-disable-next-line @next/next/no-img-element
                   <img src={field.value} alt={field.name} style={{ maxWidth: 160, borderRadius: 10, border: '1px solid var(--border)' }} />
+                ) : field.type === 'reference' ? (
+                  <ResolvedReferenceValue
+                    collection={collection}
+                    field={collection.fields.find((candidate) => candidate.name === field.name) ?? { name: field.name, type: 'reference' }}
+                    value={field.raw}
+                    abi={abi}
+                    publicClient={publicClient}
+                    address={address}
+                    fallback={field.value}
+                  />
                 ) : (
                   field.value
                 )}
