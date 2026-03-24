@@ -2589,6 +2589,8 @@ function startUiSiteServer(args: {
     lastErrorAt: null as string | null,
     lastSuccessAt: null as string | null
   };
+  const UPLOAD_JOB_TTL_MS = 10 * 60 * 1000;
+  const UPLOAD_JOB_MAX_COUNT = 128;
   const uploadJobs = new Map<
     string,
     {
@@ -2615,6 +2617,30 @@ function startUiSiteServer(args: {
   const uploadStatusPath = upload?.statusUrl && upload.statusUrl.startsWith('/') ? upload.statusUrl : uploadPath;
   const faucetTargetEth = faucet?.targetWei ? Number(faucet.targetWei / 10n ** 18n) : 10;
   const manifestPaths = new Set(['/manifest.json', '/.well-known/tokenhost/manifest.json']);
+
+  function cleanupUploadJobs() {
+    const now = Date.now();
+    for (const [jobId, job] of uploadJobs.entries()) {
+      const updatedAt = Date.parse(String(job.updatedAt ?? job.createdAt ?? ''));
+      if (Number.isFinite(updatedAt) && now - updatedAt > UPLOAD_JOB_TTL_MS) {
+        uploadJobs.delete(jobId);
+      }
+    }
+
+    if (uploadJobs.size <= UPLOAD_JOB_MAX_COUNT) return;
+
+    const ordered = [...uploadJobs.entries()].sort((a, b) => {
+      const aTime = Date.parse(String(a[1].updatedAt ?? a[1].createdAt ?? '')) || 0;
+      const bTime = Date.parse(String(b[1].updatedAt ?? b[1].createdAt ?? '')) || 0;
+      return aTime - bTime;
+    });
+
+    while (ordered.length > UPLOAD_JOB_MAX_COUNT) {
+      const oldest = ordered.shift();
+      if (!oldest) break;
+      uploadJobs.delete(oldest[0]);
+    }
+  }
 
   function contentTypeForPath(filePath: string): string {
     const ext = path.extname(filePath).toLowerCase();
@@ -2944,6 +2970,7 @@ function startUiSiteServer(args: {
 
     if (pathname === uploadPath || pathname === uploadStatusPath) {
       (async () => {
+        cleanupUploadJobs();
         const enabled = Boolean(upload?.enabled);
         const requestedUploadJobId = String(requestUrl.searchParams.get('jobId') ?? '').trim();
         if (req.method === 'GET' || req.method === 'HEAD') {
