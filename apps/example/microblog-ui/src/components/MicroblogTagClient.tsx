@@ -32,6 +32,7 @@ export default function MicroblogTagClient() {
       try {
         const runtime = await loadMicroblogRuntime();
         const page = await listHashtagRecords({
+          manifest: runtime.manifest,
           publicClient: runtime.publicClient,
           abi: runtime.abi,
           address: runtime.appAddress,

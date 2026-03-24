@@ -59,6 +59,7 @@ export function extractAuthorProfileId(postRecord: any): bigint | null {
 
 export async function listProfiles(runtime: AppRuntime): Promise<ProfileRecord[]> {
   const page = await listAllRecords({
+    manifest: runtime.manifest,
     publicClient: runtime.publicClient,
     abi: runtime.abi,
     address: runtime.appAddress,

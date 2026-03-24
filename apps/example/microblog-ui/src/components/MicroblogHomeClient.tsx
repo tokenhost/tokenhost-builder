@@ -23,6 +23,7 @@ export default function MicroblogHomeClient() {
       try {
         const runtime = await loadMicroblogRuntime();
         const page = await listAllRecords({
+          manifest: runtime.manifest,
           publicClient: runtime.publicClient,
           abi: runtime.abi,
           address: runtime.appAddress,

@@ -81,3 +81,9 @@ export function getUploadRunnerMode(manifest: any): UploadRunnerMode {
   if (mode === 'foc-process') return 'foc-process';
   return 'local';
 }
+
+export function getListMaxLimit(manifest: any): number {
+  const configured = Number(manifest?.extensions?.chainLimits?.lists?.maxLimit ?? NaN);
+  if (Number.isFinite(configured) && configured >= 1) return Math.floor(configured);
+  return 50;
+}

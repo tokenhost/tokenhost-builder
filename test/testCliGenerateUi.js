@@ -187,6 +187,10 @@ describe('th generate (UI template)', function () {
     expect(generatedCollectionPage).to.include('getReadRpcUrl');
     expect(generatedCollectionPage).to.include('rpcOverride || getReadRpcUrl(m) || undefined');
 
+    const generatedRuntime = fs.readFileSync(path.join(outDir, 'ui', 'src', 'lib', 'runtime.ts'), 'utf-8');
+    expect(generatedRuntime).to.include('getListMaxLimit');
+    expect(generatedRuntime).to.include('function clampListPageSize');
+
     const generatedClients = fs.readFileSync(path.join(outDir, 'ui', 'src', 'lib', 'clients.ts'), 'utf-8');
     expect(generatedClients).to.include('async function refreshWalletChainConfig');
     expect(generatedClients).to.include("requestProvider('wallet_addEthereumChain'");

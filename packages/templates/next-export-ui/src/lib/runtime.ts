@@ -3,7 +3,7 @@ import { listRecords, listRecordsByIndex } from './app';
 import { extractHashtagTokens, hashtagIndexKey, normalizeHashtagToken } from './indexing';
 import { chainFromId } from './chains';
 import { chainWithRpcOverride, makePublicClient } from './clients';
-import { fetchManifest, getPrimaryDeployment, getReadRpcUrl } from './manifest';
+import { fetchManifest, getListMaxLimit, getPrimaryDeployment, getReadRpcUrl } from './manifest';
 
 export type AppRuntime = {
   manifest: any;
@@ -15,7 +15,11 @@ export type AppRuntime = {
 };
 
 const ZERO_ADDRESS = '0x0000000000000000000000000000000000000000';
-const MAX_LIST_PAGE_SIZE = 50;
+
+function clampListPageSize(manifest: any, requested?: number): number {
+  const maxListPageSize = getListMaxLimit(manifest);
+  return Math.min(maxListPageSize, Math.max(1, Number(requested ?? maxListPageSize)));
+}
 
 export async function loadAppRuntime(rpcOverride?: string): Promise<AppRuntime> {
   const manifest = await fetchManifest();
@@ -52,9 +56,10 @@ export async function listAllRecords(args: {
   abi: any[];
   address: `0x${string}`;
   collectionName: string;
+  manifest?: any;
   pageSize?: number;
 }): Promise<{ ids: bigint[]; records: any[] }> {
-  const pageSize = Math.min(MAX_LIST_PAGE_SIZE, Math.max(1, Number(args.pageSize ?? MAX_LIST_PAGE_SIZE)));
+  const pageSize = clampListPageSize(args.manifest, args.pageSize);
   const ids: bigint[] = [];
   const records: any[] = [];
   let cursor = 0n;
@@ -89,6 +94,7 @@ export async function listRecordsByFieldValue(args: {
   collectionName: string;
   fieldName: string;
   value: unknown;
+  manifest?: any;
   pageSize?: number;
 }): Promise<{ ids: bigint[]; records: any[] }> {
   const page = await listAllRecords(args);
@@ -113,11 +119,12 @@ export async function listAllRecordsByIndex(args: {
   collectionName: string;
   fieldName: string;
   key: `0x${string}`;
+  manifest?: any;
   pageSize?: number;
   includeDeleted?: boolean;
   recordMatches?: (record: any) => boolean;
 }): Promise<{ ids: bigint[]; records: any[] }> {
-  const pageSize = Math.min(MAX_LIST_PAGE_SIZE, Math.max(1, Number(args.pageSize ?? MAX_LIST_PAGE_SIZE)));
+  const pageSize = clampListPageSize(args.manifest, args.pageSize);
   const ids: bigint[] = [];
   const records: any[] = [];
   const seenIds = new Set<string>();
@@ -165,6 +172,7 @@ export async function listHashtagRecords(args: {
   collectionName: string;
   fieldName: string;
   hashtag: string;
+  manifest?: any;
   pageSize?: number;
 }): Promise<{ hashtag: string; ids: bigint[]; records: any[] }> {
   const normalized = normalizeHashtagToken(args.hashtag);
@@ -179,6 +187,7 @@ export async function listHashtagRecords(args: {
     collectionName: args.collectionName,
     fieldName: args.fieldName,
     key: hashtagIndexKey(normalized),
+    manifest: args.manifest,
     pageSize: args.pageSize,
     includeDeleted: true,
     recordMatches: (record) => extractHashtagTokens(String(record?.[args.fieldName] ?? '')).includes(normalized)
@@ -198,6 +207,7 @@ export async function findRecordByFieldValue(args: {
   collectionName: string;
   fieldName: string;
   value: unknown;
+  manifest?: any;
   pageSize?: number;
 }): Promise<{ id: bigint | null; record: any | null }> {
   const page = await listRecordsByFieldValue(args);

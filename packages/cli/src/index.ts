@@ -3130,6 +3130,21 @@ function buildFromSchema(
     },
     features,
     extensions: {
+      chainLimits: {
+        lists: {
+          maxLimit: generationLimits.listMaxLimit,
+          maxScanSteps: generationLimits.listMaxScanSteps
+        },
+        multicall: {
+          maxCalls: generationLimits.multicallMaxCalls
+        },
+        indexing: {
+          tokenized: {
+            maxTokens: generationLimits.tokenizedIndexMaxTokens,
+            maxTokenLength: generationLimits.tokenizedIndexMaxTokenLength
+          }
+        }
+      },
       ...(uploadConfig
         ? {
             uploads: {
