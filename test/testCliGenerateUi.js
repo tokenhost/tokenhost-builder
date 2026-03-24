@@ -194,6 +194,9 @@ describe('th generate (UI template)', function () {
     expect(generatedRuntime).to.include('getListMaxLimit');
     expect(generatedRuntime).to.include('function clampListPageSize');
 
+    const generatedImageField = fs.readFileSync(path.join(outDir, 'ui', 'src', 'components', 'ImageFieldInput.tsx'), 'utf-8');
+    expect(generatedImageField).to.include('onBusyChange');
+
     const generatedClients = fs.readFileSync(path.join(outDir, 'ui', 'src', 'lib', 'clients.ts'), 'utf-8');
     expect(generatedClients).to.include('async function refreshWalletChainConfig');
     expect(generatedClients).to.include("requestProvider('wallet_addEthereumChain'");

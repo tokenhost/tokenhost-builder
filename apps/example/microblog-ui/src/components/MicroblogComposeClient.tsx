@@ -35,6 +35,7 @@ export default function MicroblogComposeClient() {
   const [selectedProfileId, setSelectedProfileId] = useState<string>('');
   const [body, setBody] = useState('');
   const [image, setImage] = useState('');
+  const [imageUploadBusy, setImageUploadBusy] = useState(false);
   const [txStatus, setTxStatus] = useState<string | null>(null);
   const [txPhase, setTxPhase] = useState<TxPhase>('idle');
   const [txHash, setTxHash] = useState<string | null>(null);
@@ -140,7 +141,7 @@ export default function MicroblogComposeClient() {
   }
 
   async function submit() {
-    if (!runtime || !walletChain || !selectedProfile || !body.trim()) return;
+    if (!runtime || !walletChain || !selectedProfile || !body.trim() || imageUploadBusy) return;
 
     setState((prev) => ({ ...prev, submitError: null }));
     setTxStatus(null);
@@ -325,7 +326,12 @@ export default function MicroblogComposeClient() {
 
             <div className="fieldGroup">
               <label className="label">Image</label>
-              <ImageFieldInput manifest={runtime?.manifest ?? null} value={image} onChange={setImage} />
+              <ImageFieldInput
+                manifest={runtime?.manifest ?? null}
+                value={image}
+                onChange={setImage}
+                onBusyChange={setImageUploadBusy}
+              />
             </div>
           </div>
 
@@ -333,9 +339,16 @@ export default function MicroblogComposeClient() {
             <button
               className="btn primary"
               onClick={() => void submit()}
-              disabled={!selectedProfile || !body.trim() || txPhase === 'submitting' || txPhase === 'submitted' || txPhase === 'confirming'}
+              disabled={
+                !selectedProfile ||
+                !body.trim() ||
+                imageUploadBusy ||
+                txPhase === 'submitting' ||
+                txPhase === 'submitted' ||
+                txPhase === 'confirming'
+              }
             >
-              Publish post
+              {imageUploadBusy ? 'Waiting for image upload…' : 'Publish post'}
             </button>
             <Link className="btn" href="/">Cancel</Link>
           </div>
