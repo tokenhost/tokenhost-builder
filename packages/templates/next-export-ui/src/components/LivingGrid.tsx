@@ -21,7 +21,10 @@ function resolvePrimaryColor(): string {
   if (typeof window === 'undefined') return 'hsl(190 100% 50%)';
   const raw = getComputedStyle(document.documentElement).getPropertyValue('--th-primary').trim();
   if (!raw) return 'hsl(190 100% 50%)';
-  return raw.startsWith('hsl(') ? raw : `hsl(${raw})`;
+  if (raw.startsWith('#') || raw.startsWith('rgb(') || raw.startsWith('rgba(') || raw.startsWith('hsl(') || raw.startsWith('hsla(')) {
+    return raw;
+  }
+  return `hsl(${raw})`;
 }
 
 export default function LivingGrid() {

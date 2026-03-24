@@ -37,30 +37,31 @@
 :root {
   color-scheme: light;
   --th-bg: hsl(0 0% 100%);
-  --th-bg-alt: hsl(210 30% 98%);
+  --th-bg-alt: hsl(0 0% 100%);
   --th-panel: hsl(0 0% 100%);
   --th-panel-strong: hsl(0 0% 100%);
   --th-panel-muted: hsl(210 40% 94%);
   --th-border: hsl(214 32% 88%);
-  --th-border-strong: hsl(214 32% 82%);
+  --th-border-strong: hsl(214 32% 85%);
   --th-text: hsl(222 47% 11%);
-  --th-muted: hsl(215 16% 47%);
+  --th-muted: hsl(215 16% 42%);
   --th-primary: hsl(190 100% 50%);
   --th-primary-strong: hsl(190 100% 45%);
   --th-primary-foreground: hsl(190 100% 10%);
   --th-accent: hsl(300 100% 75%);
   --th-success: hsl(142 70% 35%);
   --th-danger: hsl(0 84% 60%);
-  --th-grid: hsl(214 32% 88% / 0.35);
-  --th-grid-strong: hsl(190 100% 50% / 0.26);
+  --th-grid: hsl(190 100% 50% / 0.05);
+  --th-grid-strong: hsl(190 100% 50% / 0.75);
   --th-glow-left: hsl(190 100% 50% / 0.18);
-  --th-glow-right: hsl(300 100% 75% / 0.2);
-  --th-shadow: 4px 4px 0 rgba(15, 23, 42, 0.08);
-  --th-shadow-soft: 0 12px 30px rgba(148, 163, 184, 0.12);
+  --th-glow-right: hsl(300 100% 75% / 0.18);
+  --th-shadow: 4px 4px 0 rgba(0, 0, 0, 0.03);
+  --th-shadow-soft: 4px 4px 0 rgba(0, 0, 0, 0.03);
   --th-badge-bg: hsl(0 0% 100%);
   --th-input-bg: hsl(0 0% 100%);
   --th-danger-surface: hsl(0 100% 98%);
   --th-danger-border: hsl(0 84% 84%);
+  --th-industrial-bracket-opacity: 95%;
   --th-radius-sm: 0px;
   --th-radius-md: 0px;
   --th-radius-lg: 0px;
@@ -94,8 +95,8 @@ html[data-theme='dark'] {
   --th-accent: hsl(190 100% 50%);
   --th-success: hsl(142 70% 45%);
   --th-danger: hsl(0 100% 60%);
-  --th-grid: hsl(190 100% 50% / 0.05);
-  --th-grid-strong: hsl(190 100% 50% / 0.5);
+  --th-grid: hsl(300 100% 75% / 0.04);
+  --th-grid-strong: hsl(300 100% 75% / 0.75);
   --th-glow-left: hsl(190 100% 50% / 0.14);
   --th-glow-right: hsl(300 100% 60% / 0.12);
   --th-shadow: none;
@@ -104,6 +105,7 @@ html[data-theme='dark'] {
   --th-input-bg: hsl(240 6% 12%);
   --th-danger-surface: hsl(0 60% 14%);
   --th-danger-border: hsl(0 60% 28%);
+  --th-industrial-bracket-opacity: 100%;
 }
 
 * {
@@ -127,14 +129,6 @@ body {
   margin: 0;
   overflow-x: hidden;
   position: relative;
-}
-
-html[data-theme='dark'] body {
-  background-image:
-    radial-gradient(circle at 50% 50%, color-mix(in srgb, var(--th-primary) 5%, transparent), transparent 85%),
-    linear-gradient(to right, color-mix(in srgb, var(--th-primary) 5%, transparent) 1px, transparent 1px),
-    linear-gradient(to bottom, color-mix(in srgb, var(--th-primary) 5%, transparent) 1px, transparent 1px);
-  background-size: 100% 100%, 30px 30px, 30px 30px;
 }
 
 a {
@@ -172,10 +166,10 @@ svg {
   inset: 0;
   position: absolute;
   background-image:
-    linear-gradient(to right, color-mix(in srgb, var(--th-primary) 10%, transparent) 29px, transparent 29px),
-    linear-gradient(to bottom, color-mix(in srgb, var(--th-primary) 10%, transparent) 29px, transparent 29px),
-    linear-gradient(to right, color-mix(in srgb, var(--th-primary) 90%, transparent) 2px, transparent 2px),
-    linear-gradient(to bottom, color-mix(in srgb, var(--th-primary) 90%, transparent) 2px, transparent 2px);
+    linear-gradient(to right, color-mix(in srgb, var(--th-primary) 16%, transparent) 29px, transparent 29px),
+    linear-gradient(to bottom, color-mix(in srgb, var(--th-primary) 16%, transparent) 29px, transparent 29px),
+    linear-gradient(to right, color-mix(in srgb, var(--th-primary) 75%, transparent) 2px, transparent 2px),
+    linear-gradient(to bottom, color-mix(in srgb, var(--th-primary) 75%, transparent) 2px, transparent 2px);
   background-repeat: repeat;
   background-size: 30px 30px, 30px 30px, 30px 30px, 30px 30px;
   -webkit-mask-image:
@@ -195,22 +189,6 @@ svg {
     boilSpotTwo 17s ease-in-out infinite alternate,
     boilSpotThree 19s ease-in-out infinite alternate,
     gridBreathe 6s ease-in-out infinite;
-}
-
-html[data-theme='dark'] .siteGridLayer {
-  background-image:
-    linear-gradient(to right, color-mix(in srgb, var(--th-primary) 50%, transparent) 1px, transparent 1px),
-    linear-gradient(to bottom, color-mix(in srgb, var(--th-primary) 50%, transparent) 1px, transparent 1px);
-  background-size: 30px 30px, 30px 30px;
-}
-
-html[data-theme='light'] .siteGridLayer {
-  background-image:
-    linear-gradient(to right, color-mix(in srgb, var(--th-border) 16%, transparent) 29px, transparent 29px),
-    linear-gradient(to bottom, color-mix(in srgb, var(--th-border) 16%, transparent) 29px, transparent 29px),
-    linear-gradient(to right, color-mix(in srgb, var(--th-border) 75%, transparent) 2px, transparent 2px),
-    linear-gradient(to bottom, color-mix(in srgb, var(--th-border) 75%, transparent) 2px, transparent 2px);
-  background-size: 30px 30px, 30px 30px, 30px 30px, 30px 30px;
 }
 
 .siteLivingGridCanvas {
@@ -265,9 +243,12 @@ html[data-theme='dark'] .siteLivingGridCanvas {
 .heroStat,
 .recordPreviewCell,
 .themeToggle {
-  background: var(--th-panel);
+  backdrop-filter: blur(8px);
+  background: color-mix(in srgb, var(--th-panel) 95%, transparent);
   border: 1px solid var(--th-border);
-  box-shadow: var(--th-shadow);
+  box-shadow:
+    var(--th-shadow),
+    0 0 0 1px color-mix(in srgb, var(--th-primary) 20%, transparent);
   position: relative;
 }
 
@@ -294,8 +275,8 @@ html[data-theme='dark'] .siteLivingGridCanvas {
 .heroStat::before,
 .recordPreviewCell::before,
 .themeToggle::before {
-  border-left: 1.5px solid var(--th-primary);
-  border-top: 1.5px solid var(--th-primary);
+  border-left: 1.5px solid color-mix(in srgb, var(--th-primary) var(--th-industrial-bracket-opacity), transparent);
+  border-top: 1.5px solid color-mix(in srgb, var(--th-primary) var(--th-industrial-bracket-opacity), transparent);
   left: -1px;
   top: -1px;
 }
@@ -305,18 +286,142 @@ html[data-theme='dark'] .siteLivingGridCanvas {
 .heroStat::after,
 .recordPreviewCell::after,
 .themeToggle::after {
-  border-bottom: 1.5px solid var(--th-primary);
-  border-right: 1.5px solid var(--th-primary);
+  border-bottom: 1.5px solid color-mix(in srgb, var(--th-primary) var(--th-industrial-bracket-opacity), transparent);
+  border-right: 1.5px solid color-mix(in srgb, var(--th-primary) var(--th-industrial-bracket-opacity), transparent);
   bottom: -1px;
   right: -1px;
 }
 
-html[data-theme='dark'] .card,
-html[data-theme='dark'] .heroDataPanel,
-html[data-theme='dark'] .heroStat,
-html[data-theme='dark'] .recordPreviewCell,
-html[data-theme='dark'] .themeToggle {
-  box-shadow: none;
+html[data-theme='dark'] .card::before,
+html[data-theme='dark'] .card::after,
+html[data-theme='dark'] .heroDataPanel::before,
+html[data-theme='dark'] .heroDataPanel::after,
+html[data-theme='dark'] .heroStat::before,
+html[data-theme='dark'] .heroStat::after,
+html[data-theme='dark'] .recordPreviewCell::before,
+html[data-theme='dark'] .recordPreviewCell::after,
+html[data-theme='dark'] .themeToggle::before,
+html[data-theme='dark'] .themeToggle::after {
+  filter: drop-shadow(0 0 4px color-mix(in srgb, var(--th-primary) 60%, transparent));
+}
+
+.glassPanel {
+  backdrop-filter: blur(8px);
+  background: color-mix(in srgb, var(--th-panel) 95%, transparent);
+  box-shadow:
+    4px 4px 0 0 rgba(0, 0, 0, 0.03),
+    0 0 0 1px color-mix(in srgb, var(--th-primary) 20%, transparent);
+}
+
+.glass-panel,
+.cg-glass-panel {
+  backdrop-filter: blur(8px);
+  background: color-mix(in srgb, var(--th-panel) 95%, transparent);
+  box-shadow:
+    4px 4px 0 0 rgba(0, 0, 0, 0.03),
+    0 0 0 1px color-mix(in srgb, var(--th-primary) 20%, transparent);
+}
+
+.industrialBorder {
+  border: 1px solid var(--th-border);
+  position: relative;
+}
+
+.industrial-border,
+.cg-industrial-border {
+  border: 1px solid var(--th-border);
+  position: relative;
+}
+
+.industrialBorder::before,
+.industrialBorder::after {
+  content: '';
+  position: absolute;
+  width: 1.5rem;
+  height: 1.5rem;
+  pointer-events: none;
+}
+
+.industrial-border::before,
+.industrial-border::after,
+.cg-industrial-border::before,
+.cg-industrial-border::after {
+  content: '';
+  position: absolute;
+  width: 1.5rem;
+  height: 1.5rem;
+  pointer-events: none;
+}
+
+.industrialBorder::before {
+  top: -1px;
+  left: -1px;
+  border-top: 1.5px solid color-mix(in srgb, var(--th-primary) var(--th-industrial-bracket-opacity), transparent);
+  border-left: 1.5px solid color-mix(in srgb, var(--th-primary) var(--th-industrial-bracket-opacity), transparent);
+}
+
+.industrial-border::before,
+.cg-industrial-border::before {
+  top: -1px;
+  left: -1px;
+  border-top: 1.5px solid color-mix(in srgb, var(--th-primary) var(--th-industrial-bracket-opacity), transparent);
+  border-left: 1.5px solid color-mix(in srgb, var(--th-primary) var(--th-industrial-bracket-opacity), transparent);
+}
+
+.industrialBorder::after {
+  right: -1px;
+  bottom: -1px;
+  border-right: 1.5px solid color-mix(in srgb, var(--th-primary) var(--th-industrial-bracket-opacity), transparent);
+  border-bottom: 1.5px solid color-mix(in srgb, var(--th-primary) var(--th-industrial-bracket-opacity), transparent);
+}
+
+.industrial-border::after,
+.cg-industrial-border::after {
+  right: -1px;
+  bottom: -1px;
+  border-right: 1.5px solid color-mix(in srgb, var(--th-primary) var(--th-industrial-bracket-opacity), transparent);
+  border-bottom: 1.5px solid color-mix(in srgb, var(--th-primary) var(--th-industrial-bracket-opacity), transparent);
+}
+
+.industrialBorderAccent::before {
+  border-top-color: color-mix(in srgb, var(--th-accent) var(--th-industrial-bracket-opacity), transparent);
+  border-left-color: color-mix(in srgb, var(--th-accent) var(--th-industrial-bracket-opacity), transparent);
+}
+
+.industrial-border-accent::before,
+.cg-industrial-border-accent::before {
+  border-top-color: color-mix(in srgb, var(--th-accent) var(--th-industrial-bracket-opacity), transparent);
+  border-left-color: color-mix(in srgb, var(--th-accent) var(--th-industrial-bracket-opacity), transparent);
+}
+
+.industrialBorderAccent::after {
+  border-right-color: color-mix(in srgb, var(--th-accent) var(--th-industrial-bracket-opacity), transparent);
+  border-bottom-color: color-mix(in srgb, var(--th-accent) var(--th-industrial-bracket-opacity), transparent);
+}
+
+.industrial-border-accent::after,
+.cg-industrial-border-accent::after {
+  border-right-color: color-mix(in srgb, var(--th-accent) var(--th-industrial-bracket-opacity), transparent);
+  border-bottom-color: color-mix(in srgb, var(--th-accent) var(--th-industrial-bracket-opacity), transparent);
+}
+
+.sectionLabel {
+  color: var(--th-muted);
+  font-family: var(--th-font-mono);
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.2em;
+  text-transform: uppercase;
+}
+
+.nil-section-label,
+.cg-section-label {
+  color: var(--th-muted);
+  font-family: var(--th-font-mono);
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.2em;
+  text-transform: uppercase;
 }
 
 .nav {
