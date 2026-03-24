@@ -1,0 +1,56 @@
+{
+  "thsVersion": "2025-12",
+  "schemaVersion": "0.1.0",
+  "app": {
+    "name": "Microblog",
+    "slug": "microblog",
+    "features": {
+      "uploads": true,
+      "onChainIndexing": true
+    },
+    "ui": {
+      "homePage": { "mode": "custom" },
+      "extensions": { "directory": "microblog-ui" }
+    }
+  },
+  "collections": [
+    {
+      "name": "Profile",
+      "fields": [
+        { "name": "handle", "type": "string", "required": true },
+        { "name": "displayName", "type": "string" },
+        { "name": "bio", "type": "string" },
+        { "name": "avatar", "type": "image" }
+      ],
+      "createRules": { "required": ["handle"], "access": "public" },
+      "visibilityRules": { "gets": ["handle", "displayName", "bio", "avatar"], "access": "public" },
+      "updateRules": { "mutable": ["displayName", "bio", "avatar"], "access": "owner" },
+      "deleteRules": { "softDelete": true, "access": "owner" },
+      "transferRules": { "access": "owner" },
+      "indexes": {
+        "unique": [{ "field": "handle", "scope": "allTime" }],
+        "index": []
+      }
+    },
+    {
+      "name": "Post",
+      "fields": [
+        { "name": "authorHandle", "type": "string", "required": true },
+        { "name": "body", "type": "string", "required": true },
+        { "name": "image", "type": "image" }
+      ],
+      "createRules": { "required": ["authorHandle", "body"], "access": "public" },
+      "visibilityRules": { "gets": ["authorHandle", "body", "image"], "access": "public" },
+      "updateRules": { "mutable": ["body", "image"], "access": "owner" },
+      "deleteRules": { "softDelete": true, "access": "owner" },
+      "transferRules": { "access": "owner" },
+      "indexes": {
+        "unique": [],
+        "index": [
+          { "field": "authorHandle" },
+          { "field": "body", "mode": "tokenized", "tokenizer": "hashtag" }
+        ]
+      }
+    }
+  ]
+}
