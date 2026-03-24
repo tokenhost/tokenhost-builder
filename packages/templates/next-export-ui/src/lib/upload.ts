@@ -22,6 +22,16 @@ export type UploadConfig = {
   maxBytes: number | null;
 };
 
+export type UploadPhase = 'requesting' | 'accepted' | 'processing' | 'completed' | 'failed';
+
+export type UploadStateUpdate = {
+  phase: UploadPhase;
+  message: string;
+  progress: number;
+  jobId?: string | null;
+  elapsedMs?: number;
+};
+
 type PendingUploadResponse = {
   ok: true;
   pending: true;
@@ -97,6 +107,7 @@ export async function uploadFile(args: {
   manifest: any;
   file: File;
   onProgress?: (percent: number) => void;
+  onStateChange?: (state: UploadStateUpdate) => void;
 }): Promise<UploadResult> {
   const config = getUploadConfig(args.manifest);
   if (!config) throw new Error('Uploads are not enabled for this app.');
@@ -116,14 +127,27 @@ export async function uploadFile(args: {
 
   return await new Promise<UploadResult>((resolve, reject) => {
     let settled = false;
+    const notify = (state: UploadStateUpdate) => {
+      args.onStateChange?.(state);
+    };
     const finishResolve = (value: UploadResult) => {
       if (settled) return;
       settled = true;
+      notify({
+        phase: 'completed',
+        message: value.cid ? `Upload completed (${value.cid.slice(0, 12)}…).` : 'Upload completed.',
+        progress: 100
+      });
       resolve(value);
     };
     const finishReject = (error: Error) => {
       if (settled) return;
       settled = true;
+      notify({
+        phase: 'failed',
+        message: error.message || 'Upload failed.',
+        progress: 100
+      });
       reject(error);
     };
     const xhr = new XMLHttpRequest();
@@ -137,9 +161,21 @@ export async function uploadFile(args: {
       xhr.setRequestHeader('X-TokenHost-Upload-Mode', 'async');
     }
 
+    notify({
+      phase: 'requesting',
+      message: `Uploading ${args.file.name || 'file'} to Token Host…`,
+      progress: 0
+    });
+
     xhr.upload.onprogress = (event) => {
       if (!event.lengthComputable || !args.onProgress) return;
-      args.onProgress(Math.max(0, Math.min(100, Math.round((event.loaded / event.total) * 100))));
+      const percent = Math.max(0, Math.min(100, Math.round((event.loaded / event.total) * 100)));
+      args.onProgress(percent);
+      notify({
+        phase: 'requesting',
+        message: `Uploading ${args.file.name || 'file'} to Token Host…`,
+        progress: percent
+      });
     };
 
     async function pollUploadJob(statusUrl: string): Promise<UploadResult> {
@@ -156,6 +192,13 @@ export async function uploadFile(args: {
         }
         if (body?.pending) {
           args.onProgress?.(100);
+          notify({
+            phase: 'processing',
+            message: `Token Host accepted the upload and is processing it via ${config.runnerMode}. This can take a minute or two.`,
+            progress: 100,
+            jobId: body?.jobId ? String(body.jobId) : null,
+            elapsedMs: Date.now() - startedAt
+          });
           continue;
         }
         if (!body?.ok || !body?.upload?.url) {
@@ -189,6 +232,12 @@ export async function uploadFile(args: {
 
         if (xhr.status === 202 && body?.pending && body?.jobId) {
           const pending = body as PendingUploadResponse;
+          notify({
+            phase: 'accepted',
+            message: `Upload accepted. Token Host is processing it via ${config.runnerMode}.`,
+            progress: 100,
+            jobId: pending.jobId
+          });
           const statusUrl = normalizeUrl(pending.statusUrl || '', `${config.statusUrl}?jobId=${encodeURIComponent(pending.jobId)}`);
           const completed = await pollUploadJob(statusUrl);
           finishResolve(completed);

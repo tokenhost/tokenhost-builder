@@ -40,6 +40,7 @@ export default function CreateRecordPage(props: { params: { collection: string }
   const [publicClient, setPublicClient] = useState<any | null>(null);
 
   const [form, setForm] = useState<Record<string, string>>({});
+  const [busyUploads, setBusyUploads] = useState<Record<string, boolean>>({});
 
   useEffect(() => {
     async function boot() {
@@ -106,11 +107,16 @@ export default function CreateRecordPage(props: { params: { collection: string }
   const fields = createFields(collection);
   const required = requiredFieldNames(collection);
   const payment = hasCreatePayment(collection);
+  const uploadBusy = Object.values(busyUploads).some(Boolean);
 
   async function submit() {
     if (!manifest || !deployment || !abi || !publicClient || !appAddress) return;
     if (appAddress.toLowerCase() === '0x0000000000000000000000000000000000000000') {
       setError('App is not deployed yet (manifest has 0x0 address).');
+      return;
+    }
+    if (uploadBusy) {
+      setError('Wait for media uploads to finish before submitting this record.');
       return;
     }
 
@@ -210,6 +216,7 @@ export default function CreateRecordPage(props: { params: { collection: string }
                 manifest={manifest}
                 value={form[f.name] ?? ''}
                 onChange={(next) => setForm((prev) => ({ ...prev, [f.name]: next }))}
+                onBusyChange={(busy) => setBusyUploads((prev) => ({ ...prev, [f.name]: busy }))}
               />
             ) : f.type === 'reference' ? (
               <ReferenceFieldInput
@@ -240,9 +247,9 @@ export default function CreateRecordPage(props: { params: { collection: string }
         <button
           className="btn primary"
           onClick={() => void submit()}
-          disabled={!abi || !publicClient || !appAddress || txPhase === 'submitting' || txPhase === 'submitted' || txPhase === 'confirming'}
+          disabled={!abi || !publicClient || !appAddress || uploadBusy || txPhase === 'submitting' || txPhase === 'submitted' || txPhase === 'confirming'}
         >
-          Create
+          {uploadBusy ? 'Waiting for media upload…' : 'Create'}
         </button>
         <button className="btn" onClick={() => router.push(`/${collectionName}/`)}>Cancel</button>
       </div>

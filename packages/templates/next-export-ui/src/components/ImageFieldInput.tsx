@@ -2,7 +2,7 @@
 
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 
-import { getUploadConfig, uploadFile } from '../lib/upload';
+import { getUploadConfig, uploadFile, type UploadStateUpdate } from '../lib/upload';
 
 export default function ImageFieldInput(props: {
   manifest: any | null;
@@ -18,7 +18,9 @@ export default function ImageFieldInput(props: {
   const [progress, setProgress] = useState(0);
   const [error, setError] = useState<string | null>(null);
   const [status, setStatus] = useState<string | null>(null);
+  const [phase, setPhase] = useState<UploadStateUpdate['phase']>('requesting');
   const [localPreviewUrl, setLocalPreviewUrl] = useState<string | null>(null);
+  const [lastSelectedFile, setLastSelectedFile] = useState<File | null>(null);
   const previewUrl = localPreviewUrl || value || '';
 
   useEffect(() => {
@@ -28,6 +30,7 @@ export default function ImageFieldInput(props: {
   }, [localPreviewUrl]);
 
   async function handleFile(file: File) {
+    setLastSelectedFile(file);
     setError(null);
     setStatus(null);
     setProgress(0);
@@ -42,13 +45,23 @@ export default function ImageFieldInput(props: {
     setLocalPreviewUrl(objectUrl);
     setBusy(true);
     onBusyChange?.(true);
+    setPhase('requesting');
     setStatus(`Uploading via ${config.runnerMode}…`);
 
     try {
       const uploaded = await uploadFile({
         manifest,
         file,
-        onProgress: setProgress
+        onProgress: setProgress,
+        onStateChange: (next) => {
+          setPhase(next.phase);
+          setProgress(next.progress);
+          setStatus(
+            next.elapsedMs && next.phase === 'processing'
+              ? `${next.message} ${Math.max(1, Math.round(next.elapsedMs / 1000))}s elapsed.`
+              : next.message
+          );
+        }
       });
       onChange(uploaded.url);
       setStatus(uploaded.cid ? `Uploaded (${uploaded.cid.slice(0, 12)}…).` : 'Uploaded.');
@@ -88,6 +101,16 @@ export default function ImageFieldInput(props: {
         >
           Remove
         </button>
+        <button
+          type="button"
+          className="btn"
+          disabled={Boolean(disabled || busy || !lastSelectedFile)}
+          onClick={() => {
+            if (lastSelectedFile) void handleFile(lastSelectedFile);
+          }}
+        >
+          Retry
+        </button>
       </div>
 
       <input
@@ -116,6 +139,15 @@ export default function ImageFieldInput(props: {
         placeholder={config ? 'Uploaded image URL/CID appears here' : 'image URL or CID'}
       />
 
+      {config ? (
+        <div className="muted" style={{ marginTop: 8 }}>
+          {busy
+            ? phase === 'processing' || phase === 'accepted'
+              ? `Long-running upload: Token Host is finalizing this media item via ${config.provider || config.runnerMode}.`
+              : `Upload in progress via ${config.provider || config.runnerMode}.`
+            : `Uploads run via ${config.provider || config.runnerMode}.`}
+        </div>
+      ) : null}
       {status ? <div className="muted" style={{ marginTop: 8 }}>{status}</div> : null}
       {error ? <div className="pre" style={{ marginTop: 8 }}>{error}</div> : null}
     </div>

@@ -59,6 +59,7 @@ export default function EditRecordPage(props: { params: { collection: string } }
   const [record, setRecord] = useState<any | null>(null);
 
   const [form, setForm] = useState<Record<string, string>>({});
+  const [busyUploads, setBusyUploads] = useState<Record<string, boolean>>({});
 
   const id = useMemo(() => {
     if (!idParam) return null;
@@ -104,6 +105,7 @@ export default function EditRecordPage(props: { params: { collection: string } }
 
   const fields = collection ? mutableFields(collection) : [];
   const optimistic = Boolean((collection as any)?.updateRules?.optimisticConcurrency);
+  const uploadBusy = Object.values(busyUploads).some(Boolean);
 
   async function fetchRecord(options?: { initial?: boolean }) {
     if (!publicClient || !abi || !appAddress || id === null) return;
@@ -153,6 +155,10 @@ export default function EditRecordPage(props: { params: { collection: string } }
   async function submit() {
     if (!manifest || !deployment || !abi || !publicClient || !appAddress || id === null) return;
     if (!record) return;
+    if (uploadBusy) {
+      setError('Wait for media uploads to finish before saving this record.');
+      return;
+    }
 
     setError(null);
     setStatus(null);
@@ -315,6 +321,7 @@ export default function EditRecordPage(props: { params: { collection: string } }
                 value={form[f.name] ?? ''}
                 disabled={txPhase === 'submitting' || txPhase === 'submitted' || txPhase === 'confirming'}
                 onChange={(next) => setForm((prev) => ({ ...prev, [f.name]: next }))}
+                onBusyChange={(busy) => setBusyUploads((prev) => ({ ...prev, [f.name]: busy }))}
               />
             ) : f.type === 'reference' ? (
               <ReferenceFieldInput
@@ -345,9 +352,9 @@ export default function EditRecordPage(props: { params: { collection: string } }
         <button
           className="btn primary"
           onClick={() => void submit()}
-          disabled={!abi || !publicClient || !appAddress || txPhase === 'submitting' || txPhase === 'submitted' || txPhase === 'confirming'}
+          disabled={!abi || !publicClient || !appAddress || uploadBusy || txPhase === 'submitting' || txPhase === 'submitted' || txPhase === 'confirming'}
         >
-          Save
+          {uploadBusy ? 'Waiting for media upload…' : 'Save'}
         </button>
         <button className="btn" onClick={() => router.push(`/${collectionName}/?mode=view&id=${String(id)}`)}>Cancel</button>
       </div>

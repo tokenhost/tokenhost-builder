@@ -234,10 +234,14 @@ describe('th generate (UI template)', function () {
 
     const generatedImageField = fs.readFileSync(path.join(outDir, 'ui', 'src', 'components', 'ImageFieldInput.tsx'), 'utf-8');
     expect(generatedImageField).to.include('onBusyChange');
+    expect(generatedImageField).to.include('Long-running upload');
+    expect(generatedImageField).to.include('Retry');
 
     const generatedUpload = fs.readFileSync(path.join(outDir, 'ui', 'src', 'lib', 'upload.ts'), 'utf-8');
     expect(generatedUpload).to.include('buildUploadNetworkError');
     expect(generatedUpload).to.include('xhr.timeout = 5 * 60 * 1000;');
+    expect(generatedUpload).to.include("phase: 'accepted'");
+    expect(generatedUpload).to.include('Token Host accepted the upload');
 
     const generatedClients = fs.readFileSync(path.join(outDir, 'ui', 'src', 'lib', 'clients.ts'), 'utf-8');
     expect(generatedClients).to.include('async function refreshWalletChainConfig');
@@ -286,12 +290,18 @@ describe('th generate (UI template)', function () {
     expect(generatedResolvedReference).to.include('getRelatedCollection');
     expect(generatedResolvedReference).to.include("href={`/${relatedCollection.name}/?mode=view&id=${String(id)}`}");
 
+    const generatedRelations = fs.readFileSync(path.join(outDir, 'ui', 'src', 'lib', 'relations.ts'), 'utf-8');
+    expect(generatedRelations).to.include('resolveReferenceRecords');
+    expect(generatedRelations).to.include('listOwnedRecords');
+
     const generatedNewPage = fs.readFileSync(path.join(outDir, 'ui', 'app', '[collection]', 'new', 'ClientPage.tsx'), 'utf-8');
     expect(generatedNewPage).to.include('ReferenceFieldInput');
     expect(generatedNewPage).to.include("f.type === 'reference'");
+    expect(generatedNewPage).to.include('Waiting for media upload…');
 
     const generatedEditPage = fs.readFileSync(path.join(outDir, 'ui', 'app', '[collection]', 'edit', 'ClientPage.tsx'), 'utf-8');
     expect(generatedEditPage).to.include('ReferenceFieldInput');
+    expect(generatedEditPage).to.include('Waiting for media upload…');
 
     const generatedViewPage = fs.readFileSync(path.join(outDir, 'ui', 'app', '[collection]', 'view', 'ClientPage.tsx'), 'utf-8');
     expect(generatedViewPage).to.include('ResolvedReferenceValue');
