@@ -4,11 +4,7 @@ import Link from 'next/link';
 
 import { formatDateTime } from '../lib/format';
 import { extractHashtagTokens } from '../lib/indexing';
-
-export type FeedItem = {
-  id: bigint;
-  record: any;
-};
+import { profileDisplayName, profileHandle, type FeedItem } from '../lib/microblog';
 
 export function sortFeedItemsDesc(items: FeedItem[]): FeedItem[] {
   return [...items].sort((a, b) => {
@@ -34,16 +30,33 @@ export function collectTrendingTags(items: FeedItem[], limit = 8): Array<{ tag: 
 function PostCard({ item }: { item: FeedItem }) {
   const body = String(item.record?.body ?? '').trim();
   const image = String(item.record?.image ?? '').trim();
-  const authorHandle = String(item.record?.authorHandle ?? '').trim() || 'anon';
+  const authorHandle = profileHandle(item.authorProfile);
+  const authorName = profileDisplayName(item.authorProfile);
+  const avatar = String(item.authorProfile?.avatar ?? '').trim();
   const tags = extractHashtagTokens(body);
   const timestamp = item.record?.updatedAt ?? item.record?.createdAt ?? null;
 
   return (
     <article className="card half" style={{ display: 'grid', gap: 14 }}>
       <div className="collectionCardHeader" style={{ alignItems: 'flex-start' }}>
-        <div>
+        <div style={{ display: 'grid', gap: 8 }}>
           <div className="eyebrow">/post/{String(item.id)}</div>
-          <h3 style={{ marginBottom: 6 }}>@{authorHandle}</h3>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+            {avatar ? (
+              // eslint-disable-next-line @next/next/no-img-element
+              <img
+                src={avatar}
+                alt={authorName}
+                style={{ width: 48, height: 48, objectFit: 'cover', borderRadius: '50%', border: '1px solid var(--th-border)' }}
+              />
+            ) : null}
+            <div>
+              <h3 style={{ margin: 0 }}>{authorName}</h3>
+              <p className="muted" style={{ margin: 0 }}>
+                {authorHandle ? `@${authorHandle}` : 'Unresolved profile'}
+              </p>
+            </div>
+          </div>
           <p className="muted" style={{ margin: 0 }}>
             {timestamp ? formatDateTime(timestamp, 'compact') : 'On-chain post'}
           </p>
@@ -51,6 +64,7 @@ function PostCard({ item }: { item: FeedItem }) {
         <div className="chipRow">
           <span className="badge">{image ? 'image post' : 'text post'}</span>
           <span className="badge">id {String(item.id)}</span>
+          {item.authorProfileId ? <span className="badge">profile {String(item.authorProfileId)}</span> : null}
         </div>
       </div>
 

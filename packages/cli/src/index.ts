@@ -2196,6 +2196,7 @@ type UploadServerConfig = UploadManifestConfig & {
     chainId: number;
     copies: number;
     withCDN: boolean;
+    debug: boolean;
     command: string;
   } | null;
 };
@@ -2333,12 +2334,14 @@ function normalizeUploadFileName(fileName: string): string {
 }
 
 function normalizeFocUploadResult(parsed: any): { url: string; cid: string | null; size: number | null; metadata: Record<string, unknown> } {
-  const result = parsed?.result;
+  const result = parsed?.data?.result ?? parsed?.result;
   const copyResults = Array.isArray(result?.copyResults) ? result.copyResults : [];
   const firstCopy = copyResults.find((x: any) => x && typeof x.url === 'string' && x.url.trim()) ?? null;
   const url = firstCopy ? String(firstCopy.url) : '';
   if (!url) {
-    throw new Error('foc-cli upload did not return a usable copyResults[].url value.');
+    throw new Error(
+      `foc-cli upload did not return a usable copyResults[].url value. Raw keys: ${Object.keys(parsed ?? {}).join(', ') || '(none)'}`
+    );
   }
   return {
     url,
@@ -2347,22 +2350,155 @@ function normalizeFocUploadResult(parsed: any): { url: string; cid: string | nul
     metadata: {
       pieceScannerUrl: result?.pieceScannerUrl ? String(result.pieceScannerUrl) : null,
       copyResults,
-      copyFailures: Array.isArray(result?.copyFailures) ? result.copyFailures : []
+      copyFailures: Array.isArray(result?.copyFailures) ? result.copyFailures : [],
+      processLog: Array.isArray(parsed?.data?.processLog) ? parsed.data.processLog : []
     }
   };
 }
 
-function runFocCliUpload(config: NonNullable<UploadServerConfig['foc']>, filePath: string): { url: string; cid: string | null; size: number | null; metadata: Record<string, unknown> } {
+function normalizePrivateKeyForFoc(raw: string | null | undefined): string | null {
+  const trimmed = String(raw ?? '').trim();
+  if (!trimmed) return null;
+  const prefixed = trimmed.startsWith('0x') ? trimmed : `0x${trimmed}`;
+  return /^0x[0-9a-fA-F]{64}$/.test(prefixed) ? prefixed : null;
+}
+
+function defaultFocCliConfigPath(): string {
+  const xdgConfigHome = String(process.env.XDG_CONFIG_HOME ?? '').trim();
+  if (xdgConfigHome) return path.join(xdgConfigHome, 'foc-cli-nodejs', 'config.json');
+  return path.join(os.homedir(), '.config', 'foc-cli-nodejs', 'config.json');
+}
+
+function readConfiguredFocCliPrivateKey(configPath = defaultFocCliConfigPath()): string | null {
+  try {
+    if (!fs.existsSync(configPath)) return null;
+    const parsed = JSON.parse(fs.readFileSync(configPath, 'utf-8'));
+    return normalizePrivateKeyForFoc(parsed?.privateKey);
+  } catch {
+    return null;
+  }
+}
+
+async function ensureFocCliWalletInitialized(command: string) {
+  const desiredPrivateKey =
+    normalizePrivateKeyForFoc(process.env.TH_UPLOAD_FOC_PRIVATE_KEY) ??
+    normalizePrivateKeyForFoc(process.env.TH_PRIVATE_KEY) ??
+    normalizePrivateKeyForFoc(process.env.PRIVATE_KEY);
+
+  if (!desiredPrivateKey) return;
+
+  const configuredPrivateKey = readConfiguredFocCliPrivateKey();
+  if (configuredPrivateKey?.toLowerCase() === desiredPrivateKey.toLowerCase()) return;
+
+  const initCommand = `${command} wallet init --privateKey ${shellQuote(desiredPrivateKey)} --format json`;
+  const res = await new Promise<{ status: number | null; stdout: string; stderr: string }>((resolve, reject) => {
+    const child = spawn(initCommand, {
+      shell: true,
+      stdio: ['ignore', 'pipe', 'pipe']
+    });
+
+    let stdout = '';
+    let stderr = '';
+
+    child.stdout?.setEncoding('utf-8');
+    child.stdout?.on('data', (chunk) => {
+      stdout += String(chunk ?? '');
+    });
+
+    child.stderr?.setEncoding('utf-8');
+    child.stderr?.on('data', (chunk) => {
+      stderr += String(chunk ?? '');
+    });
+
+    child.on('error', reject);
+    child.on('close', (status) => resolve({ status, stdout, stderr }));
+  });
+
+  if (res.status !== 0) {
+    throw new Error(String(res.stderr || res.stdout || `foc-cli wallet init failed with status ${res.status}`));
+  }
+
+  const configuredAfterInit = readConfiguredFocCliPrivateKey();
+  if (configuredAfterInit?.toLowerCase() !== desiredPrivateKey.toLowerCase()) {
+    throw new Error('foc-cli wallet init did not persist the expected private key.');
+  }
+}
+
+async function runShellCommand(command: string): Promise<{ status: number | null; stdout: string; stderr: string }> {
+  return await new Promise<{ status: number | null; stdout: string; stderr: string }>((resolve, reject) => {
+    const child = spawn(command, {
+      shell: true,
+      stdio: ['ignore', 'pipe', 'pipe']
+    });
+
+    let stdout = '';
+    let stderr = '';
+    let settled = false;
+
+    child.stdout?.setEncoding('utf-8');
+    child.stdout?.on('data', (chunk) => {
+      if (settled) return;
+      stdout += String(chunk ?? '');
+      if (stdout.length > 10 * 1024 * 1024) {
+        settled = true;
+        child.kill('SIGKILL');
+        reject(new Error('Command stdout exceeded max buffer.'));
+      }
+    });
+
+    child.stderr?.setEncoding('utf-8');
+    child.stderr?.on('data', (chunk) => {
+      if (settled) return;
+      stderr += String(chunk ?? '');
+      if (stderr.length > 10 * 1024 * 1024) {
+        settled = true;
+        child.kill('SIGKILL');
+        reject(new Error('Command stderr exceeded max buffer.'));
+      }
+    });
+
+    child.on('error', (error) => {
+      if (settled) return;
+      settled = true;
+      reject(error);
+    });
+    child.on('close', (status) => {
+      if (settled) return;
+      settled = true;
+      resolve({ status, stdout, stderr });
+    });
+  });
+}
+
+async function runFocCliUpload(config: NonNullable<UploadServerConfig['foc']>, filePath: string): Promise<{
+  url: string;
+  cid: string | null;
+  size: number | null;
+  metadata: Record<string, unknown>;
+}> {
+  await ensureFocCliWalletInitialized(config.command);
   const command =
     `${config.command} upload ${shellQuote(filePath)} --format json --chain ${config.chainId} --copies ${config.copies}` +
-    `${config.withCDN ? ' --withCDN true' : ''}`;
-  const res = spawnSync(command, {
-    shell: true,
-    encoding: 'utf-8',
-    maxBuffer: 10 * 1024 * 1024
-  });
+    `${config.withCDN ? ' --withCDN true' : ''}` +
+    `${config.debug ? ' --debug true --verbose' : ''}`;
+  const res = await runShellCommand(command);
+
   if (res.status !== 0) {
-    throw new Error(String(res.stderr || res.stdout || `foc-cli failed with status ${res.status}`));
+    const primaryError = String(res.stderr || res.stdout || `foc-cli failed with status ${res.status}`).trim();
+    if (config.debug) {
+      throw new Error(primaryError);
+    }
+
+    const debugCommand =
+      `${config.command} upload ${shellQuote(filePath)} --format json --chain ${config.chainId} --copies ${config.copies}` +
+      `${config.withCDN ? ' --withCDN true' : ''} --debug true --verbose`;
+    const debugRes = await runShellCommand(debugCommand).catch((error: any) => ({
+      status: null,
+      stdout: '',
+      stderr: String(error?.message ?? error)
+    }));
+    const debugDetails = String(debugRes.stderr || debugRes.stdout || '').trim();
+    throw new Error(debugDetails || primaryError);
   }
   const parsed = JSON.parse(String(res.stdout || '{}'));
   return normalizeFocUploadResult(parsed);
@@ -2388,6 +2524,7 @@ function buildUploadServerConfig(manifest: any, uiSiteDir: string): UploadServer
           chainId: parsePositiveIntEnv(process.env.TH_UPLOAD_FOC_CHAIN, 314159),
           copies: parsePositiveIntEnv(process.env.TH_UPLOAD_FOC_COPIES, 2),
           withCDN: parseBooleanEnv(process.env.TH_UPLOAD_FOC_WITH_CDN, false),
+          debug: parseBooleanEnv(process.env.TH_UPLOAD_FOC_DEBUG, false),
           command: String(process.env.TH_UPLOAD_FOC_COMMAND ?? 'npx -y foc-cli').trim() || 'npx -y foc-cli'
         }
       : null;
@@ -2406,6 +2543,13 @@ function buildUploadServerConfig(manifest: any, uiSiteDir: string): UploadServer
   };
 }
 
+class RequestBodyTooLargeError extends Error {
+  constructor(message = 'Request body too large.') {
+    super(message);
+    this.name = 'RequestBodyTooLargeError';
+  }
+}
+
 function resolveTxMode(mode: string | undefined, chainId: number): TxMode {
   const normalized = String(mode ?? 'auto').toLowerCase().trim();
   if (normalized === 'sponsored') return 'sponsored';
@@ -2421,6 +2565,7 @@ function startUiSiteServer(args: {
   faucet?: FaucetConfig | null;
   relay?: RelayConfig | null;
   upload?: UploadServerConfig | null;
+  localPreviewRpcUrl?: string | null;
 }): { server: nodeHttp.Server; url: string } {
   const resolvedBuildDir = path.resolve(args.buildDir);
   const uiSiteDir = path.join(resolvedBuildDir, 'ui-site');
@@ -2439,11 +2584,63 @@ function startUiSiteServer(args: {
   const faucet = args.faucet ?? null;
   const relay = args.relay ?? null;
   const upload = args.upload ?? null;
+  const uploadDiagnostics = {
+    lastError: null as string | null,
+    lastErrorAt: null as string | null,
+    lastSuccessAt: null as string | null
+  };
+  const UPLOAD_JOB_TTL_MS = 10 * 60 * 1000;
+  const UPLOAD_JOB_MAX_COUNT = 128;
+  const uploadJobs = new Map<
+    string,
+    {
+      jobId: string;
+      status: 'processing' | 'done' | 'failed';
+      createdAt: string;
+      updatedAt: string;
+      upload?: {
+        url: string;
+        cid: string | null;
+        size: number | null;
+        provider: string | null;
+        runnerMode: string | null;
+        contentType: string | null;
+        metadata: Record<string, unknown>;
+      };
+      error?: string | null;
+    }
+  >();
+  const localPreviewRpcUrl = args.localPreviewRpcUrl ? String(args.localPreviewRpcUrl).trim() : '';
   const faucetPath = '/__tokenhost/faucet';
   const relayPath = '/__tokenhost/relay';
   const uploadPath = upload?.endpointUrl && upload.endpointUrl.startsWith('/') ? upload.endpointUrl : '/__tokenhost/upload';
   const uploadStatusPath = upload?.statusUrl && upload.statusUrl.startsWith('/') ? upload.statusUrl : uploadPath;
   const faucetTargetEth = faucet?.targetWei ? Number(faucet.targetWei / 10n ** 18n) : 10;
+  const manifestPaths = new Set(['/manifest.json', '/.well-known/tokenhost/manifest.json']);
+
+  function cleanupUploadJobs() {
+    const now = Date.now();
+    for (const [jobId, job] of uploadJobs.entries()) {
+      const updatedAt = Date.parse(String(job.updatedAt ?? job.createdAt ?? ''));
+      if (Number.isFinite(updatedAt) && now - updatedAt > UPLOAD_JOB_TTL_MS) {
+        uploadJobs.delete(jobId);
+      }
+    }
+
+    if (uploadJobs.size <= UPLOAD_JOB_MAX_COUNT) return;
+
+    const ordered = [...uploadJobs.entries()].sort((a, b) => {
+      const aTime = Date.parse(String(a[1].updatedAt ?? a[1].createdAt ?? '')) || 0;
+      const bTime = Date.parse(String(b[1].updatedAt ?? b[1].createdAt ?? '')) || 0;
+      return aTime - bTime;
+    });
+
+    while (ordered.length > UPLOAD_JOB_MAX_COUNT) {
+      const oldest = ordered.shift();
+      if (!oldest) break;
+      uploadJobs.delete(oldest[0]);
+    }
+  }
 
   function contentTypeForPath(filePath: string): string {
     const ext = path.extname(filePath).toLowerCase();
@@ -2497,6 +2694,28 @@ function startUiSiteServer(args: {
     res.end(JSON.stringify(value));
   }
 
+  function buildServedManifest(): any | null {
+    const manifestCandidates = [
+      path.join(uiSiteDir, '.well-known', 'tokenhost', 'manifest.json'),
+      path.join(uiSiteDir, 'manifest.json'),
+      path.join(resolvedBuildDir, 'manifest.json')
+    ];
+    const manifestPath = manifestCandidates.find((candidate) => fs.existsSync(candidate));
+    if (!manifestPath) return null;
+    const manifest = readJsonFile(manifestPath) as any;
+    if (!localPreviewRpcUrl) return manifest;
+    const extensions = manifest?.extensions && typeof manifest.extensions === 'object' ? manifest.extensions : {};
+    return {
+      ...manifest,
+      extensions: {
+        ...extensions,
+        localPreview: {
+          rpcUrl: localPreviewRpcUrl
+        }
+      }
+    };
+  }
+
   function toHexQuantity(n: bigint): string {
     if (n < 0n) throw new Error('Negative quantity not allowed.');
     return `0x${n.toString(16)}`;
@@ -2538,17 +2757,27 @@ function startUiSiteServer(args: {
     return new Promise((resolve, reject) => {
       let raw = '';
       let total = 0;
+      let settled = false;
       req.on('data', (chunk: Buffer) => {
+        if (settled) return;
         total += chunk.length;
         if (total > maxBytes) {
-          reject(new Error('Request body too large.'));
-          req.destroy();
+          settled = true;
+          reject(new RequestBodyTooLargeError());
           return;
         }
         raw += chunk.toString('utf-8');
       });
-      req.on('end', () => resolve(raw));
-      req.on('error', reject);
+      req.on('end', () => {
+        if (settled) return;
+        settled = true;
+        resolve(raw);
+      });
+      req.on('error', (error) => {
+        if (settled) return;
+        settled = true;
+        reject(error);
+      });
     });
   }
 
@@ -2556,17 +2785,27 @@ function startUiSiteServer(args: {
     return new Promise((resolve, reject) => {
       const chunks: Buffer[] = [];
       let total = 0;
+      let settled = false;
       req.on('data', (chunk: Buffer) => {
+        if (settled) return;
         total += chunk.length;
         if (total > maxBytes) {
-          reject(new Error('Request body too large.'));
-          req.destroy();
+          settled = true;
+          reject(new RequestBodyTooLargeError());
           return;
         }
         chunks.push(Buffer.from(chunk));
       });
-      req.on('end', () => resolve(Buffer.concat(chunks)));
-      req.on('error', reject);
+      req.on('end', () => {
+        if (settled) return;
+        settled = true;
+        resolve(Buffer.concat(chunks));
+      });
+      req.on('error', (error) => {
+        if (settled) return;
+        settled = true;
+        reject(error);
+      });
     });
   }
 
@@ -2574,8 +2813,10 @@ function startUiSiteServer(args: {
     if (!req.url) return sendText(res, 400, 'Bad Request');
 
     let pathname = '/';
+    let requestUrl: URL;
     try {
-      pathname = new URL(req.url, `http://${host}:${port}`).pathname || '/';
+      requestUrl = new URL(req.url, `http://${host}:${port}`);
+      pathname = requestUrl.pathname || '/';
     } catch {
       return sendText(res, 400, 'Bad Request');
     }
@@ -2653,6 +2894,9 @@ function startUiSiteServer(args: {
             didSet
           });
         } catch (e: any) {
+          if (e instanceof RequestBodyTooLargeError) {
+            return sendJson(res, 413, { ok: false, error: e.message });
+          }
           return sendJson(res, 400, { ok: false, error: String(e?.message ?? e) });
         }
       })();
@@ -2715,6 +2959,9 @@ function startUiSiteServer(args: {
 
           return sendJson(res, 200, { ok: true, txHash, receipt });
         } catch (e: any) {
+          if (e instanceof RequestBodyTooLargeError) {
+            return sendJson(res, 413, { ok: false, error: e.message });
+          }
           return sendJson(res, 400, { ok: false, error: String(e?.message ?? e) });
         }
       })();
@@ -2723,8 +2970,44 @@ function startUiSiteServer(args: {
 
     if (pathname === uploadPath || pathname === uploadStatusPath) {
       (async () => {
+        cleanupUploadJobs();
         const enabled = Boolean(upload?.enabled);
+        const requestedUploadJobId = String(requestUrl.searchParams.get('jobId') ?? '').trim();
         if (req.method === 'GET' || req.method === 'HEAD') {
+          if (requestedUploadJobId) {
+            const job = uploadJobs.get(requestedUploadJobId);
+            if (!job) {
+              return sendJson(res, 404, { ok: false, error: `Unknown upload job "${requestedUploadJobId}".`, jobId: requestedUploadJobId });
+            }
+            if (job.status === 'done' && job.upload) {
+              return sendJson(res, 200, {
+                ok: true,
+                done: true,
+                jobId: job.jobId,
+                createdAt: job.createdAt,
+                updatedAt: job.updatedAt,
+                upload: job.upload
+              });
+            }
+            if (job.status === 'failed') {
+              return sendJson(res, 200, {
+                ok: false,
+                done: true,
+                jobId: job.jobId,
+                createdAt: job.createdAt,
+                updatedAt: job.updatedAt,
+                error: job.error ?? 'Upload failed.'
+              });
+            }
+            return sendJson(res, 200, {
+              ok: true,
+              pending: true,
+              jobId: job.jobId,
+              createdAt: job.createdAt,
+              updatedAt: job.updatedAt,
+              status: job.status
+            });
+          }
           return sendJson(res, 200, {
             ok: true,
             enabled,
@@ -2734,6 +3017,9 @@ function startUiSiteServer(args: {
             accept: upload?.accept ?? [],
             endpointUrl: upload?.endpointUrl ?? null,
             statusUrl: upload?.statusUrl ?? null,
+            lastError: uploadDiagnostics.lastError,
+            lastErrorAt: uploadDiagnostics.lastErrorAt,
+            lastSuccessAt: uploadDiagnostics.lastSuccessAt,
             reason: enabled ? null : upload ? 'disabled' : 'not-configured'
           });
         }
@@ -2749,6 +3035,7 @@ function startUiSiteServer(args: {
 
         try {
           const fileName = normalizeUploadFileName(String(req.headers['x-tokenhost-upload-filename'] ?? 'upload.bin'));
+          const uploadMode = String(req.headers['x-tokenhost-upload-mode'] ?? '').trim().toLowerCase();
           const contentType = String(req.headers['content-type'] ?? 'application/octet-stream').split(';')[0]!.trim().toLowerCase();
           const accept = Array.isArray(upload.accept) ? upload.accept : [];
           if (accept.length > 0 && !accept.some((pattern) => pattern === contentType || (pattern.endsWith('/*') && contentType.startsWith(pattern.slice(0, -1))))) {
@@ -2762,17 +3049,21 @@ function startUiSiteServer(args: {
             const ext = detectUploadExtension(fileName, contentType);
             const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'th-foc-upload-'));
             const tmpFile = path.join(tmpDir, `upload${ext}`);
-            try {
-              fs.writeFileSync(tmpFile, body);
-              const uploaded = runFocCliUpload(upload.foc ?? {
-                chainId: 314159,
-                copies: 2,
-                withCDN: false,
-                command: 'npx -y foc-cli'
-              }, tmpFile);
-              return sendJson(res, 200, {
-                ok: true,
-                upload: {
+            fs.writeFileSync(tmpFile, body);
+
+            const runUpload = async () => {
+              try {
+                const uploaded = await runFocCliUpload(
+                  upload.foc ?? {
+                    chainId: 314159,
+                    copies: 2,
+                    withCDN: false,
+                    debug: false,
+                    command: 'npx -y foc-cli'
+                  },
+                  tmpFile
+                );
+                const completedUpload = {
                   url: uploaded.url,
                   cid: uploaded.cid,
                   size: uploaded.size ?? body.length,
@@ -2780,11 +3071,65 @@ function startUiSiteServer(args: {
                   runnerMode: upload.runnerMode,
                   contentType,
                   metadata: uploaded.metadata
-                }
+                };
+                uploadDiagnostics.lastError = null;
+                uploadDiagnostics.lastErrorAt = null;
+                uploadDiagnostics.lastSuccessAt = new Date().toISOString();
+                return completedUpload;
+              } finally {
+                fs.rmSync(tmpDir, { recursive: true, force: true });
+              }
+            };
+
+            if (uploadMode === 'async') {
+              const jobId = crypto.randomBytes(8).toString('hex');
+              const now = new Date().toISOString();
+              uploadJobs.set(jobId, {
+                jobId,
+                status: 'processing',
+                createdAt: now,
+                updatedAt: now
               });
-            } finally {
-              fs.rmSync(tmpDir, { recursive: true, force: true });
+
+              void runUpload()
+                .then((completedUpload) => {
+                  const updatedAt = new Date().toISOString();
+                  uploadJobs.set(jobId, {
+                    jobId,
+                    status: 'done',
+                    createdAt: now,
+                    updatedAt,
+                    upload: completedUpload,
+                    error: null
+                  });
+                })
+                .catch((error: any) => {
+                  const updatedAt = new Date().toISOString();
+                  const message = String(error?.message ?? error);
+                  uploadDiagnostics.lastError = message;
+                  uploadDiagnostics.lastErrorAt = updatedAt;
+                  uploadJobs.set(jobId, {
+                    jobId,
+                    status: 'failed',
+                    createdAt: now,
+                    updatedAt,
+                    error: message
+                  });
+                });
+
+              return sendJson(res, 202, {
+                ok: true,
+                pending: true,
+                jobId,
+                statusUrl: `${uploadStatusPath}?jobId=${encodeURIComponent(jobId)}`
+              });
             }
+
+            const completedUpload = await runUpload();
+            return sendJson(res, 200, {
+              ok: true,
+              upload: completedUpload
+            });
           }
 
           fs.mkdirSync(upload.localDir, { recursive: true });
@@ -2792,6 +3137,9 @@ function startUiSiteServer(args: {
           const storedName = `${Date.now()}-${crypto.randomBytes(6).toString('hex')}${ext}`;
           const storedPath = path.join(upload.localDir, storedName);
           fs.writeFileSync(storedPath, body);
+          uploadDiagnostics.lastError = null;
+          uploadDiagnostics.lastErrorAt = null;
+          uploadDiagnostics.lastSuccessAt = new Date().toISOString();
           return sendJson(res, 200, {
             ok: true,
             upload: {
@@ -2807,10 +3155,25 @@ function startUiSiteServer(args: {
             }
           });
         } catch (e: any) {
+          uploadDiagnostics.lastError = String(e?.message ?? e);
+          uploadDiagnostics.lastErrorAt = new Date().toISOString();
+          if (e instanceof RequestBodyTooLargeError) {
+            return sendJson(res, 413, { ok: false, error: e.message });
+          }
           return sendJson(res, 400, { ok: false, error: String(e?.message ?? e) });
         }
       })();
       return;
+    }
+
+    if (manifestPaths.has(pathname)) {
+      try {
+        const manifest = buildServedManifest();
+        if (!manifest) return sendText(res, 404, 'Not Found');
+        return sendJson(res, 200, manifest);
+      } catch (e: any) {
+        return sendText(res, 500, String(e?.message ?? e ?? 'Internal Server Error'));
+      }
     }
 
     if (req.method && req.method !== 'GET' && req.method !== 'HEAD') {
@@ -3095,6 +3458,21 @@ function buildFromSchema(
     },
     features,
     extensions: {
+      chainLimits: {
+        lists: {
+          maxLimit: generationLimits.listMaxLimit,
+          maxScanSteps: generationLimits.listMaxScanSteps
+        },
+        multicall: {
+          maxCalls: generationLimits.multicallMaxCalls
+        },
+        indexing: {
+          tokenized: {
+            maxTokens: generationLimits.tokenizedIndexMaxTokens,
+            maxTokenLength: generationLimits.tokenizedIndexMaxTokenLength
+          }
+        }
+      },
       ...(uploadConfig
         ? {
             uploads: {
@@ -4171,6 +4549,9 @@ program
           try {
             const manifest = readJsonFile(path.join(outDir, 'manifest.json')) as any;
             uploadConfig = buildUploadServerConfig(manifest, path.join(outDir, 'ui-site'));
+            if (uploadConfig?.runnerMode === 'foc-process' && uploadConfig.foc) {
+              await ensureFocCliWalletInitialized(uploadConfig.foc.command);
+            }
           } catch {
             uploadConfig = null;
           }
@@ -4194,7 +4575,8 @@ program
                   from: relayFrom
                 }
               : null,
-            upload: uploadConfig
+            upload: uploadConfig,
+            localPreviewRpcUrl: activeRpcUrl
           });
           console.log('');
           console.log(`Ready: ${url}`);
@@ -4278,6 +4660,9 @@ program
             activePreviewRpcUrl = resolveRpcUrl(chainName, chain, opts.rpc);
           }
           uploadConfig = buildUploadServerConfig(manifest, path.join(resolvedBuildDir, 'ui-site'));
+          if (uploadConfig?.runnerMode === 'foc-process' && uploadConfig.foc) {
+            await ensureFocCliWalletInitialized(uploadConfig.foc.command);
+          }
         } catch {
           // ignore parse issues
         }
@@ -4329,7 +4714,8 @@ program
         port,
         faucet: faucetConfig,
         relay: relayConfig,
-        upload: uploadConfig
+        upload: uploadConfig,
+        localPreviewRpcUrl: activePreviewRpcUrl
       });
 
       const cleanup = () => {

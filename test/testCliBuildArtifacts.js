@@ -84,11 +84,15 @@ describe('th build (artifacts)', function () {
     expect(res.status, res.stderr || res.stdout).to.equal(0);
 
     const appSol = fs.readFileSync(path.join(outDir, 'contracts', 'App.sol'), 'utf-8');
+    const manifest = JSON.parse(fs.readFileSync(path.join(outDir, 'manifest.json'), 'utf-8'));
     expect(appSol).to.include('uint256 public constant MAX_LIST_LIMIT = 25;');
     expect(appSol).to.include('uint256 public constant MAX_SCAN_STEPS = 500;');
     expect(appSol).to.include('uint256 public constant MAX_MULTICALL_CALLS = 12;');
     expect(appSol).to.include('uint256 public constant MAX_TOKENIZED_INDEX_TOKENS = 6;');
     expect(appSol).to.include('uint256 public constant MAX_TOKENIZED_INDEX_TOKEN_LENGTH = 24;');
+    expect(manifest?.extensions?.chainLimits?.lists?.maxLimit).to.equal(25);
+    expect(manifest?.extensions?.chainLimits?.lists?.maxScanSteps).to.equal(500);
+    expect(manifest?.extensions?.chainLimits?.multicall?.maxCalls).to.equal(12);
   });
 
   it('cleans its temporary UI build workspace after a successful build', function () {

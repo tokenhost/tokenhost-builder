@@ -6,9 +6,9 @@ import { useRouter, useSearchParams } from 'next/navigation';
 import { fetchAppAbi } from '../../../src/lib/abi';
 import { assertAbiFunction, fnDelete, fnGet } from '../../../src/lib/app';
 import { chainFromId } from '../../../src/lib/chains';
-import { makePublicClient } from '../../../src/lib/clients';
+import { chainWithRpcOverride, makePublicClient } from '../../../src/lib/clients';
 import { shortAddress } from '../../../src/lib/format';
-import { fetchManifest, getPrimaryDeployment } from '../../../src/lib/manifest';
+import { fetchManifest, getPrimaryDeployment, getReadRpcUrl } from '../../../src/lib/manifest';
 import { getCollection } from '../../../src/lib/ths';
 import { submitWriteTx } from '../../../src/lib/tx';
 import TxStatus, { type TxPhase } from '../../../src/components/TxStatus';
@@ -32,7 +32,9 @@ export default function DeleteRecordPage(props: { params: { collection: string }
   const idParam = search.get('id');
   const rpcOverride = search.get('rpc') ?? undefined;
 
-  const [loading, setLoading] = useState(true);
+  const [bootstrapping, setBootstrapping] = useState(true);
+  const [recordLoading, setRecordLoading] = useState(false);
+  const [initialRecordResolved, setInitialRecordResolved] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [status, setStatus] = useState<string | null>(null);
   const [txPhase, setTxPhase] = useState<TxPhase>('idle');
@@ -57,14 +59,18 @@ export default function DeleteRecordPage(props: { params: { collection: string }
 
   useEffect(() => {
     async function boot() {
-      setLoading(true);
+      setBootstrapping(true);
+      setInitialRecordResolved(false);
       setError(null);
       try {
         const manifest = await fetchManifest();
         const d = getPrimaryDeployment(manifest);
         if (!d) throw new Error('Manifest has no deployments');
-        const chain = chainFromId(Number(d.chainId));
-        const pc = makePublicClient(chain, rpcOverride);
+        const chain = chainWithRpcOverride(
+          chainFromId(Number(d.chainId)),
+          rpcOverride || getReadRpcUrl(manifest) || undefined
+        );
+        const pc = makePublicClient(chain, rpcOverride || getReadRpcUrl(manifest) || undefined);
         setManifest(manifest);
         setDeployment(d);
         setPublicClient(pc);
@@ -79,7 +85,7 @@ export default function DeleteRecordPage(props: { params: { collection: string }
       } catch (e: any) {
         setError(String(e?.message ?? e));
       } finally {
-        setLoading(false);
+        setBootstrapping(false);
       }
     }
     void boot();
@@ -87,8 +93,11 @@ export default function DeleteRecordPage(props: { params: { collection: string }
 
   const appAddress = deployment?.deploymentEntrypointAddress as `0x${string}` | undefined;
 
-  async function fetchRecord() {
+  async function fetchRecord(options?: { initial?: boolean }) {
     if (!publicClient || !abi || !appAddress || id === null) return;
+    const isInitial = options?.initial === true;
+    if (isInitial) setInitialRecordResolved(false);
+    setRecordLoading(true);
     setError(null);
     try {
       assertAbiFunction(abi, fnGet(collectionName), collectionName);
@@ -101,11 +110,14 @@ export default function DeleteRecordPage(props: { params: { collection: string }
       setRecord(r);
     } catch (e: any) {
       setError(String(e?.message ?? e));
+    } finally {
+      setRecordLoading(false);
+      if (isInitial) setInitialRecordResolved(true);
     }
   }
 
   useEffect(() => {
-    void fetchRecord();
+    void fetchRecord({ initial: true });
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [publicClient, abi, appAddress, idParam]);
 
@@ -118,7 +130,10 @@ export default function DeleteRecordPage(props: { params: { collection: string }
     setTxHash(null);
 
     try {
-      const chain = chainFromId(Number(deployment.chainId));
+      const chain = chainWithRpcOverride(
+        chainFromId(Number(deployment.chainId)),
+        rpcOverride || getReadRpcUrl(manifest) || undefined
+      );
 
       assertAbiFunction(abi, fnDelete(collectionName), collectionName);
       const result = await submitWriteTx({
@@ -170,7 +185,7 @@ export default function DeleteRecordPage(props: { params: { collection: string }
     );
   }
 
-  if (loading && !record) {
+  if ((bootstrapping || (recordLoading && !initialRecordResolved)) && !record) {
     return (
       <div className="card">
         <h2>Loading…</h2>
@@ -219,6 +234,15 @@ export default function DeleteRecordPage(props: { params: { collection: string }
           <button className="btn" onClick={() => void fetchRecord()}>Retry</button>
           <button className="btn" onClick={() => router.push(`/${collectionName}/?mode=view&id=${String(id)}`)}>Back</button>
         </div>
+      </div>
+    );
+  }
+
+  if (initialRecordResolved && !record) {
+    return (
+      <div className="card">
+        <h2>Not found</h2>
+        <div className="muted">No record returned.</div>
       </div>
     );
   }

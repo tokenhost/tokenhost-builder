@@ -12,7 +12,7 @@ import { fetchAppAbi } from '../../src/lib/abi';
 import { collectionId, listRecords } from '../../src/lib/app';
 import { chainFromId } from '../../src/lib/chains';
 import { makePublicClient } from '../../src/lib/clients';
-import { fetchManifest, getPrimaryDeployment } from '../../src/lib/manifest';
+import { fetchManifest, getPrimaryDeployment, getReadRpcUrl } from '../../src/lib/manifest';
 import { getCollection } from '../../src/lib/ths';
 
 const PAGE_SIZE = 10;
@@ -48,7 +48,9 @@ function CollectionListModePage(props: { params: { collection: string } }) {
   const rpcOverride = search.get('rpc') ?? undefined;
   const showDebug = search.get('debug') === '1';
 
-  const [loading, setLoading] = useState(true);
+  const [bootstrapping, setBootstrapping] = useState(true);
+  const [pageLoading, setPageLoading] = useState(false);
+  const [initialPageResolved, setInitialPageResolved] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   const [manifest, setManifest] = useState<any | null>(null);
@@ -63,7 +65,9 @@ function CollectionListModePage(props: { params: { collection: string } }) {
   const appAddress = deployment?.deploymentEntrypointAddress as `0x${string}` | undefined;
 
   async function bootstrap() {
-    setLoading(true);
+    setBootstrapping(true);
+    setPageLoading(false);
+    setInitialPageResolved(false);
     setError(null);
     try {
       const m = await fetchManifest();
@@ -71,7 +75,7 @@ function CollectionListModePage(props: { params: { collection: string } }) {
       if (!d) throw new Error('Manifest has no deployments');
 
       const chain = chainFromId(Number(d.chainId));
-      const pc = makePublicClient(chain, rpcOverride);
+      const pc = makePublicClient(chain, rpcOverride || getReadRpcUrl(m) || undefined);
 
       setManifest(m);
       setDeployment(d);
@@ -92,15 +96,17 @@ function CollectionListModePage(props: { params: { collection: string } }) {
     } catch (e: any) {
       setError(String(e?.message ?? e));
     } finally {
-      setLoading(false);
+      setBootstrapping(false);
     }
   }
 
-  async function loadNextPage(nextCursor: bigint) {
+  async function loadNextPage(nextCursor: bigint, options?: { initial?: boolean }) {
     if (!publicClient || !abi || !appAddress) return;
     if (appAddress.toLowerCase() === '0x0000000000000000000000000000000000000000') return;
 
-    setLoading(true);
+    const isInitial = options?.initial === true;
+    if (isInitial) setInitialPageResolved(false);
+    setPageLoading(true);
     setError(null);
     try {
       const { ids, records: recs } = await listRecords({
@@ -125,7 +131,8 @@ function CollectionListModePage(props: { params: { collection: string } }) {
     } catch (e: any) {
       setError(String(e?.message ?? e));
     } finally {
-      setLoading(false);
+      setPageLoading(false);
+      if (isInitial) setInitialPageResolved(true);
     }
   }
 
@@ -137,7 +144,7 @@ function CollectionListModePage(props: { params: { collection: string } }) {
   // Fetch first page once bootstrap is done.
   useEffect(() => {
     if (!publicClient || !abi || !deployment) return;
-    void loadNextPage(0n);
+    void loadNextPage(0n, { initial: true });
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [publicClient, abi, deployment]);
 
@@ -153,7 +160,7 @@ function CollectionListModePage(props: { params: { collection: string } }) {
       setRecords([]);
       setCursor(0n);
       setHasMore(true);
-      void loadNextPage(0n);
+      void loadNextPage(0n, { initial: true });
     }
 
     // List pages should avoid broad RecordUpdated subscriptions (SPEC 8.9.2).
@@ -186,7 +193,7 @@ function CollectionListModePage(props: { params: { collection: string } }) {
     );
   }
 
-  if (loading && records.length === 0) {
+  if ((bootstrapping || (pageLoading && !initialPageResolved)) && records.length === 0) {
     return (
       <div className="card">
         <h2>Loading…</h2>
@@ -228,7 +235,7 @@ function CollectionListModePage(props: { params: { collection: string } }) {
 
   return (
     <>
-      {records.length === 0 ? (
+      {initialPageResolved && records.length === 0 ? (
         <div className="card">
           <h2>No records yet</h2>
           <div className="muted">Create the first {collection.name}.</div>
@@ -247,8 +254,8 @@ function CollectionListModePage(props: { params: { collection: string } }) {
         </div>
         <div className="recordListActions">
           <button className="btn" onClick={() => void bootstrap()}>Refresh</button>
-          <button className="btn primary" disabled={!hasMore || loading} onClick={() => void loadNextPage(cursor)}>
-            {hasMore ? (loading ? 'Loading…' : 'Load more') : 'End'}
+          <button className="btn primary" disabled={!hasMore || pageLoading} onClick={() => void loadNextPage(cursor)}>
+            {hasMore ? (pageLoading ? 'Loading…' : 'Load more') : 'End'}
           </button>
         </div>
       </div>

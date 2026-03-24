@@ -27,7 +27,7 @@
       ],
       "createRules": { "required": ["handle"], "access": "public" },
       "visibilityRules": { "gets": ["handle", "displayName", "bio", "avatar"], "access": "public" },
-      "updateRules": { "mutable": ["displayName", "bio", "avatar"], "access": "owner" },
+      "updateRules": { "mutable": ["handle", "displayName", "bio", "avatar"], "access": "owner" },
       "deleteRules": { "softDelete": true, "access": "owner" },
       "transferRules": { "access": "owner" },
       "indexes": {
@@ -38,22 +38,25 @@
     {
       "name": "Post",
       "fields": [
-        { "name": "authorHandle", "type": "string", "required": true },
+        { "name": "authorProfile", "type": "reference", "required": true },
         { "name": "body", "type": "string", "required": true },
         { "name": "image", "type": "image" }
       ],
-      "createRules": { "required": ["authorHandle", "body"], "access": "public" },
-      "visibilityRules": { "gets": ["authorHandle", "body", "image"], "access": "public" },
+      "createRules": { "required": ["authorProfile", "body"], "access": "public" },
+      "visibilityRules": { "gets": ["authorProfile", "body", "image"], "access": "public" },
       "updateRules": { "mutable": ["body", "image"], "access": "owner" },
       "deleteRules": { "softDelete": true, "access": "owner" },
       "transferRules": { "access": "owner" },
       "indexes": {
         "unique": [],
         "index": [
-          { "field": "authorHandle" },
+          { "field": "authorProfile" },
           { "field": "body", "mode": "tokenized", "tokenizer": "hashtag" }
         ]
-      }
+      },
+      "relations": [
+        { "field": "authorProfile", "to": "Profile", "enforce": true, "reverseIndex": true }
+      ]
     }
   ]
 }

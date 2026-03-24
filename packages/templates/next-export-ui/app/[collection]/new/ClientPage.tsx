@@ -6,9 +6,9 @@ import { useRouter, useSearchParams } from 'next/navigation';
 import { fetchAppAbi } from '../../../src/lib/abi';
 import { assertAbiFunction, fnCreate } from '../../../src/lib/app';
 import { chainFromId } from '../../../src/lib/chains';
-import { makePublicClient } from '../../../src/lib/clients';
+import { chainWithRpcOverride, makePublicClient } from '../../../src/lib/clients';
 import { formatWei, parseFieldValue } from '../../../src/lib/format';
-import { fetchManifest, getPrimaryDeployment } from '../../../src/lib/manifest';
+import { fetchManifest, getPrimaryDeployment, getReadRpcUrl } from '../../../src/lib/manifest';
 import { createFields, getCollection, hasCreatePayment, requiredFieldNames, type ThsField } from '../../../src/lib/ths';
 import { submitWriteTx } from '../../../src/lib/tx';
 import TxStatus, { type TxPhase } from '../../../src/components/TxStatus';
@@ -48,8 +48,8 @@ export default function CreateRecordPage(props: { params: { collection: string }
         const manifest = await fetchManifest();
         const d = getPrimaryDeployment(manifest);
         if (!d) throw new Error('Manifest has no deployments');
-        const chain = chainFromId(Number(d.chainId));
-        const pc = makePublicClient(chain, rpcOverride);
+        const chain = chainWithRpcOverride(chainFromId(Number(d.chainId)), rpcOverride || getReadRpcUrl(manifest) || undefined);
+        const pc = makePublicClient(chain, rpcOverride || getReadRpcUrl(manifest) || undefined);
 
         setManifest(manifest);
         setDeployment(d);
@@ -128,7 +128,10 @@ export default function CreateRecordPage(props: { params: { collection: string }
     }
 
     try {
-      const chain = chainFromId(Number(deployment.chainId));
+      const chain = chainWithRpcOverride(
+        chainFromId(Number(deployment.chainId)),
+        rpcOverride || getReadRpcUrl(manifest) || undefined
+      );
       assertAbiFunction(abi, fnCreate(collectionName), collectionName);
       const contractInput = Object.fromEntries(
         fields.map((f) => [f.name, parseFieldValue(form[f.name] ?? '', f.type, (f as any).decimals)])

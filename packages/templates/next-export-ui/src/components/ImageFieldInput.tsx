@@ -9,8 +9,9 @@ export default function ImageFieldInput(props: {
   value: string;
   disabled?: boolean;
   onChange: (next: string) => void;
+  onBusyChange?: (busy: boolean) => void;
 }) {
-  const { manifest, value, disabled, onChange } = props;
+  const { manifest, value, disabled, onChange, onBusyChange } = props;
   const config = useMemo(() => getUploadConfig(manifest), [manifest]);
   const inputRef = useRef<HTMLInputElement | null>(null);
   const [busy, setBusy] = useState(false);
@@ -40,6 +41,7 @@ export default function ImageFieldInput(props: {
     if (localPreviewUrl) URL.revokeObjectURL(localPreviewUrl);
     setLocalPreviewUrl(objectUrl);
     setBusy(true);
+    onBusyChange?.(true);
     setStatus(`Uploading via ${config.runnerMode}…`);
 
     try {
@@ -55,6 +57,7 @@ export default function ImageFieldInput(props: {
       setStatus(null);
     } finally {
       setBusy(false);
+      onBusyChange?.(false);
     }
   }
 

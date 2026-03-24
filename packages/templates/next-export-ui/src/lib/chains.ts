@@ -3,11 +3,46 @@ import type { Chain } from 'viem';
 
 const FILECOIN_CALIBRATION_CHAIN_ID = 314159;
 const FILECOIN_MAINNET_CHAIN_ID = 314;
+const filecoinCalibration = {
+  id: FILECOIN_CALIBRATION_CHAIN_ID,
+  name: 'Filecoin Calibration',
+  nativeCurrency: { name: 'tFIL', symbol: 'tFIL', decimals: 18 },
+  rpcUrls: {
+    default: {
+      http: ['https://api.calibration.node.glif.io/rpc/v1']
+    }
+  },
+  blockExplorers: {
+    default: {
+      name: 'Filfox',
+      url: 'https://calibration.filfox.info/en'
+    }
+  }
+} as const satisfies Chain;
+
+const filecoinMainnet = {
+  id: FILECOIN_MAINNET_CHAIN_ID,
+  name: 'Filecoin',
+  nativeCurrency: { name: 'FIL', symbol: 'FIL', decimals: 18 },
+  rpcUrls: {
+    default: {
+      http: ['https://api.node.glif.io']
+    }
+  },
+  blockExplorers: {
+    default: {
+      name: 'Filfox',
+      url: 'https://filfox.info/en'
+    }
+  }
+} as const satisfies Chain;
 
 export function chainFromId(chainId: number): Chain {
   if (chainId === anvil.id) return anvil;
   if (chainId === sepolia.id) return sepolia;
   if (chainId === mainnet.id) return mainnet;
+  if (chainId === FILECOIN_CALIBRATION_CHAIN_ID) return filecoinCalibration;
+  if (chainId === FILECOIN_MAINNET_CHAIN_ID) return filecoinMainnet;
 
   // Minimal fallback for unknown chains.
   return {

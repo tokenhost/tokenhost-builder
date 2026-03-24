@@ -170,10 +170,43 @@ describe('th generate (UI template)', function () {
 
     const layoutSource = fs.readFileSync(path.join(outDir, 'ui', 'app', 'layout.tsx'), 'utf-8');
     expect(layoutSource).to.include('NetworkStatus');
-    expect(layoutSource).to.include('rootStyleVars');
+    expect(layoutSource).to.include('themeBootScript');
+    expect(layoutSource).to.not.include('/tokenhost/ops');
 
     const generatedTokens = fs.readFileSync(path.join(outDir, 'ui', 'src', 'theme', 'tokens.json'), 'utf-8');
     expect(generatedTokens).to.equal(readTemplateThemeTokens());
+    expect(generatedTokens).to.include('"primary": "#00d4ff"');
+
+    const generatedTx = fs.readFileSync(path.join(outDir, 'ui', 'src', 'lib', 'tx.ts'), 'utf-8');
+    expect(generatedTx).to.include('const relayReceipt = body.receipt ?? null;');
+    expect(generatedTx).to.include("if (relayReceipt) {");
+    expect(generatedTx).to.include('assertWalletRpcMatchesDeployment');
+    expect(generatedTx).to.include('Wallet RPC is not pointed at the same deployment as this app.');
+    expect(generatedTx).to.include('async function estimateWriteGas');
+    expect(generatedTx).to.include('const gas = await estimateWriteGas');
+    expect(generatedTx).to.include('gas,');
+
+    const generatedCollectionPage = fs.readFileSync(path.join(outDir, 'ui', 'app', '[collection]', 'ClientPage.tsx'), 'utf-8');
+    expect(generatedCollectionPage).to.include('getReadRpcUrl');
+    expect(generatedCollectionPage).to.include('rpcOverride || getReadRpcUrl(m) || undefined');
+
+    const generatedRuntime = fs.readFileSync(path.join(outDir, 'ui', 'src', 'lib', 'runtime.ts'), 'utf-8');
+    expect(generatedRuntime).to.include('getListMaxLimit');
+    expect(generatedRuntime).to.include('function clampListPageSize');
+
+    const generatedImageField = fs.readFileSync(path.join(outDir, 'ui', 'src', 'components', 'ImageFieldInput.tsx'), 'utf-8');
+    expect(generatedImageField).to.include('onBusyChange');
+
+    const generatedUpload = fs.readFileSync(path.join(outDir, 'ui', 'src', 'lib', 'upload.ts'), 'utf-8');
+    expect(generatedUpload).to.include('buildUploadNetworkError');
+    expect(generatedUpload).to.include('xhr.timeout = 5 * 60 * 1000;');
+
+    const generatedClients = fs.readFileSync(path.join(outDir, 'ui', 'src', 'lib', 'clients.ts'), 'utf-8');
+    expect(generatedClients).to.include('async function refreshWalletChainConfig');
+    expect(generatedClients).to.include("requestProvider('wallet_addEthereumChain'");
+    expect(generatedClients).to.include("requestProvider('wallet_switchEthereumChain'");
+    expect(generatedClients).to.include('async function assertWalletTracksTargetLocalRpc');
+    expect(generatedClients).to.include('export function makeInjectedPublicClient');
   });
 
   it('materializes the explicit cyber-grid theme preset into generated UI output', function () {
@@ -257,8 +290,11 @@ describe('th generate (UI template)', function () {
     const uiDir = path.join(outDir, 'ui');
     expect(fs.existsSync(path.join(uiDir, 'app', 'page.tsx'))).to.equal(true);
     expect(fs.existsSync(path.join(uiDir, 'app', 'tag', 'page.tsx'))).to.equal(true);
+    expect(fs.existsSync(path.join(uiDir, 'app', 'Post', 'page.tsx'))).to.equal(true);
     const generatedThs = fs.readFileSync(path.join(uiDir, 'src', 'generated', 'ths.ts'), 'utf-8');
     expect(generatedThs).to.include('"preset": "cyber-grid"');
+    expect(generatedThs).to.include('"authorProfile"');
+    expect(generatedThs).to.not.include('"authorHandle"');
 
     const install = runCmd('pnpm', ['install'], uiDir);
     expect(install.status, install.stderr || install.stdout).to.equal(0);

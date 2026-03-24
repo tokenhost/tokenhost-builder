@@ -22,6 +22,47 @@ export type UploadConfig = {
   maxBytes: number | null;
 };
 
+type PendingUploadResponse = {
+  ok: true;
+  pending: true;
+  jobId: string;
+  statusUrl?: string;
+};
+
+async function buildUploadNetworkError(config: UploadConfig, xhr: XMLHttpRequest): Promise<string> {
+  const parts = [
+    `Upload request failed before the server returned a usable response.`,
+    `Endpoint: ${config.endpointUrl}.`
+  ];
+
+  if (xhr.status) {
+    parts.push(`HTTP ${xhr.status}${xhr.statusText ? ` ${xhr.statusText}` : ''}.`);
+  }
+
+  try {
+    const res = await fetch(config.statusUrl, { cache: 'no-store' });
+    const body = await res.json().catch(() => null);
+    if (body && typeof body === 'object') {
+      const enabled = body.enabled === true ? 'enabled' : 'disabled';
+      const provider = body.provider ? `provider=${String(body.provider)}` : null;
+      const runner = body.runnerMode ? `runner=${String(body.runnerMode)}` : null;
+      const reason = body.reason ? `reason=${String(body.reason)}` : null;
+      const statusBits = [enabled, provider, runner, reason].filter(Boolean);
+      if (statusBits.length > 0) {
+        parts.push(`Upload status: ${statusBits.join(', ')}.`);
+      }
+      if (body.lastError) {
+        const when = body.lastErrorAt ? ` (${String(body.lastErrorAt)})` : '';
+        parts.push(`Last server error${when}: ${String(body.lastError)}.`);
+      }
+    }
+  } catch {
+    // ignore status enrichment failures
+  }
+
+  return parts.join(' ');
+}
+
 function normalizeUrl(value: string, fallback: string): string {
   const trimmed = String(value || '').trim();
   if (!trimmed) return fallback;
@@ -74,42 +115,101 @@ export async function uploadFile(args: {
   }
 
   return await new Promise<UploadResult>((resolve, reject) => {
+    let settled = false;
+    const finishResolve = (value: UploadResult) => {
+      if (settled) return;
+      settled = true;
+      resolve(value);
+    };
+    const finishReject = (error: Error) => {
+      if (settled) return;
+      settled = true;
+      reject(error);
+    };
     const xhr = new XMLHttpRequest();
     xhr.open('POST', config.endpointUrl, true);
     xhr.responseType = 'text';
+    xhr.timeout = 5 * 60 * 1000;
     xhr.setRequestHeader('Content-Type', args.file.type || 'application/octet-stream');
     xhr.setRequestHeader('X-TokenHost-Upload-Filename', args.file.name || 'upload.bin');
     xhr.setRequestHeader('X-TokenHost-Upload-Size', String(args.file.size));
+    if (config.runnerMode === 'foc-process') {
+      xhr.setRequestHeader('X-TokenHost-Upload-Mode', 'async');
+    }
 
     xhr.upload.onprogress = (event) => {
       if (!event.lengthComputable || !args.onProgress) return;
       args.onProgress(Math.max(0, Math.min(100, Math.round((event.loaded / event.total) * 100))));
     };
 
-    xhr.onerror = () => reject(new Error('Upload request failed.'));
-    xhr.onabort = () => reject(new Error('Upload request was aborted.'));
+    async function pollUploadJob(statusUrl: string): Promise<UploadResult> {
+      const startedAt = Date.now();
+      for (;;) {
+        if (Date.now() - startedAt > xhr.timeout) {
+          throw new Error(`Upload timed out after ${Math.round(xhr.timeout / 1000)} seconds.`);
+        }
+        await new Promise((r) => setTimeout(r, 1500));
+        const res = await fetch(statusUrl, { cache: 'no-store' });
+        const body = await res.json().catch(() => null);
+        if (!res.ok) {
+          throw new Error(String(body?.error ?? `Upload polling failed (HTTP ${res.status}).`));
+        }
+        if (body?.pending) {
+          args.onProgress?.(100);
+          continue;
+        }
+        if (!body?.ok || !body?.upload?.url) {
+          throw new Error(String(body?.error ?? 'Upload failed before the server returned a usable result.'));
+        }
+        return {
+          url: String(body.upload.url),
+          cid: body.upload.cid ? String(body.upload.cid) : null,
+          size: Number.isFinite(Number(body.upload.size)) ? Number(body.upload.size) : null,
+          provider: body.upload.provider ? String(body.upload.provider) : config.provider,
+          runnerMode: body.upload.runnerMode ? String(body.upload.runnerMode) : config.runnerMode,
+          contentType: body.upload.contentType ? String(body.upload.contentType) : null,
+          metadata: body.upload.metadata && typeof body.upload.metadata === 'object' ? body.upload.metadata : {}
+        };
+      }
+    }
+
+    xhr.onerror = () => {
+      void (async () => finishReject(new Error(await buildUploadNetworkError(config, xhr))))();
+    };
+    xhr.onabort = () => finishReject(new Error('Upload request was aborted.'));
+    xhr.ontimeout = () => finishReject(new Error(`Upload timed out after ${Math.round(xhr.timeout / 1000)} seconds.`));
     xhr.onload = () => {
-      let body: any = null;
-      try {
-        body = xhr.responseText ? JSON.parse(xhr.responseText) : null;
-      } catch {
-        body = null;
-      }
+      void (async () => {
+        let body: any = null;
+        try {
+          body = xhr.responseText ? JSON.parse(xhr.responseText) : null;
+        } catch {
+          body = null;
+        }
 
-      if (xhr.status < 200 || xhr.status >= 300 || !body?.ok || !body?.upload?.url) {
-        reject(new Error(String(body?.error ?? `Upload failed (HTTP ${xhr.status}).`)));
-        return;
-      }
+        if (xhr.status === 202 && body?.pending && body?.jobId) {
+          const pending = body as PendingUploadResponse;
+          const statusUrl = normalizeUrl(pending.statusUrl || '', `${config.statusUrl}?jobId=${encodeURIComponent(pending.jobId)}`);
+          const completed = await pollUploadJob(statusUrl);
+          finishResolve(completed);
+          return;
+        }
 
-      resolve({
-        url: String(body.upload.url),
-        cid: body.upload.cid ? String(body.upload.cid) : null,
-        size: Number.isFinite(Number(body.upload.size)) ? Number(body.upload.size) : null,
-        provider: body.upload.provider ? String(body.upload.provider) : config.provider,
-        runnerMode: body.upload.runnerMode ? String(body.upload.runnerMode) : config.runnerMode,
-        contentType: body.upload.contentType ? String(body.upload.contentType) : null,
-        metadata: body.upload.metadata && typeof body.upload.metadata === 'object' ? body.upload.metadata : {}
-      });
+        if (xhr.status < 200 || xhr.status >= 300 || !body?.ok || !body?.upload?.url) {
+          finishReject(new Error(String(body?.error ?? `Upload failed (HTTP ${xhr.status}).`)));
+          return;
+        }
+
+        finishResolve({
+          url: String(body.upload.url),
+          cid: body.upload.cid ? String(body.upload.cid) : null,
+          size: Number.isFinite(Number(body.upload.size)) ? Number(body.upload.size) : null,
+          provider: body.upload.provider ? String(body.upload.provider) : config.provider,
+          runnerMode: body.upload.runnerMode ? String(body.upload.runnerMode) : config.runnerMode,
+          contentType: body.upload.contentType ? String(body.upload.contentType) : null,
+          metadata: body.upload.metadata && typeof body.upload.metadata === 'object' ? body.upload.metadata : {}
+        });
+      })().catch((error: any) => finishReject(new Error(String(error?.message ?? error))));
     };
 
     xhr.send(args.file);

@@ -3,8 +3,9 @@
 import Link from 'next/link';
 import { useEffect, useMemo, useState } from 'react';
 
-import { listAllRecords, loadAppRuntime } from '../lib/runtime';
-import PostStream, { collectTrendingTags, sortFeedItemsDesc, type FeedItem } from './PostStream';
+import { resolveFeedItemsWithProfiles, loadMicroblogRuntime, type FeedItem } from '../lib/microblog';
+import { listAllRecords } from '../lib/runtime';
+import PostStream, { collectTrendingTags, sortFeedItemsDesc } from './PostStream';
 
 type LoadState = {
   items: FeedItem[];
@@ -20,8 +21,9 @@ export default function MicroblogHomeClient() {
 
     (async () => {
       try {
-        const runtime = await loadAppRuntime();
+        const runtime = await loadMicroblogRuntime();
         const page = await listAllRecords({
+          manifest: runtime.manifest,
           publicClient: runtime.publicClient,
           abi: runtime.abi,
           address: runtime.appAddress,
@@ -31,7 +33,13 @@ export default function MicroblogHomeClient() {
 
         if (cancelled) return;
 
-        const items = sortFeedItemsDesc(page.ids.map((id, index) => ({ id, record: page.records[index] }))).slice(0, 24);
+        const resolved = await resolveFeedItemsWithProfiles(
+          runtime,
+          page.ids.map((id, index) => ({ id, record: page.records[index] }))
+        );
+        if (cancelled) return;
+
+        const items = sortFeedItemsDesc(resolved).slice(0, 24);
         setState({ items, loading: false, error: null });
       } catch (error: any) {
         if (cancelled) return;
@@ -70,7 +78,8 @@ export default function MicroblogHomeClient() {
             </h2>
             <p className="lead">
               This example app uses Token Host&apos;s native hashtag index on <span className="badge">Post.body</span> and the native
-              upload field flow for <span className="badge">Post.image</span>.
+              upload field flow for <span className="badge">Post.image</span>. Posts reference <span className="badge">Profile</span> records
+              instead of copying handles into each post.
             </p>
             <div className="actionGroup">
               <Link className="btn primary" href="/Post/?mode=new">Compose post</Link>
@@ -100,7 +109,7 @@ export default function MicroblogHomeClient() {
               </div>
             </div>
             <div className="heroMeta">
-              <span className="badge">author equality index</span>
+              <span className="badge">author profile reference</span>
               <span className="badge">body hashtag tokenizer</span>
             </div>
           </div>
@@ -115,12 +124,14 @@ export default function MicroblogHomeClient() {
         </section>
       ) : null}
 
-      <section className="sectionHeading">
-        <div>
+      <section className="card sectionHeading">
+        <div className="sectionHeadingPrimary">
           <span className="eyebrow">/tags</span>
           <h2>Trending hashtags</h2>
         </div>
-        <p className="muted">Hashtags come from the native tokenized index on post bodies, not an app-specific join table.</p>
+        <div className="sectionHeadingAside">
+          <p className="muted">Hashtags come from the native tokenized index on post bodies, not an app-specific join table.</p>
+        </div>
       </section>
 
       <section className="card">
@@ -137,12 +148,14 @@ export default function MicroblogHomeClient() {
         </div>
       </section>
 
-      <section className="sectionHeading">
-        <div>
+      <section className="card sectionHeading">
+        <div className="sectionHeadingPrimary">
           <span className="eyebrow">/feed</span>
           <h2>Latest posts</h2>
         </div>
-        <p className="muted">Text-only and image posts render through the same generated `Post` collection.</p>
+        <div className="sectionHeadingAside">
+          <p className="muted">Text-only and image posts render through the same generated `Post` collection.</p>
+        </div>
       </section>
 
       {state.loading ? (

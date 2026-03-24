@@ -33,6 +33,12 @@ export function getPrimaryDeployment(manifest: any): any {
   return primary ?? deployments[0] ?? null;
 }
 
+export function getReadRpcUrl(manifest: any): string | null {
+  const configured = String(manifest?.extensions?.localPreview?.rpcUrl ?? '').trim();
+  if (configured) return configured;
+  return null;
+}
+
 export function getTxMode(manifest: any): TxMode {
   const mode = String(manifest?.extensions?.tx?.mode ?? '').trim();
   if (mode === 'sponsored') return 'sponsored';
@@ -74,4 +80,10 @@ export function getUploadRunnerMode(manifest: any): UploadRunnerMode {
   if (mode === 'remote') return 'remote';
   if (mode === 'foc-process') return 'foc-process';
   return 'local';
+}
+
+export function getListMaxLimit(manifest: any): number {
+  const configured = Number(manifest?.extensions?.chainLimits?.lists?.maxLimit ?? NaN);
+  if (Number.isFinite(configured) && configured >= 1) return Math.floor(configured);
+  return 50;
 }

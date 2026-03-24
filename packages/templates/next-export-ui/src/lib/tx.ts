@@ -1,6 +1,6 @@
 import { encodeFunctionData, type Address } from 'viem';
 
-import { makeWalletClient, requestWalletAddress } from './clients';
+import { makeInjectedPublicClient, makeWalletClient, requestWalletAddress, resolveRpcUrl } from './clients';
 import { getRelayBaseUrl, getTxMode } from './manifest';
 import type { TxPhase } from '../components/TxStatus';
 
@@ -8,6 +8,77 @@ export type SubmitWriteTxResult = {
   hash: `0x${string}`;
   receipt: any;
 };
+
+async function estimateWriteGas(args: {
+  publicClient: any;
+  address: `0x${string}`;
+  abi: any[];
+  functionName: string;
+  contractArgs: any[];
+  account: `0x${string}`;
+  value?: bigint;
+}): Promise<bigint | undefined> {
+  try {
+    const estimated = (await args.publicClient.estimateContractGas({
+      address: args.address,
+      abi: args.abi,
+      functionName: args.functionName,
+      args: args.contractArgs,
+      account: args.account,
+      value: args.value
+    })) as bigint;
+
+    const latestBlock = await args.publicClient.getBlock({ blockTag: 'latest' });
+    const blockGasLimit = BigInt(latestBlock?.gasLimit ?? 0n);
+    if (blockGasLimit > 0n) {
+      const maxSafeGas = blockGasLimit > 1n ? blockGasLimit - 1n : blockGasLimit;
+      return estimated > maxSafeGas ? maxSafeGas : estimated;
+    }
+
+    return estimated;
+  } catch {
+    return undefined;
+  }
+}
+
+function waitMs(ms: number): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+async function assertWalletRpcMatchesDeployment(args: {
+  chain: any;
+  publicClient: any;
+  address: `0x${string}`;
+}): Promise<void> {
+  const walletReadClient = makeInjectedPublicClient(args.chain);
+  const expectedCode = await args.publicClient.getCode({ address: args.address });
+  const expected = String(expectedCode ?? '0x').toLowerCase();
+  let wallet = '0x';
+
+  for (const delayMs of [0, 350, 1000, 2000]) {
+    if (delayMs > 0) await waitMs(delayMs);
+    const walletCode = await walletReadClient.getCode({ address: args.address });
+    wallet = String(walletCode ?? '0x').toLowerCase();
+    if (expected === wallet) return;
+  }
+
+  const expectedRpc = resolveRpcUrl(args.chain);
+  if (wallet === '0x') {
+    throw new Error(
+      `Wallet RPC does not see a contract at ${args.address}. ` +
+        `Your wallet is not pointed at the same deployment as this app. ` +
+        `${expectedRpc ? `Expected RPC: ${expectedRpc}. ` : ''}` +
+        `Please update the wallet network RPC and retry.`
+    );
+  }
+
+  throw new Error(
+    `Wallet RPC is not pointed at the same deployment as this app. ` +
+      `The contract at ${args.address} differs between the app read RPC and the wallet RPC. ` +
+      `${expectedRpc ? `Expected RPC: ${expectedRpc}. ` : ''}` +
+      `Please update the wallet network RPC and retry.`
+  );
+}
 
 export async function submitWriteTx(args: {
   manifest: any;
@@ -56,6 +127,13 @@ export async function submitWriteTx(args: {
     args.onHash?.(hash);
     args.onPhase?.('submitted');
     args.setStatus?.(`Submitted ${hash.slice(0, 10)}…`);
+    const relayReceipt = body.receipt ?? null;
+    if (relayReceipt) {
+      args.onPhase?.('confirmed');
+      args.setStatus?.(`Confirmed ${hash.slice(0, 10)}…`);
+      return { hash, receipt: relayReceipt };
+    }
+
     args.onPhase?.('confirming');
     args.setStatus?.('Waiting for confirmation…');
     const receipt = await args.publicClient.waitForTransactionReceipt({ hash });
@@ -67,7 +145,23 @@ export async function submitWriteTx(args: {
   args.onPhase?.('submitting');
   args.setStatus?.('Connecting wallet…');
   const account = await requestWalletAddress(args.chain);
+  args.setStatus?.('Verifying wallet RPC…');
+  await assertWalletRpcMatchesDeployment({
+    chain: args.chain,
+    publicClient: args.publicClient,
+    address: args.address
+  });
   const walletClient = makeWalletClient(args.chain);
+  args.setStatus?.('Estimating gas…');
+  const gas = await estimateWriteGas({
+    publicClient: args.publicClient,
+    address: args.address,
+    abi: args.abi,
+    functionName: args.functionName,
+    contractArgs: args.contractArgs,
+    account,
+    value: args.value
+  });
   args.setStatus?.('Sending transaction…');
   const hash = (await walletClient.writeContract({
     address: args.address as Address,
@@ -75,6 +169,7 @@ export async function submitWriteTx(args: {
     functionName: args.functionName,
     args: args.contractArgs,
     account,
+    gas,
     value: args.value,
     chain: args.chain
   })) as `0x${string}`;
