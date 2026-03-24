@@ -19,6 +19,10 @@ export function fnGet(collectionName: string): string {
   return `get${collectionName}`;
 }
 
+export function fnListByIndex(collectionName: string, fieldName: string): string {
+  return `listByIndex${collectionName}_${fieldName}`;
+}
+
 export function fnCreate(collectionName: string): string {
   return `create${collectionName}`;
 }
@@ -82,6 +86,90 @@ export async function appMulticall(args: {
   return res as Hex[];
 }
 
+function getFunctionAbi(args: { abi: any[]; name: string; inputCount?: number }): any[] {
+  const filtered = (Array.isArray(args.abi) ? args.abi : []).filter((entry) => {
+    if (!entry || entry.type !== 'function' || entry.name !== args.name) return false;
+    if (typeof args.inputCount !== 'number') return true;
+    return Array.isArray(entry.inputs) && entry.inputs.length === args.inputCount;
+  });
+  return filtered;
+}
+
+function encodeGetCall(args: {
+  abi: any[];
+  collectionName: string;
+  id: bigint;
+  includeDeleted: boolean;
+}): Hex {
+  const abi = getFunctionAbi({
+    abi: args.abi,
+    name: fnGet(args.collectionName),
+    inputCount: args.includeDeleted ? 2 : 1
+  });
+
+  return encodeFunctionData({
+    abi,
+    functionName: fnGet(args.collectionName),
+    args: args.includeDeleted ? [args.id, true] : [args.id]
+  });
+}
+
+function decodeGetCallResult(args: {
+  abi: any[];
+  collectionName: string;
+  data: Hex;
+  includeDeleted: boolean;
+}): any {
+  const abi = getFunctionAbi({
+    abi: args.abi,
+    name: fnGet(args.collectionName),
+    inputCount: args.includeDeleted ? 2 : 1
+  });
+
+  return decodeFunctionResult({
+    abi,
+    functionName: fnGet(args.collectionName),
+    data: args.data
+  });
+}
+
+export async function readRecordsByIds(args: {
+  publicClient: any;
+  abi: any[];
+  address: `0x${string}`;
+  collectionName: string;
+  ids: bigint[];
+  includeDeleted?: boolean;
+}): Promise<any[]> {
+  if (!args.ids || args.ids.length === 0) return [];
+
+  const includeDeleted = Boolean(args.includeDeleted);
+  const calls: Hex[] = args.ids.map((id) =>
+    encodeGetCall({
+      abi: args.abi,
+      collectionName: args.collectionName,
+      id,
+      includeDeleted
+    })
+  );
+
+  const results = await appMulticall({
+    publicClient: args.publicClient,
+    abi: args.abi,
+    address: args.address,
+    calls
+  });
+
+  return results.map((data) =>
+    decodeGetCallResult({
+      abi: args.abi,
+      collectionName: args.collectionName,
+      data,
+      includeDeleted
+    })
+  );
+}
+
 export async function listRecords(args: {
   publicClient: any;
   abi: any;
@@ -103,28 +191,48 @@ export async function listRecords(args: {
 
   if (!ids || ids.length === 0) return { ids: [], records: [] };
 
-  const calls: Hex[] = ids.map((id) =>
-    encodeFunctionData({
-      abi: args.abi,
-      functionName: fnGet(args.collectionName),
-      args: [id]
-    })
-  );
-
-  const results = await appMulticall({
+  const records = await readRecordsByIds({
     publicClient: args.publicClient,
     abi: args.abi,
     address: args.address,
-    calls
+    collectionName: args.collectionName,
+    ids
   });
 
-  const records = results.map((data) =>
-    decodeFunctionResult({
-      abi: args.abi,
-      functionName: fnGet(args.collectionName),
-      data
-    })
-  );
+  return { ids, records };
+}
+
+export async function listRecordsByIndex(args: {
+  publicClient: any;
+  abi: any[];
+  address: `0x${string}`;
+  collectionName: string;
+  fieldName: string;
+  key: Hex;
+  offset: bigint;
+  limit: number;
+  includeDeleted?: boolean;
+}): Promise<{ ids: bigint[]; records: any[] }> {
+  assertAbiFunction(args.abi, fnListByIndex(args.collectionName, args.fieldName), args.collectionName);
+  assertAbiFunction(args.abi, fnGet(args.collectionName), args.collectionName);
+
+  const ids = (await args.publicClient.readContract({
+    address: args.address,
+    abi: args.abi,
+    functionName: fnListByIndex(args.collectionName, args.fieldName),
+    args: [args.key, args.offset, BigInt(args.limit)]
+  })) as bigint[];
+
+  if (!ids || ids.length === 0) return { ids: [], records: [] };
+
+  const records = await readRecordsByIds({
+    publicClient: args.publicClient,
+    abi: args.abi,
+    address: args.address,
+    collectionName: args.collectionName,
+    ids,
+    includeDeleted: args.includeDeleted
+  });
 
   return { ids, records };
 }

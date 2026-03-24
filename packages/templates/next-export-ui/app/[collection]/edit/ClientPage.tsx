@@ -12,6 +12,7 @@ import { fetchManifest, getPrimaryDeployment } from '../../../src/lib/manifest';
 import { getCollection, mutableFields, type ThsCollection, type ThsField } from '../../../src/lib/ths';
 import { submitWriteTx } from '../../../src/lib/tx';
 import TxStatus, { type TxPhase } from '../../../src/components/TxStatus';
+import ImageFieldInput from '../../../src/components/ImageFieldInput';
 
 function inputType(field: ThsField): 'text' | 'number' {
   if (field.type === 'uint256' || field.type === 'int256' || field.type === 'decimal' || field.type === 'reference') return 'number';
@@ -42,7 +43,9 @@ export default function EditRecordPage(props: { params: { collection: string } }
   const idParam = search.get('id');
   const rpcOverride = search.get('rpc') ?? undefined;
 
-  const [loading, setLoading] = useState(true);
+  const [bootstrapping, setBootstrapping] = useState(true);
+  const [recordLoading, setRecordLoading] = useState(false);
+  const [initialRecordResolved, setInitialRecordResolved] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [status, setStatus] = useState<string | null>(null);
   const [txPhase, setTxPhase] = useState<TxPhase>('idle');
@@ -67,7 +70,8 @@ export default function EditRecordPage(props: { params: { collection: string } }
 
   useEffect(() => {
     async function boot() {
-      setLoading(true);
+      setBootstrapping(true);
+      setInitialRecordResolved(false);
       setError(null);
       try {
         const manifest = await fetchManifest();
@@ -89,7 +93,7 @@ export default function EditRecordPage(props: { params: { collection: string } }
       } catch (e: any) {
         setError(String(e?.message ?? e));
       } finally {
-        setLoading(false);
+        setBootstrapping(false);
       }
     }
     void boot();
@@ -100,8 +104,11 @@ export default function EditRecordPage(props: { params: { collection: string } }
   const fields = collection ? mutableFields(collection) : [];
   const optimistic = Boolean((collection as any)?.updateRules?.optimisticConcurrency);
 
-  async function fetchRecord() {
+  async function fetchRecord(options?: { initial?: boolean }) {
     if (!publicClient || !abi || !appAddress || id === null) return;
+    const isInitial = options?.initial === true;
+    if (isInitial) setInitialRecordResolved(false);
+    setRecordLoading(true);
     setError(null);
     try {
       assertAbiFunction(abi, fnGet(collectionName), collectionName);
@@ -114,12 +121,15 @@ export default function EditRecordPage(props: { params: { collection: string } }
       setRecord(r);
     } catch (e: any) {
       setError(String(e?.message ?? e));
+    } finally {
+      setRecordLoading(false);
+      if (isInitial) setInitialRecordResolved(true);
     }
   }
 
   // Load record once ABI + id are ready.
   useEffect(() => {
-    void fetchRecord();
+    void fetchRecord({ initial: true });
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [publicClient, abi, appAddress, idParam]);
 
@@ -211,7 +221,7 @@ export default function EditRecordPage(props: { params: { collection: string } }
     );
   }
 
-  if (loading && !record) {
+  if ((bootstrapping || (recordLoading && !initialRecordResolved)) && !record) {
     return (
       <div className="card">
         <h2>Loading…</h2>
@@ -264,7 +274,7 @@ export default function EditRecordPage(props: { params: { collection: string } }
     );
   }
 
-  if (!record) {
+  if (initialRecordResolved && !record) {
     return (
       <div className="card">
         <h2>Not found</h2>
@@ -282,31 +292,40 @@ export default function EditRecordPage(props: { params: { collection: string } }
         <button className="btn" onClick={() => router.push(`/${collectionName}/?mode=view&id=${String(id)}`)}>Back</button>
       </div>
 
-      {fields.map((f) => (
-        <div key={f.name}>
-          <label className="label">{f.name}</label>
-          {f.type === 'bool' ? (
-            <select
-              className="select"
-              value={form[f.name] ?? 'false'}
-              onChange={(e) => setForm((prev) => ({ ...prev, [f.name]: e.target.value }))}
-            >
-              <option value="false">false</option>
-              <option value="true">true</option>
-            </select>
-          ) : (
-            <input
-              className="input"
-              type={inputType(f)}
-              value={form[f.name] ?? ''}
-              onChange={(e) => setForm((prev) => ({ ...prev, [f.name]: e.target.value }))}
-              placeholder={f.type === 'reference' ? 'record id (uint256)' : f.type}
-            />
-          )}
-        </div>
-      ))}
+      <div className="formGrid">
+        {fields.map((f) => (
+          <div key={f.name} className="fieldGroup">
+            <label className="label">{f.name}</label>
+            {f.type === 'bool' ? (
+              <select
+                className="select"
+                value={form[f.name] ?? 'false'}
+                onChange={(e) => setForm((prev) => ({ ...prev, [f.name]: e.target.value }))}
+              >
+                <option value="false">false</option>
+                <option value="true">true</option>
+              </select>
+            ) : f.type === 'image' ? (
+              <ImageFieldInput
+                manifest={manifest}
+                value={form[f.name] ?? ''}
+                disabled={txPhase === 'submitting' || txPhase === 'submitted' || txPhase === 'confirming'}
+                onChange={(next) => setForm((prev) => ({ ...prev, [f.name]: next }))}
+              />
+            ) : (
+              <input
+                className="input"
+                type={inputType(f)}
+                value={form[f.name] ?? ''}
+                onChange={(e) => setForm((prev) => ({ ...prev, [f.name]: e.target.value }))}
+                placeholder={f.type === 'reference' ? 'record id (uint256)' : f.type}
+              />
+            )}
+          </div>
+        ))}
+      </div>
 
-      <div style={{ marginTop: 16, display: 'flex', gap: 10 }}>
+      <div className="actionGroup" style={{ marginTop: 16 }}>
         <button
           className="btn primary"
           onClick={() => void submit()}

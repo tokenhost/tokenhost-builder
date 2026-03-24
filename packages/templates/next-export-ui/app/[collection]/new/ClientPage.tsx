@@ -12,6 +12,7 @@ import { fetchManifest, getPrimaryDeployment } from '../../../src/lib/manifest';
 import { createFields, getCollection, hasCreatePayment, requiredFieldNames, type ThsField } from '../../../src/lib/ths';
 import { submitWriteTx } from '../../../src/lib/tx';
 import TxStatus, { type TxPhase } from '../../../src/components/TxStatus';
+import ImageFieldInput from '../../../src/components/ImageFieldInput';
 
 function inputType(field: ThsField): 'text' | 'number' {
   if (field.type === 'uint256' || field.type === 'int256' || field.type === 'decimal' || field.type === 'reference') return 'number';
@@ -185,33 +186,41 @@ export default function CreateRecordPage(props: { params: { collection: string }
         <div className="muted">No create fee.</div>
       )}
 
-      {fields.map((f) => (
-        <div key={f.name}>
-          <label className="label">
-            {f.name} {required.has(f.name) ? <span className="badge">required</span> : null}
-          </label>
-          {f.type === 'bool' ? (
-            <select
-              className="select"
-              value={form[f.name] ?? 'false'}
-              onChange={(e) => setForm((prev) => ({ ...prev, [f.name]: e.target.value }))}
-            >
-              <option value="false">false</option>
-              <option value="true">true</option>
-            </select>
-          ) : (
-            <input
-              className="input"
-              type={inputType(f)}
-              value={form[f.name] ?? ''}
-              onChange={(e) => setForm((prev) => ({ ...prev, [f.name]: e.target.value }))}
-              placeholder={f.type === 'reference' ? 'record id (uint256)' : f.type}
-            />
-          )}
-        </div>
-      ))}
+      <div className="formGrid">
+        {fields.map((f) => (
+          <div key={f.name} className="fieldGroup">
+            <label className="label">
+              {f.name} {required.has(f.name) ? <span className="badge">required</span> : null}
+            </label>
+            {f.type === 'bool' ? (
+              <select
+                className="select"
+                value={form[f.name] ?? 'false'}
+                onChange={(e) => setForm((prev) => ({ ...prev, [f.name]: e.target.value }))}
+              >
+                <option value="false">false</option>
+                <option value="true">true</option>
+              </select>
+            ) : f.type === 'image' ? (
+              <ImageFieldInput
+                manifest={manifest}
+                value={form[f.name] ?? ''}
+                onChange={(next) => setForm((prev) => ({ ...prev, [f.name]: next }))}
+              />
+            ) : (
+              <input
+                className="input"
+                type={inputType(f)}
+                value={form[f.name] ?? ''}
+                onChange={(e) => setForm((prev) => ({ ...prev, [f.name]: e.target.value }))}
+                placeholder={f.type === 'reference' ? 'record id (uint256)' : f.type}
+              />
+            )}
+          </div>
+        ))}
+      </div>
 
-      <div style={{ marginTop: 16, display: 'flex', gap: 10 }}>
+      <div className="actionGroup" style={{ marginTop: 16 }}>
         <button
           className="btn primary"
           onClick={() => void submit()}
