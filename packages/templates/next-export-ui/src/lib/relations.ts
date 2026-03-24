@@ -1,5 +1,7 @@
 'use client';
 
+import { useEffect, useMemo, useState } from 'react';
+
 import { readRecordsByIds } from './app';
 import { displayField, getCollection } from './ths';
 import { formatFieldValue } from './format';
@@ -16,6 +18,13 @@ export type ResolvedReferenceItem = {
   record: any;
   referenceId: bigint | null;
   referenceRecord: any | null;
+};
+
+export type ReferenceOption = {
+  id: bigint;
+  label: string;
+  owned: boolean;
+  record: any;
 };
 
 export function getRecordId(value: unknown): bigint | null {
@@ -46,6 +55,24 @@ export function relatedRecordLabel(collectionName: string, id: bigint, record: a
   const rendered = formatFieldValue(raw, field.type, field.decimals, field.name).trim();
   if (!rendered) return `${collection.name} #${String(id)}`;
   return `${rendered} (#${String(id)})`;
+}
+
+export function recordSummary(record: any): { title: string; subtitle: string | null; imageUrl: string | null; body: string | null } {
+  const title =
+    String(record?.displayName ?? '').trim() ||
+    String(record?.title ?? '').trim() ||
+    String(record?.name ?? '').trim() ||
+    String(record?.handle ?? '').trim() ||
+    'Unnamed record';
+
+  const subtitle = String(record?.handle ?? '').trim()
+    ? `@${String(record.handle).trim()}`
+    : String(record?.slug ?? '').trim() || null;
+
+  const imageUrl = String(record?.avatar ?? '').trim() || String(record?.image ?? '').trim() || null;
+  const body = String(record?.bio ?? '').trim() || String(record?.description ?? '').trim() || null;
+
+  return { title, subtitle, imageUrl, body };
 }
 
 export async function listOwnedRecords(runtime: AppRuntime, collectionName: string, ownerAddress: string): Promise<OwnedRecord[]> {
@@ -101,4 +128,139 @@ export async function resolveReferenceRecords(
       referenceRecord: referenceId ? recordsById.get(String(referenceId)) ?? null : null
     };
   });
+}
+
+function selectionStorageKey(args: { collectionName: string; fieldName: string; account: string }) {
+  return `TH_REFERENCE_SELECTION:${args.collectionName}:${args.fieldName}:${args.account.toLowerCase()}`;
+}
+
+export function useOwnedReferenceOptions(args: {
+  manifest: any;
+  publicClient: any;
+  abi: any[];
+  address: `0x${string}`;
+  collectionName: string;
+  fieldName: string;
+  value: string;
+  onChange: (next: string) => void;
+}) {
+  const [account, setAccount] = useState<string | null>(null);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [options, setOptions] = useState<ReferenceOption[]>([]);
+
+  const collection = useMemo(() => getCollection(args.collectionName), [args.collectionName]);
+  const relation = useMemo(
+    () => (collection?.relations ?? []).find((entry) => entry.field === args.fieldName) ?? null,
+    [collection, args.fieldName]
+  );
+  const relatedCollection = useMemo(() => (relation?.to ? getCollection(relation.to) : null), [relation]);
+
+  useEffect(() => {
+    try {
+      setAccount(window.localStorage.getItem('TH_ACCOUNT'));
+    } catch {
+      setAccount(null);
+    }
+  }, []);
+
+  useEffect(() => {
+    let cancelled = false;
+
+    async function load() {
+      if (!relatedCollection || !args.publicClient || !args.abi || !args.address) {
+        setOptions([]);
+        setError(null);
+        return;
+      }
+
+      setLoading(true);
+      setError(null);
+      try {
+        const page = await listAllRecords({
+          manifest: args.manifest,
+          publicClient: args.publicClient,
+          abi: args.abi,
+          address: args.address,
+          collectionName: relatedCollection.name
+        });
+
+        const normalizedAccount = account?.trim().toLowerCase() ?? '';
+        const nextOptions = page.ids
+          .map((id, index) => {
+            const record = page.records[index];
+            if (!record) return null;
+            return {
+              id,
+              label: relatedRecordLabel(relatedCollection.name, id, record),
+              owned: Boolean(normalizedAccount) && recordOwner(record) === normalizedAccount,
+              record
+            };
+          })
+          .filter(Boolean) as ReferenceOption[];
+
+        nextOptions.sort((left, right) => {
+          if (left.owned !== right.owned) return left.owned ? -1 : 1;
+          if (left.label !== right.label) return left.label.localeCompare(right.label);
+          return left.id < right.id ? -1 : left.id > right.id ? 1 : 0;
+        });
+
+        if (cancelled) return;
+        setOptions(nextOptions);
+
+        const ownedOptions = nextOptions.filter((option) => option.owned);
+        if (!args.value && account) {
+          let preferred = '';
+          try {
+            preferred = window.localStorage.getItem(
+              selectionStorageKey({ collectionName: args.collectionName, fieldName: args.fieldName, account })
+            ) ?? '';
+          } catch {
+            preferred = '';
+          }
+          if (preferred && nextOptions.some((option) => String(option.id) === preferred)) {
+            args.onChange(preferred);
+          } else if (ownedOptions.length === 1) {
+            args.onChange(String(ownedOptions[0]?.id ?? ''));
+          }
+        }
+      } catch (cause: any) {
+        if (cancelled) return;
+        setOptions([]);
+        setError(String(cause?.message ?? cause));
+      } finally {
+        if (!cancelled) setLoading(false);
+      }
+    }
+
+    void load();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [account, args.abi, args.address, args.collectionName, args.fieldName, args.manifest, args.onChange, args.publicClient, args.value, relatedCollection]);
+
+  useEffect(() => {
+    if (!account || !args.value) return;
+    try {
+      window.localStorage.setItem(
+        selectionStorageKey({ collectionName: args.collectionName, fieldName: args.fieldName, account }),
+        args.value
+      );
+    } catch {
+      // ignore
+    }
+  }, [account, args.collectionName, args.fieldName, args.value]);
+
+  const selectedOption = options.find((option) => String(option.id) === args.value) ?? null;
+
+  return {
+    account,
+    loading,
+    error,
+    options,
+    relatedCollection,
+    ownedOptions: options.filter((option) => option.owned),
+    selectedOption
+  };
 }

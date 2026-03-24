@@ -282,9 +282,9 @@ describe('th generate (UI template)', function () {
     expect(generatedThs).to.include('"to": "Profile"');
 
     const generatedReferenceField = fs.readFileSync(path.join(outDir, 'ui', 'src', 'components', 'ReferenceFieldInput.tsx'), 'utf-8');
-    expect(generatedReferenceField).to.include("window.localStorage.getItem('TH_ACCOUNT')");
-    expect(generatedReferenceField).to.include('listAllRecords');
+    expect(generatedReferenceField).to.include('useOwnedReferenceOptions');
     expect(generatedReferenceField).to.include('Owned records appear first');
+    expect(generatedReferenceField).to.include("href={`/${relatedCollection.name}/?mode=new`}");
 
     const generatedResolvedReference = fs.readFileSync(path.join(outDir, 'ui', 'src', 'components', 'ResolvedReferenceValue.tsx'), 'utf-8');
     expect(generatedResolvedReference).to.include('getRelatedCollection');
@@ -293,6 +293,8 @@ describe('th generate (UI template)', function () {
     const generatedRelations = fs.readFileSync(path.join(outDir, 'ui', 'src', 'lib', 'relations.ts'), 'utf-8');
     expect(generatedRelations).to.include('resolveReferenceRecords');
     expect(generatedRelations).to.include('listOwnedRecords');
+    expect(generatedRelations).to.include('useOwnedReferenceOptions');
+    expect(generatedRelations).to.include('TH_REFERENCE_SELECTION');
 
     const generatedNewPage = fs.readFileSync(path.join(outDir, 'ui', 'app', '[collection]', 'new', 'ClientPage.tsx'), 'utf-8');
     expect(generatedNewPage).to.include('ReferenceFieldInput');

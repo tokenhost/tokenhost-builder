@@ -5,12 +5,15 @@ import { useEffect, useMemo, useState } from 'react';
 import { useRouter } from 'next/navigation';
 
 import ImageFieldInput from './ImageFieldInput';
+import ReferenceFieldInput from './ReferenceFieldInput';
 import TxStatus, { type TxPhase } from './TxStatus';
 import { fnCreate } from '../lib/app';
 import { chainWithRpcOverride, requestWalletAddress } from '../lib/clients';
 import { getReadRpcUrl } from '../lib/manifest';
+import { useOwnedReferenceOptions } from '../lib/relations';
+import { getCollection, getField } from '../lib/ths';
 import { submitWriteTx } from '../lib/tx';
-import { listOwnedProfiles, loadMicroblogRuntime, profileHandle, profileLabel, type ProfileRecord } from '../lib/microblog';
+import { loadMicroblogRuntime } from '../lib/microblog';
 
 type ComposeState = {
   loading: boolean;
@@ -18,8 +21,6 @@ type ComposeState = {
   connectError: string | null;
   submitError: string | null;
 };
-
-const PROFILE_STORAGE_PREFIX = 'TH_MICROBLOG_PROFILE_ID:';
 
 export default function MicroblogComposeClient() {
   const router = useRouter();
@@ -31,7 +32,6 @@ export default function MicroblogComposeClient() {
   });
   const [runtime, setRuntime] = useState<any | null>(null);
   const [account, setAccount] = useState<string | null>(null);
-  const [profiles, setProfiles] = useState<ProfileRecord[]>([]);
   const [selectedProfileId, setSelectedProfileId] = useState<string>('');
   const [body, setBody] = useState('');
   const [image, setImage] = useState('');
@@ -69,60 +69,44 @@ export default function MicroblogComposeClient() {
     };
   }, []);
 
-  useEffect(() => {
-    let cancelled = false;
-    if (!runtime || !account) {
-      setProfiles([]);
-      setSelectedProfileId('');
-      return;
-    }
-
-    setState((prev) => ({ ...prev, loading: true, connectError: null }));
-    void (async () => {
-      try {
-        const ownedProfiles = await listOwnedProfiles(runtime, account);
-        if (cancelled) return;
-        setProfiles(ownedProfiles);
-
-        let preferred = '';
-        try {
-          const stored = localStorage.getItem(`${PROFILE_STORAGE_PREFIX}${account.toLowerCase()}`) ?? '';
-          if (stored && ownedProfiles.some((entry) => String(entry.id) === stored)) preferred = stored;
-        } catch {
-          // ignore
-        }
-        if (!preferred && ownedProfiles[0]) preferred = String(ownedProfiles[0].id);
-        setSelectedProfileId(preferred);
-      } catch (error: any) {
-        if (cancelled) return;
-        setState((prev) => ({ ...prev, connectError: String(error?.message ?? error) }));
-      } finally {
-        if (!cancelled) setState((prev) => ({ ...prev, loading: false }));
-      }
-    })();
-
-    return () => {
-      cancelled = true;
-    };
-  }, [runtime, account]);
-
-  useEffect(() => {
-    if (!account || !selectedProfileId) return;
-    try {
-      localStorage.setItem(`${PROFILE_STORAGE_PREFIX}${account.toLowerCase()}`, selectedProfileId);
-    } catch {
-      // ignore
-    }
-  }, [account, selectedProfileId]);
-
-  const selectedProfile = useMemo(
-    () => profiles.find((entry) => String(entry.id) === selectedProfileId) ?? null,
-    [profiles, selectedProfileId]
-  );
   const walletChain = useMemo(
     () => (runtime ? chainWithRpcOverride(runtime.chain, getReadRpcUrl(runtime.manifest) || undefined) : null),
     [runtime]
   );
+  const ownedReference = useOwnedReferenceOptions(
+    runtime
+      ? {
+          manifest: runtime.manifest,
+          publicClient: runtime.publicClient,
+          abi: runtime.abi,
+          address: runtime.appAddress,
+          collectionName: 'Post',
+          fieldName: 'authorProfile',
+          value: selectedProfileId,
+          onChange: setSelectedProfileId
+        }
+      : {
+          manifest: null,
+          publicClient: null,
+          abi: [],
+          address: undefined as any,
+          collectionName: 'Post',
+          fieldName: 'authorProfile',
+          value: selectedProfileId,
+          onChange: setSelectedProfileId
+        }
+  );
+  const selectedProfile = ownedReference.selectedOption;
+  const postCollection = useMemo(() => getCollection('Post'), []);
+  const authorProfileField = useMemo(() => (postCollection ? getField(postCollection, 'authorProfile') : null), [postCollection]);
+
+  useEffect(() => {
+    if (!runtime || !account) {
+      setSelectedProfileId('');
+      return;
+    }
+    setState((prev) => ({ ...prev, loading: ownedReference.loading, connectError: ownedReference.error }));
+  }, [account, ownedReference.error, ownedReference.loading, runtime]);
 
   async function connectWallet() {
     if (!walletChain) return;
@@ -233,7 +217,7 @@ export default function MicroblogComposeClient() {
                 <div className="heroStatLabel">Wallet linked</div>
               </div>
               <div className="heroStat">
-                <div className="heroStatValue">{profiles.length}</div>
+                <div className="heroStatValue">{ownedReference.ownedOptions.length}</div>
                 <div className="heroStatLabel">Owned profiles</div>
               </div>
             </div>
@@ -257,7 +241,7 @@ export default function MicroblogComposeClient() {
         </section>
       ) : null}
 
-      {account && !profiles.length ? (
+      {account && !ownedReference.ownedOptions.length ? (
         <section className="card">
           <div className="eyebrow">/profiles/empty</div>
           <h3>No owned profiles found</h3>
@@ -269,7 +253,7 @@ export default function MicroblogComposeClient() {
         </section>
       ) : null}
 
-      {account && profiles.length ? (
+      {account && ownedReference.ownedOptions.length ? (
         <section className="card" style={{ display: 'grid', gap: 18 }}>
           <div>
             <h2>Compose Post</h2>
@@ -279,37 +263,16 @@ export default function MicroblogComposeClient() {
           <div className="formGrid">
             <div className="fieldGroup">
               <label className="label">Profile</label>
-              <select
-                className="select"
+              <ReferenceFieldInput
+                manifest={runtime?.manifest ?? null}
+                publicClient={runtime?.publicClient ?? null}
+                abi={runtime?.abi ?? []}
+                address={runtime?.appAddress}
+                collection={postCollection as any}
+                field={authorProfileField as any}
                 value={selectedProfileId}
-                onChange={(event) => setSelectedProfileId(event.target.value)}
-              >
-                {profiles.map((entry) => (
-                  <option key={String(entry.id)} value={String(entry.id)}>
-                    {profileLabel(entry.record)}
-                  </option>
-                ))}
-              </select>
-            </div>
-
-            <div className="fieldGroup">
-              <label className="label">Current identity</label>
-              <div className="recordPreviewCell" style={{ minHeight: 110 }}>
-                {selectedProfile ? (
-                  <div style={{ display: 'grid', gap: 10 }}>
-                    <div className="chipRow">
-                      <span className="badge">profile #{String(selectedProfile.id)}</span>
-                      {profileHandle(selectedProfile.record) ? <span className="badge">@{profileHandle(selectedProfile.record)}</span> : null}
-                    </div>
-                    <strong>{profileLabel(selectedProfile.record)}</strong>
-                    {String(selectedProfile.record?.bio ?? '').trim() ? (
-                      <p className="muted" style={{ margin: 0 }}>{String(selectedProfile.record.bio)}</p>
-                    ) : null}
-                  </div>
-                ) : (
-                  <span className="muted">Select a profile.</span>
-                )}
-              </div>
+                onChange={setSelectedProfileId}
+              />
             </div>
 
             <div className="fieldGroup">
