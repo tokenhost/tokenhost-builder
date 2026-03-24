@@ -2352,15 +2352,46 @@ function normalizeFocUploadResult(parsed: any): { url: string; cid: string | nul
   };
 }
 
-function runFocCliUpload(config: NonNullable<UploadServerConfig['foc']>, filePath: string): { url: string; cid: string | null; size: number | null; metadata: Record<string, unknown> } {
+async function runFocCliUpload(config: NonNullable<UploadServerConfig['foc']>, filePath: string): Promise<{
+  url: string;
+  cid: string | null;
+  size: number | null;
+  metadata: Record<string, unknown>;
+}> {
   const command =
     `${config.command} upload ${shellQuote(filePath)} --format json --chain ${config.chainId} --copies ${config.copies}` +
     `${config.withCDN ? ' --withCDN true' : ''}`;
-  const res = spawnSync(command, {
-    shell: true,
-    encoding: 'utf-8',
-    maxBuffer: 10 * 1024 * 1024
+  const res = await new Promise<{ status: number | null; stdout: string; stderr: string }>((resolve, reject) => {
+    const child = spawn(command, {
+      shell: true,
+      stdio: ['ignore', 'pipe', 'pipe']
+    });
+
+    let stdout = '';
+    let stderr = '';
+
+    child.stdout?.setEncoding('utf-8');
+    child.stdout?.on('data', (chunk) => {
+      stdout += String(chunk ?? '');
+      if (stdout.length > 10 * 1024 * 1024) {
+        child.kill('SIGKILL');
+        reject(new Error('foc-cli stdout exceeded max buffer.'));
+      }
+    });
+
+    child.stderr?.setEncoding('utf-8');
+    child.stderr?.on('data', (chunk) => {
+      stderr += String(chunk ?? '');
+      if (stderr.length > 10 * 1024 * 1024) {
+        child.kill('SIGKILL');
+        reject(new Error('foc-cli stderr exceeded max buffer.'));
+      }
+    });
+
+    child.on('error', reject);
+    child.on('close', (status) => resolve({ status, stdout, stderr }));
   });
+
   if (res.status !== 0) {
     throw new Error(String(res.stderr || res.stdout || `foc-cli failed with status ${res.status}`));
   }
@@ -2789,7 +2820,7 @@ function startUiSiteServer(args: {
             const tmpFile = path.join(tmpDir, `upload${ext}`);
             try {
               fs.writeFileSync(tmpFile, body);
-              const uploaded = runFocCliUpload(upload.foc ?? {
+              const uploaded = await runFocCliUpload(upload.foc ?? {
                 chainId: 314159,
                 copies: 2,
                 withCDN: false,

@@ -22,6 +22,36 @@ export type UploadConfig = {
   maxBytes: number | null;
 };
 
+async function buildUploadNetworkError(config: UploadConfig, xhr: XMLHttpRequest): Promise<string> {
+  const parts = [
+    `Upload request failed before the server returned a usable response.`,
+    `Endpoint: ${config.endpointUrl}.`
+  ];
+
+  if (xhr.status) {
+    parts.push(`HTTP ${xhr.status}${xhr.statusText ? ` ${xhr.statusText}` : ''}.`);
+  }
+
+  try {
+    const res = await fetch(config.statusUrl, { cache: 'no-store' });
+    const body = await res.json().catch(() => null);
+    if (body && typeof body === 'object') {
+      const enabled = body.enabled === true ? 'enabled' : 'disabled';
+      const provider = body.provider ? `provider=${String(body.provider)}` : null;
+      const runner = body.runnerMode ? `runner=${String(body.runnerMode)}` : null;
+      const reason = body.reason ? `reason=${String(body.reason)}` : null;
+      const statusBits = [enabled, provider, runner, reason].filter(Boolean);
+      if (statusBits.length > 0) {
+        parts.push(`Upload status: ${statusBits.join(', ')}.`);
+      }
+    }
+  } catch {
+    // ignore status enrichment failures
+  }
+
+  return parts.join(' ');
+}
+
 function normalizeUrl(value: string, fallback: string): string {
   const trimmed = String(value || '').trim();
   if (!trimmed) return fallback;
@@ -77,6 +107,7 @@ export async function uploadFile(args: {
     const xhr = new XMLHttpRequest();
     xhr.open('POST', config.endpointUrl, true);
     xhr.responseType = 'text';
+    xhr.timeout = 5 * 60 * 1000;
     xhr.setRequestHeader('Content-Type', args.file.type || 'application/octet-stream');
     xhr.setRequestHeader('X-TokenHost-Upload-Filename', args.file.name || 'upload.bin');
     xhr.setRequestHeader('X-TokenHost-Upload-Size', String(args.file.size));
@@ -86,8 +117,11 @@ export async function uploadFile(args: {
       args.onProgress(Math.max(0, Math.min(100, Math.round((event.loaded / event.total) * 100))));
     };
 
-    xhr.onerror = () => reject(new Error('Upload request failed.'));
+    xhr.onerror = () => {
+      void (async () => reject(new Error(await buildUploadNetworkError(config, xhr))))();
+    };
     xhr.onabort = () => reject(new Error('Upload request was aborted.'));
+    xhr.ontimeout = () => reject(new Error(`Upload timed out after ${Math.round(xhr.timeout / 1000)} seconds.`));
     xhr.onload = () => {
       let body: any = null;
       try {
