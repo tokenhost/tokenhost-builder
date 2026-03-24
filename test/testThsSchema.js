@@ -133,6 +133,35 @@ describe('THS schema validation + lint', function () {
     expect(res.ok).to.equal(true);
   });
 
+  it('validateThsStructural accepts app.theme.preset for cyber-grid', function () {
+    const input = minimalSchema({
+      app: {
+        name: 'Test App',
+        slug: 'test-app',
+        theme: { preset: 'cyber-grid' },
+        features: { uploads: false, onChainIndexing: true }
+      }
+    });
+
+    const res = validateThsStructural(input);
+    expect(res.ok).to.equal(true);
+  });
+
+  it('validateThsStructural rejects unknown app.theme.preset values', function () {
+    const input = minimalSchema({
+      app: {
+        name: 'Test App',
+        slug: 'test-app',
+        theme: { preset: 'not-a-theme' },
+        features: { uploads: false, onChainIndexing: true }
+      }
+    });
+
+    const res = validateThsStructural(input);
+    expect(res.ok).to.equal(false);
+    expect(res.issues.some((i) => i.path === '/app/theme/preset')).to.equal(true);
+  });
+
   it('lintThs warns when custom home page is configured without extensions directory', function () {
     const input = minimalSchema({
       app: {

@@ -71,6 +71,10 @@ function runCmd(cmd, args, cwd) {
   return res;
 }
 
+function readTemplateThemeTokens() {
+  return fs.readFileSync(path.join(process.cwd(), 'packages', 'templates', 'next-export-ui', 'src', 'theme', 'tokens.json'), 'utf-8');
+}
+
 function minimalSchema() {
   return {
     thsVersion: '2025-12',
@@ -93,6 +97,12 @@ function minimalSchema() {
       }
     ]
   };
+}
+
+function minimalSchemaWithThemePreset() {
+  const schema = minimalSchema();
+  schema.app.theme = { preset: 'cyber-grid' };
+  return schema;
 }
 
 function schemaWithUiOverrides() {
@@ -161,6 +171,25 @@ describe('th generate (UI template)', function () {
     const layoutSource = fs.readFileSync(path.join(outDir, 'ui', 'app', 'layout.tsx'), 'utf-8');
     expect(layoutSource).to.include('NetworkStatus');
     expect(layoutSource).to.include('rootStyleVars');
+
+    const generatedTokens = fs.readFileSync(path.join(outDir, 'ui', 'src', 'theme', 'tokens.json'), 'utf-8');
+    expect(generatedTokens).to.equal(readTemplateThemeTokens());
+  });
+
+  it('materializes the explicit cyber-grid theme preset into generated UI output', function () {
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'th-ui-theme-preset-'));
+    const schemaPath = path.join(dir, 'schema.json');
+    const outDir = path.join(dir, 'out');
+    writeJson(schemaPath, minimalSchemaWithThemePreset());
+
+    const res = runTh(['generate', schemaPath, '--out', outDir], process.cwd());
+    expect(res.status, res.stderr || res.stdout).to.equal(0);
+
+    const generatedThs = fs.readFileSync(path.join(outDir, 'ui', 'src', 'generated', 'ths.ts'), 'utf-8');
+    expect(generatedThs).to.include('"preset": "cyber-grid"');
+
+    const generatedTokens = fs.readFileSync(path.join(outDir, 'ui', 'src', 'theme', 'tokens.json'), 'utf-8');
+    expect(generatedTokens).to.equal(readTemplateThemeTokens());
   });
 
   it('generated UI builds (next export)', function () {
@@ -228,6 +257,8 @@ describe('th generate (UI template)', function () {
     const uiDir = path.join(outDir, 'ui');
     expect(fs.existsSync(path.join(uiDir, 'app', 'page.tsx'))).to.equal(true);
     expect(fs.existsSync(path.join(uiDir, 'app', 'tag', 'page.tsx'))).to.equal(true);
+    const generatedThs = fs.readFileSync(path.join(uiDir, 'src', 'generated', 'ths.ts'), 'utf-8');
+    expect(generatedThs).to.include('"preset": "cyber-grid"');
 
     const install = runCmd('pnpm', ['install'], uiDir);
     expect(install.status, install.stderr || install.stdout).to.equal(0);
@@ -360,6 +391,29 @@ describe('th ui sync', function () {
     const homePage = fs.readFileSync(path.join(outDir, 'ui', 'app', 'page.tsx'), 'utf-8');
     expect(homePage).to.include('custom-home-marker');
     expect(fs.existsSync(path.join(outDir, 'ui', 'app', 'run', 'page.tsx'))).to.equal(true);
+  });
+
+  it('preserves lockfiles and existing node_modules when package.json is unchanged', function () {
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'th-ui-sync-preserve-'));
+    const schemaPath = path.join(dir, 'schema.json');
+    const outDir = path.join(dir, 'out');
+    const uiDir = path.join(outDir, 'ui');
+
+    writeJson(schemaPath, minimalSchema());
+    writeCompiledArtifact(path.join(outDir, 'compiled', 'App.json'));
+    writeManifest(path.join(outDir, 'manifest.json'));
+
+    const first = runTh(['ui', 'sync', schemaPath, '--out', outDir], process.cwd());
+    expect(first.status, first.stderr || first.stdout).to.equal(0);
+
+    fs.writeFileSync(path.join(uiDir, 'pnpm-lock.yaml'), 'lockfileVersion: 9.0\n');
+    fs.mkdirSync(path.join(uiDir, 'node_modules', '.keep'), { recursive: true });
+    fs.writeFileSync(path.join(uiDir, 'node_modules', '.keep', 'marker.txt'), 'present\n');
+
+    const second = runTh(['ui', 'sync', schemaPath, '--out', outDir], process.cwd());
+    expect(second.status, second.stderr || second.stdout).to.equal(0);
+    expect(fs.readFileSync(path.join(uiDir, 'pnpm-lock.yaml'), 'utf-8')).to.equal('lockfileVersion: 9.0\n');
+    expect(fs.readFileSync(path.join(uiDir, 'node_modules', '.keep', 'marker.txt'), 'utf-8')).to.equal('present\n');
   });
 
   it('fails clearly when compiled artifacts are missing', function () {

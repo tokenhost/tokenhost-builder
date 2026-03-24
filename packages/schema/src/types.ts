@@ -22,11 +22,18 @@ export interface ThsAppUi {
   extensions?: ThsAppUiExtensions;
 }
 
+export type ThsThemePreset = 'cyber-grid';
+
+export interface ThsAppTheme {
+  preset?: ThsThemePreset;
+  [key: string]: unknown;
+}
+
 export interface ThsApp {
   name: string;
   slug: string;
   description?: string;
-  theme?: Record<string, unknown>;
+  theme?: ThsAppTheme;
   features?: ThsAppFeatures;
   ui?: ThsAppUi;
 }

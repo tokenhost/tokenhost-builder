@@ -335,6 +335,9 @@ type SharedThemeTokens = {
   motion: { fast: string; base: string };
 };
 
+const DEFAULT_THEME_PRESET = 'cyber-grid';
+type SharedThemePreset = typeof DEFAULT_THEME_PRESET;
+
 function defaultSharedThemeTokens(): SharedThemeTokens {
   return {
     colors: {
@@ -362,7 +365,16 @@ function defaultSharedThemeTokens(): SharedThemeTokens {
   };
 }
 
-function loadSharedThemeTokens(): SharedThemeTokens {
+function resolveSharedThemePreset(theme: Record<string, unknown> | undefined | null): SharedThemePreset {
+  const preset = String(theme?.preset ?? DEFAULT_THEME_PRESET).trim();
+  if (preset !== DEFAULT_THEME_PRESET) {
+    throw new Error(`Unsupported theme preset "${preset}". Supported presets: ${DEFAULT_THEME_PRESET}.`);
+  }
+  return DEFAULT_THEME_PRESET;
+}
+
+function loadSharedThemeTokensForPreset(preset: SharedThemePreset): SharedThemeTokens {
+  if (preset !== DEFAULT_THEME_PRESET) return defaultSharedThemeTokens();
   try {
     const templateDir = resolveNextExportUiTemplateDir();
     const tokenPath = path.join(templateDir, 'src', 'theme', 'tokens.json');
@@ -371,6 +383,14 @@ function loadSharedThemeTokens(): SharedThemeTokens {
   } catch {
     return defaultSharedThemeTokens();
   }
+}
+
+function materializeUiThemePreset(uiDir: string, schema: ThsSchema) {
+  const preset = resolveSharedThemePreset((schema.app.theme as Record<string, unknown> | undefined) ?? undefined);
+  const tokens = loadSharedThemeTokensForPreset(preset);
+  const tokenPath = path.join(uiDir, 'src', 'theme', 'tokens.json');
+  ensureDir(path.dirname(tokenPath));
+  fs.writeFileSync(tokenPath, JSON.stringify(tokens, null, 2) + '\n');
 }
 
 function renderStudioThemeCssVars(tokens: SharedThemeTokens): string {
@@ -454,7 +474,7 @@ function loadStudioBackgroundPngBuffer(): Buffer | null {
 
 function renderStudioHtml(): string {
   // Keep this local-first and dependency-free for fast startup in any repo clone.
-  const themeTokens = loadSharedThemeTokens();
+  const themeTokens = loadSharedThemeTokensForPreset(DEFAULT_THEME_PRESET);
   const cssVars = renderStudioThemeCssVars(themeTokens);
   const studioWordmarkSvg = loadStudioWordmarkSvg();
   return `<!doctype html>
@@ -1214,6 +1234,7 @@ function syncUiOutput(args: {
   const thsTsPath = path.join(uiDir, 'src', 'generated', 'ths.ts');
   ensureDir(path.dirname(thsTsPath));
   fs.writeFileSync(thsTsPath, renderThsTs(args.schema));
+  materializeUiThemePreset(uiDir, args.schema);
   materializeCollectionRoutes(uiDir, args.schema);
 
   const compiledPublicPath = path.join(uiDir, 'public', 'compiled', 'App.json');
@@ -2962,6 +2983,7 @@ function buildFromSchema(
       const thsTsPath = path.join(uiWorkDir, 'src', 'generated', 'ths.ts');
       ensureDir(path.dirname(thsTsPath));
       fs.writeFileSync(thsTsPath, renderThsTs(schema));
+      materializeUiThemePreset(uiWorkDir, schema);
       materializeCollectionRoutes(uiWorkDir, schema);
 
       // Ship ABI alongside the UI so it can operate without additional servers.
