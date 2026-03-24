@@ -189,7 +189,9 @@ describe('th generate (UI template)', function () {
 
     const generatedClients = fs.readFileSync(path.join(outDir, 'ui', 'src', 'lib', 'clients.ts'), 'utf-8');
     expect(generatedClients).to.include('async function refreshWalletChainConfig');
-    expect(generatedClients).to.include('wallet.addChain({ chain })');
+    expect(generatedClients).to.include("requestProvider('wallet_addEthereumChain'");
+    expect(generatedClients).to.include("requestProvider('wallet_switchEthereumChain'");
+    expect(generatedClients).to.include('async function assertWalletTracksTargetLocalRpc');
     expect(generatedClients).to.include('export function makeInjectedPublicClient');
   });
 

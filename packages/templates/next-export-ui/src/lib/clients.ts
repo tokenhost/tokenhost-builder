@@ -70,6 +70,37 @@ export function makeInjectedPublicClient(chain: Chain): any {
   });
 }
 
+function getInjectedProvider(): any {
+  const eth = (globalThis as any).ethereum as any;
+  if (!eth) throw new Error('No injected wallet found (window.ethereum).');
+  return eth;
+}
+
+function toHexChainId(chainId: number): `0x${string}` {
+  return `0x${chainId.toString(16)}`;
+}
+
+function isLocalRpcUrl(rpcUrl: string | null): boolean {
+  if (!rpcUrl) return false;
+  return /^https?:\/\/(127\.0\.0\.1|localhost)(:\d+)?/i.test(rpcUrl);
+}
+
+function buildAddEthereumChainParams(chain: Chain): any {
+  const rpcUrl = resolveRpcUrl(chain);
+  return {
+    chainId: toHexChainId(chain.id),
+    chainName: chain.name,
+    rpcUrls: rpcUrl ? [rpcUrl] : [],
+    nativeCurrency: chain.nativeCurrency,
+    blockExplorerUrls: chain.blockExplorers?.default?.url ? [chain.blockExplorers.default.url] : undefined
+  };
+}
+
+async function requestProvider(method: string, params?: any[]): Promise<any> {
+  const eth = getInjectedProvider();
+  return await eth.request(params ? { method, params } : { method });
+}
+
 function extractErrorCode(e: any): string | number | null {
   const codes = [
     e?.code,
@@ -111,12 +142,12 @@ function isUserRejected(e: any): boolean {
   return String(code) === '4001' || /user rejected|rejected the request/i.test(msg);
 }
 
-async function refreshWalletChainConfig(wallet: any, chain: Chain, currentChainId: number): Promise<void> {
+async function refreshWalletChainConfig(chain: Chain, currentChainId: number): Promise<void> {
   const rpcUrl = resolveRpcUrl(chain);
   if (!rpcUrl) return;
 
   try {
-    await wallet.addChain({ chain });
+    await requestProvider('wallet_addEthereumChain', [buildAddEthereumChainParams(chain)]);
   } catch (e: any) {
     if (isUserRejected(e)) {
       throw new Error(
@@ -127,6 +158,41 @@ async function refreshWalletChainConfig(wallet: any, chain: Chain, currentChainI
     // Some wallets reject duplicate addChain requests or do not support in-place updates.
     // In that case we keep going and rely on the current network config.
   }
+
+  try {
+    await requestProvider('wallet_switchEthereumChain', [{ chainId: toHexChainId(chain.id) }]);
+  } catch (e: any) {
+    if (isUserRejected(e)) {
+      throw new Error(
+        `Wallet network entry for chainId ${chain.id} may still point at a stale RPC URL. ` +
+          `Your wallet is currently using chainId ${currentChainId}. Please approve the network update or manually set the RPC URL to ${rpcUrl}.`
+      );
+    }
+  }
+}
+
+async function assertWalletTracksTargetLocalRpc(chain: Chain): Promise<void> {
+  const rpcUrl = resolveRpcUrl(chain);
+  if (!isLocalRpcUrl(rpcUrl)) return;
+
+  const appReadClient = makePublicClient(chain, rpcUrl || undefined);
+  const walletReadClient = makeInjectedPublicClient(chain);
+
+  let appBlockHash = '0x';
+  const appBlock = await appReadClient.getBlock({ blockTag: 'latest' });
+  appBlockHash = String(appBlock?.hash ?? '0x').toLowerCase();
+
+  for (const delayMs of [0, 250, 750, 1500, 2500]) {
+    if (delayMs > 0) await new Promise((resolve) => setTimeout(resolve, delayMs));
+    const walletBlock = await walletReadClient.getBlock({ blockTag: 'latest' });
+    const walletBlockHash = String(walletBlock?.hash ?? '0x').toLowerCase();
+    if (walletBlockHash && walletBlockHash !== '0x' && walletBlockHash === appBlockHash) return;
+  }
+
+  throw new Error(
+    `Wallet network entry for chainId ${chain.id} is still not using the same local RPC as this app. ` +
+      `Expected RPC: ${rpcUrl}. Please update the wallet network RPC and retry.`
+  );
 }
 
 export async function ensureWalletChain(chain: Chain): Promise<void> {
@@ -138,7 +204,8 @@ export async function ensureWalletChain(chain: Chain): Promise<void> {
     : `Switch networks in your wallet to chainId ${chain.id}.`;
 
   if (currentChainId === chain.id) {
-    await refreshWalletChainConfig(wallet, chain, currentChainId);
+    await refreshWalletChainConfig(chain, currentChainId);
+    await assertWalletTracksTargetLocalRpc(chain);
     return;
   }
 
@@ -155,7 +222,7 @@ export async function ensureWalletChain(chain: Chain): Promise<void> {
     // Many wallets don't reliably surface the "unknown chain" code/message.
     // Try add+switch as a best-effort fallback.
     try {
-      await refreshWalletChainConfig(wallet, chain, currentChainId);
+      await refreshWalletChainConfig(chain, currentChainId);
     } catch (eAdd: any) {
       if (isUserRejected(eAdd)) {
         throw new Error(
@@ -175,6 +242,8 @@ export async function ensureWalletChain(chain: Chain): Promise<void> {
       );
     }
   }
+
+  await assertWalletTracksTargetLocalRpc(chain);
 }
 
 export async function requestWalletAddress(chain: Chain): Promise<`0x${string}`> {
