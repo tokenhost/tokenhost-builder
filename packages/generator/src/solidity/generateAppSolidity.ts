@@ -1,4 +1,4 @@
-import type { Access, Collection, FieldType, Relation, ThsField, ThsSchema, UniqueIndex } from '@tokenhost/schema';
+import type { Access, Collection, FieldType, QueryIndex, Relation, ThsField, ThsSchema, UniqueIndex } from '@tokenhost/schema';
 import { computeSchemaHash } from '@tokenhost/schema';
 
 type SolidityType = 'string' | 'uint256' | 'int256' | 'bool' | 'address' | 'bytes32';
@@ -47,6 +47,16 @@ function hasPaidCreates(collection: Collection): boolean {
 
 function uniqueScope(index: UniqueIndex): 'active' | 'allTime' {
   return index.scope ?? 'active';
+}
+
+function queryIndexMode(index: QueryIndex): 'equality' | 'tokenized' {
+  return index.mode === 'tokenized' ? 'tokenized' : 'equality';
+}
+
+function queryIndexKeyExpr(fieldType: FieldType, expr: string): string {
+  return solidityStorageType(fieldType) === 'string'
+    ? `keccak256(bytes(${expr}))`
+    : `keccak256(abi.encode(${expr}))`;
 }
 
 class W {
@@ -140,6 +150,8 @@ export function generateAppSolidity(schema: ThsSchema): { path: string; contents
     w.line('uint256 public constant MAX_LIST_LIMIT = 50;');
     w.line('uint256 public constant MAX_SCAN_STEPS = 1000;');
     w.line('uint256 public constant MAX_MULTICALL_CALLS = 20;');
+    w.line('uint256 public constant MAX_TOKENIZED_INDEX_TOKENS = 8;');
+    w.line('uint256 public constant MAX_TOKENIZED_INDEX_TOKEN_LENGTH = 32;');
     w.line();
 
     // Errors
@@ -152,6 +164,8 @@ export function generateAppSolidity(schema: ThsSchema): { path: string; contents
     w.line('error TransferDisabled();');
     w.line('error InvalidRecipient();');
     w.line('error VersionMismatch(uint256 expected, uint256 got);');
+    w.line('error TooManyIndexTokens();');
+    w.line('error IndexTokenTooLong();');
     w.line();
 
     // Events (SPEC 7.9)
@@ -224,6 +238,61 @@ export function generateAppSolidity(schema: ThsSchema): { path: string; contents
           });
         });
         w.line('results[i] = res;');
+      });
+    });
+    w.line();
+
+    w.block('function _isHashtagChar(bytes1 ch) internal pure returns (bool)', () => {
+      w.line('return (ch >= 0x30 && ch <= 0x39) || (ch >= 0x41 && ch <= 0x5A) || (ch >= 0x61 && ch <= 0x7A) || ch == 0x5F;');
+    });
+    w.line();
+
+    w.block('function _toLowerAscii(bytes1 ch) internal pure returns (bytes1)', () => {
+      w.line('if (ch >= 0x41 && ch <= 0x5A) {');
+      w.line('  return bytes1(uint8(ch) + 32);');
+      w.line('}');
+      w.line('return ch;');
+    });
+    w.line();
+
+    w.block('function _extractHashtagKeys(string memory value) internal pure returns (bytes32[] memory keys, uint256 count)', () => {
+      w.line('bytes memory raw = bytes(value);');
+      w.line('keys = new bytes32[](MAX_TOKENIZED_INDEX_TOKENS);');
+      w.line('uint256 i = 0;');
+      w.block('while (i < raw.length)', () => {
+        w.line('if (raw[i] != 0x23) {');
+        w.line('  i += 1;');
+        w.line('  continue;');
+        w.line('}');
+        w.line('uint256 start = i + 1;');
+        w.line('uint256 end = start;');
+        w.block('while (end < raw.length && _isHashtagChar(raw[end]))', () => {
+          w.line('end += 1;');
+        });
+        w.line('uint256 tokenLength = end - start;');
+        w.line('i = end;');
+        w.line('if (tokenLength == 0) {');
+        w.line('  continue;');
+        w.line('}');
+        w.line('if (tokenLength > MAX_TOKENIZED_INDEX_TOKEN_LENGTH) revert IndexTokenTooLong();');
+        w.line('bytes memory token = new bytes(tokenLength);');
+        w.block('for (uint256 j = 0; j < tokenLength; j++)', () => {
+          w.line('token[j] = _toLowerAscii(raw[start + j]);');
+        });
+        w.line('bytes32 key = keccak256(token);');
+        w.line('bool seen = false;');
+        w.block('for (uint256 j = 0; j < count; j++)', () => {
+          w.line('if (keys[j] == key) {');
+          w.line('  seen = true;');
+          w.line('  break;');
+          w.line('}');
+        });
+        w.line('if (seen) {');
+        w.line('  continue;');
+        w.line('}');
+        w.line('if (count >= MAX_TOKENIZED_INDEX_TOKENS) revert TooManyIndexTokens();');
+        w.line('keys[count] = key;');
+        w.line('count += 1;');
       });
     });
     w.line();
@@ -311,6 +380,116 @@ export function generateAppSolidity(schema: ThsSchema): { path: string; contents
         w.line(`mapping(bytes32 => uint256) private unique_${C}_${u.field};`);
       }
       if (c.indexes.unique.length > 0) w.line();
+
+      if (onChainIndexing) {
+        for (const idx of c.indexes.index) {
+          w.line(`mapping(bytes32 => uint256[]) private index_${C}_${idx.field};`);
+        }
+        if (c.indexes.index.length > 0) w.line();
+      }
+
+      // Reverse reference indexes (append-only)
+      if (onChainIndexing) {
+        const rels = relationIndexes.filter((r) => r.from.name === C && r.rel.reverseIndex);
+        for (const r of rels) {
+          w.line(`mapping(uint256 => uint256[]) private refIndex_${C}_${r.rel.field};`);
+        }
+        if (rels.length > 0) w.line();
+      }
+
+      // exists / getCount
+      w.block(`function exists${C}(uint256 id) public view returns (bool)`, () => {
+        w.line(`${record} storage r = ${cVar}Records[id];`);
+        w.line('if (r.createdBy == address(0)) return false;');
+        w.line('if (r.isDeleted) return false;');
+        w.line('return true;');
+      });
+      w.line();
+
+      w.block(`function getCount${C}(bool includeDeleted) external view returns (uint256)`, () => {
+        w.line('if (includeDeleted) {');
+        w.line(`  return nextId${C} - 1;`);
+        w.line('}');
+        w.line(`return activeCount${C};`);
+      });
+      w.line();
+
+      // get
+      w.block(`function get${C}(uint256 id, bool includeDeleted) public view returns (${record} memory)`, () => {
+        w.line(`${record} storage r = ${cVar}Records[id];`);
+        w.line('if (r.createdBy == address(0)) revert RecordNotFound();');
+        w.line('if (!includeDeleted && r.isDeleted) revert RecordIsDeleted();');
+        w.line('return r;');
+      });
+      w.line();
+
+      w.block(`function get${C}(uint256 id) external view returns (${record} memory)`, () => {
+        w.line(`return get${C}(id, false);`);
+      });
+      w.line();
+
+      // listIds
+      w.block(
+        `function listIds${C}(uint256 cursorIdExclusive, uint256 limit, bool includeDeleted) external view returns (uint256[] memory)`,
+        () => {
+          w.line('if (limit > MAX_LIST_LIMIT) revert InvalidLimit();');
+          w.line(`uint256 cursor = cursorIdExclusive;`);
+          w.line(`uint256 nextId = nextId${C};`);
+          w.line('if (cursor == 0 || cursor > nextId) {');
+          w.line('  cursor = nextId;');
+          w.line('}');
+          w.line('uint256[] memory tmp = new uint256[](limit);');
+          w.line('uint256 found = 0;');
+          w.line('uint256 steps = 0;');
+          w.line('uint256 id = cursor;');
+          w.block('while (id > 1 && found < limit && steps < MAX_SCAN_STEPS)', () => {
+            w.line('id--;');
+            w.line('steps++;');
+            w.line(`${record} storage r = ${cVar}Records[id];`);
+            w.line('if (r.createdBy == address(0)) { continue; }');
+            w.line('if (!includeDeleted && r.isDeleted) { continue; }');
+            w.line('tmp[found] = id;');
+            w.line('found++;');
+          });
+          w.line('uint256[] memory out = new uint256[](found);');
+          w.block('for (uint256 i = 0; i < found; i++)', () => {
+            w.line('out[i] = tmp[i];');
+          });
+          w.line('return out;');
+        }
+      );
+      w.line();
+
+      // Reverse reference accessor(s)
+      if (onChainIndexing && c.relations) {
+        for (const rel of c.relations.filter((r) => r.reverseIndex)) {
+          w.block(
+            `function listByRef${C}_${rel.field}(uint256 refId, uint256 offset, uint256 limit) external view returns (uint256[] memory)`,
+            () => {
+              w.line('if (limit > MAX_LIST_LIMIT) revert InvalidLimit();');
+              w.line(`uint256[] storage bucket = refIndex_${C}_${rel.field}[refId];`);
+              w.line('if (offset >= bucket.length) {');
+              w.line('  return new uint256[](0);');
+              w.line('}');
+              w.line('uint256 end = offset + limit;');
+              w.line('if (end > bucket.length) end = bucket.length;');
+              w.line('uint256 outLen = end - offset;');
+              w.line('uint256[] memory out = new uint256[](outLen);');
+              w.block('for (uint256 i = 0; i < outLen; i++)', () => {
+                w.line('out[i] = bucket[offset + i];');
+              });
+              w.line('return out;');
+            }
+          );
+          w.line();
+        }
+      }
+      if (onChainIndexing) {
+        for (const idx of c.indexes.index) {
+          w.line(`mapping(bytes32 => uint256[]) private index_${C}_${idx.field};`);
+        }
+        if (c.indexes.index.length > 0) w.line();
+      }
 
       // Reverse reference indexes (append-only)
       if (onChainIndexing) {
@@ -409,6 +588,40 @@ export function generateAppSolidity(schema: ThsSchema): { path: string; contents
         }
       }
 
+      if (onChainIndexing) {
+        for (const idx of c.indexes.index) {
+          w.block(
+            `function listByIndex${C}_${idx.field}(bytes32 key, uint256 offset, uint256 limit) external view returns (uint256[] memory)`,
+            () => {
+              w.line('if (limit > MAX_LIST_LIMIT) revert InvalidLimit();');
+              w.line(`uint256[] storage bucket = index_${C}_${idx.field}[key];`);
+              w.line('if (offset >= bucket.length) {');
+              w.line('  return new uint256[](0);');
+              w.line('}');
+              w.line('uint256 end = offset + limit;');
+              w.line('if (end > bucket.length) end = bucket.length;');
+              w.line('uint256 outLen = end - offset;');
+              w.line('uint256[] memory out = new uint256[](outLen);');
+              w.block('for (uint256 i = 0; i < outLen; i++)', () => {
+                w.line('out[i] = bucket[offset + i];');
+              });
+              w.line('return out;');
+            }
+          );
+          w.line();
+
+          if (queryIndexMode(idx) === 'tokenized') {
+            w.block(`function _indexHashtag${C}_${idx.field}(string memory value, uint256 id) internal`, () => {
+              w.line('(bytes32[] memory keys, uint256 count) = _extractHashtagKeys(value);');
+              w.block('for (uint256 i = 0; i < count; i++)', () => {
+                w.line(`index_${C}_${idx.field}[keys[i]].push(id);`);
+              });
+            });
+            w.line();
+          }
+        }
+      }
+
       // create
       const createFnName = `create${C}`;
       const payable = hasPaidCreates(c) ? ' payable' : '';
@@ -468,6 +681,18 @@ export function generateAppSolidity(schema: ThsSchema): { path: string; contents
           w.line(`unique_${C}_${u.field}[key_${u.field}] = id;`);
         }
 
+        if (onChainIndexing) {
+          for (const idx of c.indexes.index) {
+            const f = c.fields.find((x) => x.name === idx.field);
+            if (!f) continue;
+            if (queryIndexMode(idx) === 'tokenized') {
+              w.line(`_indexHashtag${C}_${idx.field}(input.${idx.field}, id);`);
+            } else {
+              w.line(`index_${C}_${idx.field}[${queryIndexKeyExpr(f.type, `input.${idx.field}`)}].push(id);`);
+            }
+          }
+        }
+
         // reverse index maintenance
         if (onChainIndexing && c.relations) {
           for (const rel of c.relations.filter((r) => r.reverseIndex)) {
@@ -523,6 +748,31 @@ export function generateAppSolidity(schema: ThsSchema): { path: string; contents
             w.line(`  unique_${C}_${field}[oldKey_${field}] = 0;`);
             w.line(`  unique_${C}_${field}[newKey_${field}] = id;`);
             w.line('}');
+          }
+
+          if (onChainIndexing) {
+            const queryByField = new Map(c.indexes.index.map((idx) => [idx.field, idx]));
+            for (const field of c.updateRules.mutable) {
+              const idx = queryByField.get(field);
+              if (!idx) continue;
+              const f = c.fields.find((x) => x.name === field);
+              if (!f) continue;
+              if (queryIndexMode(idx) === 'tokenized') {
+                w.line(`bytes32 oldFieldHash_${field} = keccak256(bytes(r.${field}));`);
+                w.line(`bytes32 newFieldHash_${field} = keccak256(bytes(${field}));`);
+                w.line(`if (oldFieldHash_${field} != newFieldHash_${field}) {`);
+                w.line(`  _indexHashtag${C}_${field}(${field}, id);`);
+                w.line('}');
+              } else {
+                const oldKey = queryIndexKeyExpr(f.type, `r.${field}`);
+                const newKey = queryIndexKeyExpr(f.type, field);
+                w.line(`bytes32 oldIndexKey_${field} = ${oldKey};`);
+                w.line(`bytes32 newIndexKey_${field} = ${newKey};`);
+                w.line(`if (oldIndexKey_${field} != newIndexKey_${field}) {`);
+                w.line(`  index_${C}_${field}[newIndexKey_${field}].push(id);`);
+                w.line('}');
+              }
+            }
           }
 
           for (const field of c.updateRules.mutable) {
