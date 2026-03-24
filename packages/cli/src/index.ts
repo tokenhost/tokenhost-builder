@@ -2437,6 +2437,13 @@ function buildUploadServerConfig(manifest: any, uiSiteDir: string): UploadServer
   };
 }
 
+class RequestBodyTooLargeError extends Error {
+  constructor(message = 'Request body too large.') {
+    super(message);
+    this.name = 'RequestBodyTooLargeError';
+  }
+}
+
 function resolveTxMode(mode: string | undefined, chainId: number): TxMode {
   const normalized = String(mode ?? 'auto').toLowerCase().trim();
   if (normalized === 'sponsored') return 'sponsored';
@@ -2594,17 +2601,27 @@ function startUiSiteServer(args: {
     return new Promise((resolve, reject) => {
       let raw = '';
       let total = 0;
+      let settled = false;
       req.on('data', (chunk: Buffer) => {
+        if (settled) return;
         total += chunk.length;
         if (total > maxBytes) {
-          reject(new Error('Request body too large.'));
-          req.destroy();
+          settled = true;
+          reject(new RequestBodyTooLargeError());
           return;
         }
         raw += chunk.toString('utf-8');
       });
-      req.on('end', () => resolve(raw));
-      req.on('error', reject);
+      req.on('end', () => {
+        if (settled) return;
+        settled = true;
+        resolve(raw);
+      });
+      req.on('error', (error) => {
+        if (settled) return;
+        settled = true;
+        reject(error);
+      });
     });
   }
 
@@ -2612,17 +2629,27 @@ function startUiSiteServer(args: {
     return new Promise((resolve, reject) => {
       const chunks: Buffer[] = [];
       let total = 0;
+      let settled = false;
       req.on('data', (chunk: Buffer) => {
+        if (settled) return;
         total += chunk.length;
         if (total > maxBytes) {
-          reject(new Error('Request body too large.'));
-          req.destroy();
+          settled = true;
+          reject(new RequestBodyTooLargeError());
           return;
         }
         chunks.push(Buffer.from(chunk));
       });
-      req.on('end', () => resolve(Buffer.concat(chunks)));
-      req.on('error', reject);
+      req.on('end', () => {
+        if (settled) return;
+        settled = true;
+        resolve(Buffer.concat(chunks));
+      });
+      req.on('error', (error) => {
+        if (settled) return;
+        settled = true;
+        reject(error);
+      });
     });
   }
 
@@ -2709,6 +2736,9 @@ function startUiSiteServer(args: {
             didSet
           });
         } catch (e: any) {
+          if (e instanceof RequestBodyTooLargeError) {
+            return sendJson(res, 413, { ok: false, error: e.message });
+          }
           return sendJson(res, 400, { ok: false, error: String(e?.message ?? e) });
         }
       })();
@@ -2771,6 +2801,9 @@ function startUiSiteServer(args: {
 
           return sendJson(res, 200, { ok: true, txHash, receipt });
         } catch (e: any) {
+          if (e instanceof RequestBodyTooLargeError) {
+            return sendJson(res, 413, { ok: false, error: e.message });
+          }
           return sendJson(res, 400, { ok: false, error: String(e?.message ?? e) });
         }
       })();
@@ -2863,6 +2896,9 @@ function startUiSiteServer(args: {
             }
           });
         } catch (e: any) {
+          if (e instanceof RequestBodyTooLargeError) {
+            return sendJson(res, 413, { ok: false, error: e.message });
+          }
           return sendJson(res, 400, { ok: false, error: String(e?.message ?? e) });
         }
       })();
