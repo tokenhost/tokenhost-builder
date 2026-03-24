@@ -4,9 +4,10 @@ import Link from 'next/link';
 import { useEffect, useState } from 'react';
 import { useSearchParams } from 'next/navigation';
 
-import { resolveFeedItemsWithProfiles, loadMicroblogRuntime, type FeedItem } from '../lib/microblog';
-import { listHashtagRecords } from '../lib/runtime';
+import { resolveReferenceRecords } from '../lib/relations';
+import { listHashtagRecords, loadAppRuntime } from '../lib/runtime';
 import PostStream, { sortFeedItemsDesc } from './PostStream';
+import type { FeedItem } from './PostStream';
 
 type TagState = {
   hashtag: string;
@@ -30,7 +31,7 @@ export default function MicroblogTagClient() {
       }
 
       try {
-        const runtime = await loadMicroblogRuntime();
+        const runtime = await loadAppRuntime();
         const page = await listHashtagRecords({
           manifest: runtime.manifest,
           publicClient: runtime.publicClient,
@@ -44,13 +45,20 @@ export default function MicroblogTagClient() {
 
         if (cancelled) return;
 
-        const resolved = await resolveFeedItemsWithProfiles(
-          runtime,
-          page.ids.map((id, index) => ({ id, record: page.records[index] }))
-        );
+        const resolved = await resolveReferenceRecords(runtime, page.ids.map((id, index) => ({ id, record: page.records[index] })), {
+          fieldName: 'authorProfile',
+          targetCollectionName: 'Profile'
+        });
         if (cancelled) return;
 
-        const items = sortFeedItemsDesc(resolved);
+        const items = sortFeedItemsDesc(
+          resolved.map((item) => ({
+            id: item.id,
+            record: item.record,
+            authorProfileId: item.referenceId,
+            authorProfile: item.referenceRecord
+          }))
+        );
         setState({ hashtag: page.hashtag, items, loading: false, error: null });
       } catch (error: any) {
         if (cancelled) return;

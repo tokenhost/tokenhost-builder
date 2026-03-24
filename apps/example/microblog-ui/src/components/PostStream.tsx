@@ -4,7 +4,25 @@ import Link from 'next/link';
 
 import { formatDateTime } from '../lib/format';
 import { extractHashtagTokens } from '../lib/indexing';
-import { profileDisplayName, profileHandle, type FeedItem } from '../lib/microblog';
+
+export type FeedItem = {
+  id: bigint;
+  record: any;
+  authorProfileId: bigint | null;
+  authorProfile: any | null;
+};
+
+function profileDisplayName(profile: any): string {
+  const displayName = String(profile?.displayName ?? '').trim();
+  const handle = String(profile?.handle ?? '').trim();
+  if (displayName) return displayName;
+  if (handle) return `@${handle}`;
+  return 'Anonymous';
+}
+
+function profileHandle(profile: any): string {
+  return String(profile?.handle ?? '').trim();
+}
 
 export function sortFeedItemsDesc(items: FeedItem[]): FeedItem[] {
   return [...items].sort((a, b) => {

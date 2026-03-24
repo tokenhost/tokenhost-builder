@@ -3,9 +3,10 @@
 import Link from 'next/link';
 import { useEffect, useMemo, useState } from 'react';
 
-import { resolveFeedItemsWithProfiles, loadMicroblogRuntime, type FeedItem } from '../lib/microblog';
-import { listAllRecords } from '../lib/runtime';
+import { resolveReferenceRecords } from '../lib/relations';
+import { listAllRecords, loadAppRuntime } from '../lib/runtime';
 import PostStream, { collectTrendingTags, sortFeedItemsDesc } from './PostStream';
+import type { FeedItem } from './PostStream';
 
 type LoadState = {
   items: FeedItem[];
@@ -21,7 +22,7 @@ export default function MicroblogHomeClient() {
 
     (async () => {
       try {
-        const runtime = await loadMicroblogRuntime();
+        const runtime = await loadAppRuntime();
         const page = await listAllRecords({
           manifest: runtime.manifest,
           publicClient: runtime.publicClient,
@@ -33,13 +34,20 @@ export default function MicroblogHomeClient() {
 
         if (cancelled) return;
 
-        const resolved = await resolveFeedItemsWithProfiles(
-          runtime,
-          page.ids.map((id, index) => ({ id, record: page.records[index] }))
-        );
+        const resolved = await resolveReferenceRecords(runtime, page.ids.map((id, index) => ({ id, record: page.records[index] })), {
+          fieldName: 'authorProfile',
+          targetCollectionName: 'Profile'
+        });
         if (cancelled) return;
 
-        const items = sortFeedItemsDesc(resolved).slice(0, 24);
+        const items = sortFeedItemsDesc(
+          resolved.map((item) => ({
+            id: item.id,
+            record: item.record,
+            authorProfileId: item.referenceId,
+            authorProfile: item.referenceRecord
+          }))
+        ).slice(0, 24);
         setState({ items, loading: false, error: null });
       } catch (error: any) {
         if (cancelled) return;
