@@ -60,6 +60,16 @@ export function makeWalletClient(chain: Chain): any {
   });
 }
 
+export function makeInjectedPublicClient(chain: Chain): any {
+  const eth = (globalThis as any).ethereum as any;
+  if (!eth) throw new Error('No injected wallet found (window.ethereum).');
+
+  return createPublicClient({
+    chain,
+    transport: custom(eth)
+  });
+}
+
 function extractErrorCode(e: any): string | number | null {
   const codes = [
     e?.code,

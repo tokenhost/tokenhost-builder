@@ -180,6 +180,8 @@ describe('th generate (UI template)', function () {
     const generatedTx = fs.readFileSync(path.join(outDir, 'ui', 'src', 'lib', 'tx.ts'), 'utf-8');
     expect(generatedTx).to.include('const relayReceipt = body.receipt ?? null;');
     expect(generatedTx).to.include("if (relayReceipt) {");
+    expect(generatedTx).to.include('assertWalletRpcMatchesDeployment');
+    expect(generatedTx).to.include('Wallet RPC is not pointed at the same deployment as this app.');
 
     const generatedCollectionPage = fs.readFileSync(path.join(outDir, 'ui', 'app', '[collection]', 'ClientPage.tsx'), 'utf-8');
     expect(generatedCollectionPage).to.include('getReadRpcUrl');
@@ -188,6 +190,7 @@ describe('th generate (UI template)', function () {
     const generatedClients = fs.readFileSync(path.join(outDir, 'ui', 'src', 'lib', 'clients.ts'), 'utf-8');
     expect(generatedClients).to.include('async function refreshWalletChainConfig');
     expect(generatedClients).to.include('wallet.addChain({ chain })');
+    expect(generatedClients).to.include('export function makeInjectedPublicClient');
   });
 
   it('materializes the explicit cyber-grid theme preset into generated UI output', function () {
