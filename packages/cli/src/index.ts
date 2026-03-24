@@ -3,6 +3,7 @@ import os from 'os';
 import path from 'path';
 import crypto from 'crypto';
 import * as nodeHttp from 'node:http';
+import * as nodeNet from 'node:net';
 import { createInterface, type Interface as ReadlineInterface } from 'node:readline/promises';
 import { spawn, spawnSync } from 'child_process';
 import { createRequire } from 'module';
@@ -337,27 +338,27 @@ type SharedThemeTokens = {
 function defaultSharedThemeTokens(): SharedThemeTokens {
   return {
     colors: {
-      bg: '#06122b',
-      bgAlt: '#0a1f45',
-      panel: '#0f2958cc',
-      panelStrong: '#103062',
-      border: '#7eb8ff55',
-      text: '#f3f8ff',
-      muted: '#b6caea',
-      primary: '#4cb1f7',
-      primaryStrong: '#1e8fe0',
-      accent: '#ffc700',
-      success: '#12c26d',
-      danger: '#ff5f63'
+      bg: '#f2f5f7',
+      bgAlt: '#fbfcfd',
+      panel: '#ffffff',
+      panelStrong: '#ffffff',
+      border: '#d6dfeb',
+      text: '#0f1729',
+      muted: '#66758d',
+      primary: '#ff80ff',
+      primaryStrong: '#ff67f5',
+      accent: '#1b9847',
+      success: '#1b9847',
+      danger: '#ef4444'
     },
-    radius: { sm: '10px', md: '14px', lg: '20px' },
-    spacing: { xs: '6px', sm: '10px', md: '16px', lg: '24px', xl: '36px' },
+    radius: { sm: '0px', md: '0px', lg: '0px' },
+    spacing: { xs: '6px', sm: '10px', md: '16px', lg: '24px', xl: '38px' },
     typography: {
       display: '"Montserrat", "Avenir Next", "Segoe UI", sans-serif',
-      body: '"Inter", "Segoe UI", sans-serif',
-      mono: 'ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace'
+      body: '"Montserrat", "Avenir Next", "Segoe UI", sans-serif',
+      mono: '"JetBrains Mono", "SFMono-Regular", Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace'
     },
-    motion: { fast: '120ms', base: '180ms' }
+    motion: { fast: '140ms', base: '220ms' }
   };
 }
 
@@ -1205,6 +1206,7 @@ function syncUiOutput(args: {
   const resolvedOutDir = path.resolve(args.outDir);
   const templateDir = resolveNextExportUiTemplateDir();
   const uiDir = path.join(resolvedOutDir, 'ui');
+  const preservedUiState = captureUiPackageManagerState(uiDir);
 
   fs.rmSync(uiDir, { recursive: true, force: true });
   copyDir(templateDir, uiDir);
@@ -1230,7 +1232,56 @@ function syncUiOutput(args: {
   }
 
   applyUiExtensions(uiDir, args.schema, args.schemaPathForHints);
+  restoreUiPackageManagerState(uiDir, preservedUiState);
   console.log(`Wrote ui/ (Next.js static export template)`);
+}
+
+type UiPackageManagerState = {
+  priorPackageJson: string | null;
+  lockfiles: Array<{ name: string; contents: Buffer }>;
+  nodeModulesDir: string | null;
+};
+
+function captureUiPackageManagerState(uiDir: string): UiPackageManagerState {
+  const packageJsonPath = path.join(uiDir, 'package.json');
+  const lockfileNames = ['pnpm-lock.yaml', 'package-lock.json', 'yarn.lock', 'bun.lockb', 'bun.lock'];
+  const lockfiles: Array<{ name: string; contents: Buffer }> = [];
+  for (const name of lockfileNames) {
+    const filePath = path.join(uiDir, name);
+    if (!fs.existsSync(filePath) || !fs.statSync(filePath).isFile()) continue;
+    lockfiles.push({ name, contents: fs.readFileSync(filePath) });
+  }
+
+  let nodeModulesDir: string | null = null;
+  const nodeModulesPath = path.join(uiDir, 'node_modules');
+  if (fs.existsSync(nodeModulesPath) && fs.statSync(nodeModulesPath).isDirectory()) {
+    nodeModulesDir = fs.mkdtempSync(path.join(os.tmpdir(), 'th-ui-sync-node-modules-'));
+    fs.renameSync(nodeModulesPath, nodeModulesDir);
+  }
+
+  return {
+    priorPackageJson: fs.existsSync(packageJsonPath) ? fs.readFileSync(packageJsonPath, 'utf-8') : null,
+    lockfiles,
+    nodeModulesDir
+  };
+}
+
+function restoreUiPackageManagerState(uiDir: string, state: UiPackageManagerState) {
+  for (const lockfile of state.lockfiles) {
+    fs.writeFileSync(path.join(uiDir, lockfile.name), lockfile.contents);
+  }
+
+  if (!state.nodeModulesDir) return;
+
+  const currentPackageJsonPath = path.join(uiDir, 'package.json');
+  const currentPackageJson = fs.existsSync(currentPackageJsonPath) ? fs.readFileSync(currentPackageJsonPath, 'utf-8') : null;
+  if (state.priorPackageJson !== null && currentPackageJson === state.priorPackageJson) {
+    fs.rmSync(path.join(uiDir, 'node_modules'), { recursive: true, force: true });
+    fs.renameSync(state.nodeModulesDir, path.join(uiDir, 'node_modules'));
+    return;
+  }
+
+  fs.rmSync(state.nodeModulesDir, { recursive: true, force: true });
 }
 
 function resolveUiExtensionsDir(schema: ThsSchema, schemaPathForHints?: string): string | null {
@@ -1984,16 +2035,75 @@ function pipeWithPrefix(stream: NodeJS.ReadableStream, prefix: string, dest: Nod
   });
 }
 
-async function ensureAnvilRunning(rpcUrl: string, opts?: { start: boolean; expectedChainId?: number }): Promise<{ child: ReturnType<typeof spawn> | null }> {
+async function findAvailableLocalPort(host: string): Promise<number> {
+  return await new Promise((resolve, reject) => {
+    const server = nodeNet.createServer();
+    server.unref();
+    server.once('error', reject);
+    server.listen(0, host, () => {
+      const address = server.address();
+      if (!address || typeof address === 'string') {
+        server.close(() => reject(new Error('Failed to allocate a local port.')));
+        return;
+      }
+      const port = address.port;
+      server.close((closeErr) => {
+        if (closeErr) {
+          reject(closeErr);
+          return;
+        }
+        resolve(port);
+      });
+    });
+  });
+}
+
+function replaceRpcUrlPort(rpcUrl: string, port: number): string {
+  const u = new URL(rpcUrl);
+  u.port = String(port);
+  return u.toString();
+}
+
+async function ensureAnvilRunning(
+  rpcUrl: string,
+  opts?: { start: boolean; expectedChainId?: number }
+): Promise<{ child: ReturnType<typeof spawn> | null; rpcUrl: string; chainId: number }> {
   const expectedChainId = opts?.expectedChainId ?? 31337;
   const start = opts?.start ?? true;
 
   const chainId = await tryGetRpcChainId(rpcUrl, 500);
   if (chainId !== null) {
     if (chainId !== expectedChainId) {
-      throw new Error(`RPC at ${rpcUrl} is chainId ${chainId}, expected ${expectedChainId}.`);
+      if (!start) {
+        throw new Error(`RPC at ${rpcUrl} is chainId ${chainId}, expected ${expectedChainId}.`);
+      }
+      const local = isLocalHttpRpcUrl(rpcUrl);
+      if (!local) {
+        throw new Error(`RPC at ${rpcUrl} is chainId ${chainId}, expected ${expectedChainId}.`);
+      }
+      const altPort = await findAvailableLocalPort(local.host);
+      const altRpcUrl = replaceRpcUrlPort(rpcUrl, altPort);
+      console.log(`RPC at ${rpcUrl} is chainId ${chainId}, expected ${expectedChainId}. Starting dedicated anvil at ${altRpcUrl}.`);
+
+      const child = spawn('anvil', ['--host', local.host, '--port', String(altPort), '--chain-id', String(expectedChainId)], {
+        stdio: ['ignore', 'pipe', 'pipe']
+      });
+
+      if (child.stdout) pipeWithPrefix(child.stdout, '[anvil] ', process.stdout);
+      if (child.stderr) pipeWithPrefix(child.stderr, '[anvil] ', process.stderr);
+
+      const startedAt = Date.now();
+      const timeoutMs = 10_000;
+      while (Date.now() - startedAt < timeoutMs) {
+        const nowChainId = await tryGetRpcChainId(altRpcUrl, 500);
+        if (nowChainId === expectedChainId) return { child, rpcUrl: altRpcUrl, chainId: expectedChainId };
+        await new Promise((r) => setTimeout(r, 200));
+      }
+
+      child.kill('SIGTERM');
+      throw new Error(`Timed out waiting for dedicated anvil at ${altRpcUrl} to become ready.`);
     }
-    return { child: null };
+    return { child: null, rpcUrl, chainId };
   }
 
   if (!start) {
@@ -2021,7 +2131,7 @@ async function ensureAnvilRunning(rpcUrl: string, opts?: { start: boolean; expec
   const timeoutMs = 10_000;
   while (Date.now() - startedAt < timeoutMs) {
     const nowChainId = await tryGetRpcChainId(rpcUrl, 500);
-    if (nowChainId === expectedChainId) return { child };
+    if (nowChainId === expectedChainId) return { child, rpcUrl, chainId: expectedChainId };
     await new Promise((r) => setTimeout(r, 200));
   }
 
@@ -2045,6 +2155,236 @@ type RelayConfig = {
   from: Address;
 };
 
+type UploadRunnerMode = 'local' | 'remote' | 'foc-process';
+type UploadProvider = 'local_file' | 'filecoin_onchain_cloud';
+
+type UploadManifestConfig = {
+  enabled: boolean;
+  baseUrl: string;
+  endpointUrl: string;
+  statusUrl: string;
+  provider: UploadProvider;
+  runnerMode: UploadRunnerMode;
+  accept: string[];
+  maxBytes: number;
+};
+
+type UploadServerConfig = UploadManifestConfig & {
+  localDir: string;
+  foc?: {
+    chainId: number;
+    copies: number;
+    withCDN: boolean;
+    command: string;
+  } | null;
+};
+
+function parsePositiveIntEnv(value: string | undefined, fallback: number): number {
+  const n = Number.parseInt(String(value ?? ''), 10);
+  return Number.isFinite(n) && n > 0 ? n : fallback;
+}
+
+function parseBooleanEnv(value: string | undefined, fallback = false): boolean {
+  const normalized = String(value ?? '').trim().toLowerCase();
+  if (!normalized) return fallback;
+  return normalized === '1' || normalized === 'true' || normalized === 'yes' || normalized === 'on';
+}
+
+function trimTrailingSlash(value: string): string {
+  return String(value ?? '').trim().replace(/\/+$/, '');
+}
+
+function deriveRemoteUploadUrls(input: string): { baseUrl: string; endpointUrl: string; statusUrl: string } {
+  const trimmed = trimTrailingSlash(input);
+  if (!trimmed) {
+    return {
+      baseUrl: '/__tokenhost/upload',
+      endpointUrl: '/__tokenhost/upload',
+      statusUrl: '/__tokenhost/upload'
+    };
+  }
+
+  try {
+    const url = new URL(trimmed);
+    const normalizedPath = url.pathname.replace(/\/+$/, '') || '/';
+    if (normalizedPath === '/') {
+      const endpoint = new URL('/__tokenhost/upload', `${url.origin}/`).toString();
+      return {
+        baseUrl: endpoint,
+        endpointUrl: endpoint,
+        statusUrl: endpoint
+      };
+    }
+
+    return {
+      baseUrl: url.toString(),
+      endpointUrl: url.toString(),
+      statusUrl: url.toString()
+    };
+  } catch {
+    if (trimmed.startsWith('/')) {
+      const normalizedPath = trimmed || '/';
+      const endpoint = normalizedPath === '/' ? '/__tokenhost/upload' : normalizedPath;
+      return {
+        baseUrl: endpoint,
+        endpointUrl: endpoint,
+        statusUrl: endpoint
+      };
+    }
+
+    return {
+      baseUrl: trimmed,
+      endpointUrl: trimmed,
+      statusUrl: trimmed
+    };
+  }
+}
+
+function resolveUploadManifestConfig(featuresUploads: boolean): UploadManifestConfig | null {
+  if (!featuresUploads) return null;
+
+  const remoteBaseUrl = String(process.env.TH_UPLOAD_REMOTE_BASE_URL ?? '').trim();
+  const remoteEndpointUrl = String(process.env.TH_UPLOAD_REMOTE_ENDPOINT_URL ?? '').trim();
+  const remoteStatusUrl = String(process.env.TH_UPLOAD_REMOTE_STATUS_URL ?? '').trim();
+  const explicitRunner = String(process.env.TH_UPLOAD_RUNNER ?? '').trim().toLowerCase();
+  const runnerMode: UploadRunnerMode =
+    remoteBaseUrl || remoteEndpointUrl
+      ? 'remote'
+      : explicitRunner === 'foc-process' || explicitRunner === 'foc_process'
+        ? 'foc-process'
+        : explicitRunner === 'remote'
+          ? 'remote'
+          : 'local';
+  const providerEnv = String(process.env.TH_UPLOAD_PROVIDER ?? '').trim().toLowerCase();
+  const provider: UploadProvider =
+    providerEnv === 'filecoin_onchain_cloud' || providerEnv === 'foc' || runnerMode === 'foc-process' || runnerMode === 'remote'
+      ? 'filecoin_onchain_cloud'
+      : 'local_file';
+  const localBaseUrl = String(process.env.TH_UPLOAD_BASE_URL ?? '/__tokenhost/upload').trim() || '/__tokenhost/upload';
+  const remoteUrls = deriveRemoteUploadUrls(remoteEndpointUrl || remoteBaseUrl);
+  const baseUrl = runnerMode === 'remote' ? remoteUrls.baseUrl : localBaseUrl;
+  const endpointUrl = runnerMode === 'remote' ? remoteUrls.endpointUrl : localBaseUrl;
+  const statusUrl = runnerMode === 'remote' ? trimTrailingSlash(remoteStatusUrl) || remoteUrls.statusUrl : localBaseUrl;
+  const accept = String(process.env.TH_UPLOAD_ACCEPT ?? 'image/png,image/jpeg,image/gif,image/webp,image/svg+xml')
+    .split(',')
+    .map((x) => x.trim())
+    .filter(Boolean);
+  const maxBytes = parsePositiveIntEnv(process.env.TH_UPLOAD_MAX_BYTES, 10 * 1024 * 1024);
+
+  return {
+    enabled: true,
+    baseUrl,
+    endpointUrl,
+    statusUrl,
+    provider,
+    runnerMode,
+    accept,
+    maxBytes
+  };
+}
+
+function shellQuote(s: string): string {
+  return `'${String(s).replace(/'/g, `'\"'\"'`)}'`;
+}
+
+function detectUploadExtension(fileName: string, contentType: string): string {
+  const ext = path.extname(fileName).toLowerCase();
+  if (ext) return ext;
+  switch (contentType) {
+    case 'image/png':
+      return '.png';
+    case 'image/jpeg':
+      return '.jpg';
+    case 'image/gif':
+      return '.gif';
+    case 'image/webp':
+      return '.webp';
+    case 'image/svg+xml':
+      return '.svg';
+    default:
+      return '.bin';
+  }
+}
+
+function normalizeUploadFileName(fileName: string): string {
+  const base = path.basename(fileName || 'upload.bin').replace(/[^A-Za-z0-9._-]+/g, '-');
+  return base || 'upload.bin';
+}
+
+function normalizeFocUploadResult(parsed: any): { url: string; cid: string | null; size: number | null; metadata: Record<string, unknown> } {
+  const result = parsed?.result;
+  const copyResults = Array.isArray(result?.copyResults) ? result.copyResults : [];
+  const firstCopy = copyResults.find((x: any) => x && typeof x.url === 'string' && x.url.trim()) ?? null;
+  const url = firstCopy ? String(firstCopy.url) : '';
+  if (!url) {
+    throw new Error('foc-cli upload did not return a usable copyResults[].url value.');
+  }
+  return {
+    url,
+    cid: result?.pieceCid ? String(result.pieceCid) : null,
+    size: Number.isFinite(Number(result?.size)) ? Number(result.size) : null,
+    metadata: {
+      pieceScannerUrl: result?.pieceScannerUrl ? String(result.pieceScannerUrl) : null,
+      copyResults,
+      copyFailures: Array.isArray(result?.copyFailures) ? result.copyFailures : []
+    }
+  };
+}
+
+function runFocCliUpload(config: NonNullable<UploadServerConfig['foc']>, filePath: string): { url: string; cid: string | null; size: number | null; metadata: Record<string, unknown> } {
+  const command =
+    `${config.command} upload ${shellQuote(filePath)} --format json --chain ${config.chainId} --copies ${config.copies}` +
+    `${config.withCDN ? ' --withCDN true' : ''}`;
+  const res = spawnSync(command, {
+    shell: true,
+    encoding: 'utf-8',
+    maxBuffer: 10 * 1024 * 1024
+  });
+  if (res.status !== 0) {
+    throw new Error(String(res.stderr || res.stdout || `foc-cli failed with status ${res.status}`));
+  }
+  const parsed = JSON.parse(String(res.stdout || '{}'));
+  return normalizeFocUploadResult(parsed);
+}
+
+function buildUploadServerConfig(manifest: any, uiSiteDir: string): UploadServerConfig | null {
+  const ext = manifest?.extensions?.uploads;
+  if (!ext || ext.enabled !== true) return null;
+  const baseUrl = String(ext.baseUrl ?? '').trim() || '/__tokenhost/upload';
+  const endpointUrl = String(ext.endpointUrl ?? baseUrl).trim() || '/__tokenhost/upload';
+  const statusUrl = String(ext.statusUrl ?? endpointUrl).trim() || endpointUrl;
+  const runnerMode = String(ext.runnerMode ?? 'local').trim() as UploadRunnerMode;
+  if (runnerMode === 'remote') return null;
+  if (!endpointUrl.startsWith('/')) return null;
+
+  const provider = String(ext.provider ?? 'local_file').trim() === 'filecoin_onchain_cloud' ? 'filecoin_onchain_cloud' : 'local_file';
+  const maxBytes = parsePositiveIntEnv(String(ext.maxBytes ?? ''), 10 * 1024 * 1024);
+  const accept = Array.isArray(ext.accept) ? ext.accept.map((x: any) => String(x)).filter(Boolean) : ['image/*'];
+  const localDir = path.join(uiSiteDir, '__tokenhost', 'uploads');
+  const foc =
+    runnerMode === 'foc-process'
+      ? {
+          chainId: parsePositiveIntEnv(process.env.TH_UPLOAD_FOC_CHAIN, 314159),
+          copies: parsePositiveIntEnv(process.env.TH_UPLOAD_FOC_COPIES, 2),
+          withCDN: parseBooleanEnv(process.env.TH_UPLOAD_FOC_WITH_CDN, false),
+          command: String(process.env.TH_UPLOAD_FOC_COMMAND ?? 'npx -y foc-cli').trim() || 'npx -y foc-cli'
+        }
+      : null;
+
+  return {
+    enabled: true,
+    baseUrl,
+    endpointUrl,
+    statusUrl,
+    provider,
+    runnerMode: runnerMode === 'foc-process' ? 'foc-process' : 'local',
+    accept,
+    maxBytes,
+    localDir,
+    foc
+  };
+}
+
 function resolveTxMode(mode: string | undefined, chainId: number): TxMode {
   const normalized = String(mode ?? 'auto').toLowerCase().trim();
   if (normalized === 'sponsored') return 'sponsored';
@@ -2059,6 +2399,7 @@ function startUiSiteServer(args: {
   port: number;
   faucet?: FaucetConfig | null;
   relay?: RelayConfig | null;
+  upload?: UploadServerConfig | null;
 }): { server: nodeHttp.Server; url: string } {
   const resolvedBuildDir = path.resolve(args.buildDir);
   const uiSiteDir = path.join(resolvedBuildDir, 'ui-site');
@@ -2076,8 +2417,11 @@ function startUiSiteServer(args: {
   const rootAbs = path.resolve(uiSiteDir);
   const faucet = args.faucet ?? null;
   const relay = args.relay ?? null;
+  const upload = args.upload ?? null;
   const faucetPath = '/__tokenhost/faucet';
   const relayPath = '/__tokenhost/relay';
+  const uploadPath = upload?.endpointUrl && upload.endpointUrl.startsWith('/') ? upload.endpointUrl : '/__tokenhost/upload';
+  const uploadStatusPath = upload?.statusUrl && upload.statusUrl.startsWith('/') ? upload.statusUrl : uploadPath;
   const faucetTargetEth = faucet?.targetWei ? Number(faucet.targetWei / 10n ** 18n) : 10;
 
   function contentTypeForPath(filePath: string): string {
@@ -2183,6 +2527,24 @@ function startUiSiteServer(args: {
         raw += chunk.toString('utf-8');
       });
       req.on('end', () => resolve(raw));
+      req.on('error', reject);
+    });
+  }
+
+  function readBinaryBody(req: nodeHttp.IncomingMessage, maxBytes: number): Promise<Buffer> {
+    return new Promise((resolve, reject) => {
+      const chunks: Buffer[] = [];
+      let total = 0;
+      req.on('data', (chunk: Buffer) => {
+        total += chunk.length;
+        if (total > maxBytes) {
+          reject(new Error('Request body too large.'));
+          req.destroy();
+          return;
+        }
+        chunks.push(Buffer.from(chunk));
+      });
+      req.on('end', () => resolve(Buffer.concat(chunks)));
       req.on('error', reject);
     });
   }
@@ -2331,6 +2693,98 @@ function startUiSiteServer(args: {
           }
 
           return sendJson(res, 200, { ok: true, txHash, receipt });
+        } catch (e: any) {
+          return sendJson(res, 400, { ok: false, error: String(e?.message ?? e) });
+        }
+      })();
+      return;
+    }
+
+    if (pathname === uploadPath || pathname === uploadStatusPath) {
+      (async () => {
+        const enabled = Boolean(upload?.enabled);
+        if (req.method === 'GET' || req.method === 'HEAD') {
+          return sendJson(res, 200, {
+            ok: true,
+            enabled,
+            provider: upload?.provider ?? null,
+            runnerMode: upload?.runnerMode ?? null,
+            maxBytes: upload?.maxBytes ?? null,
+            accept: upload?.accept ?? [],
+            endpointUrl: upload?.endpointUrl ?? null,
+            statusUrl: upload?.statusUrl ?? null,
+            reason: enabled ? null : upload ? 'disabled' : 'not-configured'
+          });
+        }
+
+        if (req.method !== 'POST') {
+          res.setHeader('Allow', 'GET, HEAD, POST');
+          return sendText(res, 405, 'Method Not Allowed');
+        }
+
+        if (!enabled || !upload) {
+          return sendJson(res, 400, { ok: false, error: 'Upload endpoint is disabled.' });
+        }
+
+        try {
+          const fileName = normalizeUploadFileName(String(req.headers['x-tokenhost-upload-filename'] ?? 'upload.bin'));
+          const contentType = String(req.headers['content-type'] ?? 'application/octet-stream').split(';')[0]!.trim().toLowerCase();
+          const accept = Array.isArray(upload.accept) ? upload.accept : [];
+          if (accept.length > 0 && !accept.some((pattern) => pattern === contentType || (pattern.endsWith('/*') && contentType.startsWith(pattern.slice(0, -1))))) {
+            return sendJson(res, 415, { ok: false, error: `Unsupported content type "${contentType}".` });
+          }
+
+          const body = await readBinaryBody(req, upload.maxBytes);
+          if (body.length === 0) return sendJson(res, 400, { ok: false, error: 'Empty upload body.' });
+
+          if (upload.runnerMode === 'foc-process') {
+            const ext = detectUploadExtension(fileName, contentType);
+            const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'th-foc-upload-'));
+            const tmpFile = path.join(tmpDir, `upload${ext}`);
+            try {
+              fs.writeFileSync(tmpFile, body);
+              const uploaded = runFocCliUpload(upload.foc ?? {
+                chainId: 314159,
+                copies: 2,
+                withCDN: false,
+                command: 'npx -y foc-cli'
+              }, tmpFile);
+              return sendJson(res, 200, {
+                ok: true,
+                upload: {
+                  url: uploaded.url,
+                  cid: uploaded.cid,
+                  size: uploaded.size ?? body.length,
+                  provider: upload.provider,
+                  runnerMode: upload.runnerMode,
+                  contentType,
+                  metadata: uploaded.metadata
+                }
+              });
+            } finally {
+              fs.rmSync(tmpDir, { recursive: true, force: true });
+            }
+          }
+
+          fs.mkdirSync(upload.localDir, { recursive: true });
+          const ext = detectUploadExtension(fileName, contentType);
+          const storedName = `${Date.now()}-${crypto.randomBytes(6).toString('hex')}${ext}`;
+          const storedPath = path.join(upload.localDir, storedName);
+          fs.writeFileSync(storedPath, body);
+          return sendJson(res, 200, {
+            ok: true,
+            upload: {
+              url: `/__tokenhost/uploads/${storedName}`,
+              cid: null,
+              size: body.length,
+              provider: upload.provider,
+              runnerMode: upload.runnerMode,
+              contentType,
+              metadata: {
+                originalFileName: fileName
+              }
+            }
+          });
         } catch (e: any) {
           return sendJson(res, 400, { ok: false, error: String(e?.message ?? e) });
         }
@@ -2563,6 +3017,7 @@ function buildFromSchema(
   const zeroAddress = '0x0000000000000000000000000000000000000000';
   const txMode = resolveTxMode(opts.txMode, Number(opts.targetChainId ?? anvil.id));
   const relayBaseUrl = String(opts.relayBaseUrl ?? process.env.TH_RELAY_BASE_URL ?? '/__tokenhost/relay').trim() || '/__tokenhost/relay';
+  const uploadConfig = resolveUploadManifestConfig(features.uploads);
 
   const manifest = {
     manifestVersion: '0.1.0',
@@ -2618,6 +3073,20 @@ function buildFromSchema(
     },
     features,
     extensions: {
+      ...(uploadConfig
+        ? {
+            uploads: {
+              enabled: uploadConfig.enabled,
+              baseUrl: uploadConfig.baseUrl,
+              endpointUrl: uploadConfig.endpointUrl,
+              statusUrl: uploadConfig.statusUrl,
+              provider: uploadConfig.provider,
+              runnerMode: uploadConfig.runnerMode,
+              accept: uploadConfig.accept,
+              maxBytes: uploadConfig.maxBytes
+            }
+          }
+        : {}),
       tx:
         txMode === 'sponsored'
           ? {
@@ -3635,7 +4104,9 @@ program
 
         // Start Anvil (if needed) while we build.
         const anvilPromise =
-          chainName === 'anvil' ? ensureAnvilRunning(rpcUrl, { start: Boolean(opts.startAnvil), expectedChainId: chain.id }) : Promise.resolve({ child: null });
+          chainName === 'anvil'
+            ? ensureAnvilRunning(rpcUrl, { start: Boolean(opts.startAnvil), expectedChainId: chain.id })
+            : Promise.resolve({ child: null, rpcUrl, chainId: chain.id });
 
         console.log('Building…');
         buildFromSchema(schema, outDir, {
@@ -3652,13 +4123,14 @@ program
 
         const ensured = await anvilPromise;
         anvilChild = ensured.child;
+        const activeRpcUrl = ensured.rpcUrl;
 
         if (opts.deploy) {
           console.log('');
           console.log('Deploying…');
           await deployBuildDir(outDir, {
             chain: opts.chain,
-            rpc: opts.rpc,
+            rpc: activeRpcUrl,
             privateKey: opts.privateKey,
             admin: opts.admin,
             treasury: opts.treasury,
@@ -3673,6 +4145,13 @@ program
           const relayEnabled = Boolean(chainName === 'anvil' && resolvedTxMode === 'sponsored');
           const faucetTargetWei = 10n * 10n ** 18n;
           const relayFrom = privateKeyToAccount(resolvePrivateKey('anvil')).address as Address;
+          let uploadConfig: UploadServerConfig | null = null;
+          try {
+            const manifest = readJsonFile(path.join(outDir, 'manifest.json')) as any;
+            uploadConfig = buildUploadServerConfig(manifest, path.join(outDir, 'ui-site'));
+          } catch {
+            uploadConfig = null;
+          }
           const { server, url } = startUiSiteServer({
             buildDir: outDir,
             host,
@@ -3680,7 +4159,7 @@ program
             faucet: faucetEnabled
               ? {
                   enabled: true,
-                  rpcUrl,
+                  rpcUrl: activeRpcUrl,
                   chainId: chain.id,
                   targetWei: faucetTargetWei
                 }
@@ -3688,11 +4167,12 @@ program
             relay: relayEnabled
               ? {
                   enabled: true,
-                  rpcUrl,
+                  rpcUrl: activeRpcUrl,
                   chainId: chain.id,
                   from: relayFrom
                 }
-              : null
+              : null,
+            upload: uploadConfig
           });
           console.log('');
           console.log(`Ready: ${url}`);
@@ -3759,53 +4239,25 @@ program
       const faucetTargetWei = 10n * 10n ** 18n;
       let faucetConfig: FaucetConfig | null = null;
       let relayConfig: RelayConfig | null = null;
+      let uploadConfig: UploadServerConfig | null = null;
       let txMode: TxMode = 'userPays';
+      let manifestChainId: number | null = null;
+      let activePreviewRpcUrl: string | null = null;
 
       if (fs.existsSync(manifestPath)) {
         try {
           const manifest = readJsonFile(manifestPath) as any;
+          const deployments = Array.isArray(manifest?.deployments) ? manifest.deployments : [];
+          const primaryDeployment = deployments.find((x: any) => x && x.role === 'primary') ?? deployments[0] ?? null;
           txMode = resolveTxMode(String(manifest?.extensions?.tx?.mode ?? 'auto'), Number(manifest?.deployments?.[0]?.chainId ?? anvil.id));
+          manifestChainId = Number(primaryDeployment?.chainId ?? NaN);
+          if (Number.isFinite(manifestChainId) && manifestChainId === anvil.id) {
+            const { chainName, chain } = resolveKnownChain('anvil');
+            activePreviewRpcUrl = resolveRpcUrl(chainName, chain, opts.rpc);
+          }
+          uploadConfig = buildUploadServerConfig(manifest, path.join(resolvedBuildDir, 'ui-site'));
         } catch {
           // ignore parse issues
-        }
-      }
-
-      // Enable faucet when previewing an anvil build (chainId 31337) and the user hasn't disabled it.
-      if (opts.faucet && txMode !== 'sponsored' && fs.existsSync(manifestPath)) {
-        try {
-          const manifest = readJsonFile(manifestPath) as any;
-          const deployments = Array.isArray(manifest?.deployments) ? manifest.deployments : [];
-          const d = deployments.find((x: any) => x && x.role === 'primary') ?? deployments[0] ?? null;
-          const chainId = Number(d?.chainId ?? NaN);
-          if (chainId === anvil.id) {
-            const { chainName, chain } = resolveKnownChain('anvil');
-            const rpcUrl = resolveRpcUrl(chainName, chain, opts.rpc);
-            faucetConfig = { enabled: true, rpcUrl, chainId, targetWei: faucetTargetWei };
-          }
-        } catch {
-          // Ignore manifest parsing issues; serving static UI still works.
-        }
-      }
-
-      // Enable local relay in sponsored mode for anvil chains.
-      if (txMode === 'sponsored' && fs.existsSync(manifestPath)) {
-        try {
-          const manifest = readJsonFile(manifestPath) as any;
-          const deployments = Array.isArray(manifest?.deployments) ? manifest.deployments : [];
-          const d = deployments.find((x: any) => x && x.role === 'primary') ?? deployments[0] ?? null;
-          const chainId = Number(d?.chainId ?? NaN);
-          if (chainId === anvil.id) {
-            const { chainName, chain } = resolveKnownChain('anvil');
-            const rpcUrl = resolveRpcUrl(chainName, chain, opts.rpc);
-            relayConfig = {
-              enabled: true,
-              rpcUrl,
-              chainId,
-              from: privateKeyToAccount(resolvePrivateKey('anvil')).address as Address
-            };
-          }
-        } catch {
-          // Ignore manifest parsing issues; serving static UI still works.
         }
       }
 
@@ -3821,15 +4273,31 @@ program
           const chainNameFromId = chainId === anvil.id ? ('anvil' as const) : chainId === sepolia.id ? ('sepolia' as const) : null;
           if (chainNameFromId === 'anvil') {
             const { chainName, chain } = resolveKnownChain('anvil');
-            const rpcUrl = resolveRpcUrl(chainName, chain, opts.rpc);
+            const rpcUrl = activePreviewRpcUrl ?? resolveRpcUrl(chainName, chain, opts.rpc);
             console.log(`Manifest is not deployed (0x0). Deploying automatically to ${chainName}...`);
             const ensured = await ensureAnvilRunning(rpcUrl, { start: Boolean(opts.startAnvil), expectedChainId: chain.id });
             anvilChild = ensured.child;
-            await deployBuildDir(resolvedBuildDir, { chain: 'anvil', rpc: opts.rpc, role: 'primary' });
+            activePreviewRpcUrl = ensured.rpcUrl;
+            await deployBuildDir(resolvedBuildDir, { chain: 'anvil', rpc: activePreviewRpcUrl, role: 'primary' });
             console.log('Auto-deploy complete.');
             console.log('');
           }
         }
+      }
+
+      // Enable faucet when previewing an anvil build and the user hasn't disabled it.
+      if (opts.faucet && txMode !== 'sponsored' && manifestChainId === anvil.id && activePreviewRpcUrl) {
+        faucetConfig = { enabled: true, rpcUrl: activePreviewRpcUrl, chainId: manifestChainId, targetWei: faucetTargetWei };
+      }
+
+      // Enable local relay in sponsored mode for anvil chains.
+      if (txMode === 'sponsored' && manifestChainId === anvil.id && activePreviewRpcUrl) {
+        relayConfig = {
+          enabled: true,
+          rpcUrl: activePreviewRpcUrl,
+          chainId: manifestChainId,
+          from: privateKeyToAccount(resolvePrivateKey('anvil')).address as Address
+        };
       }
 
       const port = Number(opts.port);
@@ -3838,7 +4306,8 @@ program
         host: opts.host,
         port,
         faucet: faucetConfig,
-        relay: relayConfig
+        relay: relayConfig,
+        upload: uploadConfig
       });
 
       const cleanup = () => {
