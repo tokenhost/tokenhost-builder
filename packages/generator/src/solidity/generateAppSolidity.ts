@@ -79,6 +79,13 @@ function queryIndexKeyExpr(fieldType: FieldType, expr: string): string {
     : `keccak256(abi.encode(${expr}))`;
 }
 
+function chunkArray<T>(items: T[], size: number): T[][] {
+  if (size <= 0) return [items.slice()];
+  const out: T[][] = [];
+  for (let i = 0; i < items.length; i += size) out.push(items.slice(i, i + size));
+  return out;
+}
+
 class W {
   private lines: string[] = [];
   private indent = 0;
@@ -128,10 +135,6 @@ function bytes32FromSha256(schemaHash: string): string {
   const m = /^sha256:([0-9a-f]{64})$/.exec(schemaHash);
   if (!m) throw new Error(`Invalid schemaHash: ${schemaHash}`);
   return `0x${m[1]}`;
-}
-
-function recordHashFnName(collectionName: string): string {
-  return `_hashRecord${collectionName}`;
 }
 
 export function generateAppSolidity(schema: ThsSchema, options: GenerateAppSolidityOptions = {}): { path: string; contents: string } {
@@ -257,7 +260,7 @@ export function generateAppSolidity(schema: ThsSchema, options: GenerateAppSolid
         w.line('(bool ok, bytes memory res) = address(this).delegatecall(calls[i]);');
         w.block('if (!ok)', () => {
           // bubble up revert data (best-effort)
-          w.block('assembly', () => {
+          w.block('assembly ("memory-safe")', () => {
             w.line('revert(add(res, 32), mload(res))');
           });
         });
@@ -359,14 +362,6 @@ export function generateAppSolidity(schema: ThsSchema, options: GenerateAppSolid
       });
       w.line();
 
-      // Record hashing helper (used for event integrity without stack-too-deep risk).
-      // Note: this uses ABI encoding of the full record tuple; callers can recompute
-      // from decoded record values.
-      w.block(`function ${recordHashFnName(C)}(${record} memory r) internal pure returns (bytes32)`, () => {
-        w.line(`return keccak256(abi.encode(COLLECTION_ID_${C}, r));`);
-      });
-      w.line();
-
       w.block(`function _init${record}(${record} storage r, uint256 id) internal`, () => {
         w.line('r.id = id;');
         w.line('r.createdAt = block.timestamp;');
@@ -380,17 +375,45 @@ export function generateAppSolidity(schema: ThsSchema, options: GenerateAppSolid
       });
       w.line();
 
+      const createFieldChunks = chunkArray(c.fields, 4);
+      for (let i = 0; i < createFieldChunks.length; i++) {
+        const chunk = createFieldChunks[i]!;
+        w.block(`function _applyCreate${C}Fields_${i}(${record} storage r, ${createInputStruct} calldata input) internal`, () => {
+          for (const f of chunk) {
+            w.line(`r.${f.name} = input.${f.name};`);
+          }
+        });
+        w.line();
+      }
+
       w.block(`function _applyCreate${C}Fields(${record} storage r, ${createInputStruct} calldata input) internal`, () => {
-        for (const f of c.fields) {
-          w.line(`r.${f.name} = input.${f.name};`);
+        for (let i = 0; i < createFieldChunks.length; i++) {
+          w.line(`_applyCreate${C}Fields_${i}(r, input);`);
         }
       });
       w.line();
 
+      const recordHashParts = [
+        'COLLECTION_ID_' + C,
+        'r.id',
+        'r.createdAt',
+        'r.createdBy',
+        'r.owner',
+        'r.updatedAt',
+        'r.updatedBy',
+        'r.isDeleted',
+        'r.deletedAt',
+        'r.version',
+        ...c.fields.map((f) => `r.${f.name}`)
+      ];
+      w.block(`function _recordHash${C}(${record} storage r) internal view returns (bytes32)`, () => {
+        w.line(`return keccak256(abi.encode(${recordHashParts.join(', ')}));`);
+      });
+      w.line();
+
       w.block(`function _emitCreated${C}(uint256 id) internal`, () => {
-        w.line(`${record} memory m = ${cVar}Records[id];`);
-        w.line(`bytes32 dataHash = ${recordHashFnName(C)}(m);`);
-        w.line(`emit RecordCreated(COLLECTION_ID_${C}, id, _msgSender(), block.timestamp, dataHash);`);
+        w.line(`${record} storage r = ${cVar}Records[id];`);
+        w.line(`emit RecordCreated(COLLECTION_ID_${C}, id, _msgSender(), block.timestamp, _recordHash${C}(r));`);
       });
       w.line();
 
@@ -405,109 +428,6 @@ export function generateAppSolidity(schema: ThsSchema, options: GenerateAppSolid
       }
       if (c.indexes.unique.length > 0) w.line();
 
-      if (onChainIndexing) {
-        for (const idx of c.indexes.index) {
-          w.line(`mapping(bytes32 => uint256[]) private index_${C}_${idx.field};`);
-        }
-        if (c.indexes.index.length > 0) w.line();
-      }
-
-      // Reverse reference indexes (append-only)
-      if (onChainIndexing) {
-        const rels = relationIndexes.filter((r) => r.from.name === C && r.rel.reverseIndex);
-        for (const r of rels) {
-          w.line(`mapping(uint256 => uint256[]) private refIndex_${C}_${r.rel.field};`);
-        }
-        if (rels.length > 0) w.line();
-      }
-
-      // exists / getCount
-      w.block(`function exists${C}(uint256 id) public view returns (bool)`, () => {
-        w.line(`${record} storage r = ${cVar}Records[id];`);
-        w.line('if (r.createdBy == address(0)) return false;');
-        w.line('if (r.isDeleted) return false;');
-        w.line('return true;');
-      });
-      w.line();
-
-      w.block(`function getCount${C}(bool includeDeleted) external view returns (uint256)`, () => {
-        w.line('if (includeDeleted) {');
-        w.line(`  return nextId${C} - 1;`);
-        w.line('}');
-        w.line(`return activeCount${C};`);
-      });
-      w.line();
-
-      // get
-      w.block(`function get${C}(uint256 id, bool includeDeleted) public view returns (${record} memory)`, () => {
-        w.line(`${record} storage r = ${cVar}Records[id];`);
-        w.line('if (r.createdBy == address(0)) revert RecordNotFound();');
-        w.line('if (!includeDeleted && r.isDeleted) revert RecordIsDeleted();');
-        w.line('return r;');
-      });
-      w.line();
-
-      w.block(`function get${C}(uint256 id) external view returns (${record} memory)`, () => {
-        w.line(`return get${C}(id, false);`);
-      });
-      w.line();
-
-      // listIds
-      w.block(
-        `function listIds${C}(uint256 cursorIdExclusive, uint256 limit, bool includeDeleted) external view returns (uint256[] memory)`,
-        () => {
-          w.line('if (limit > MAX_LIST_LIMIT) revert InvalidLimit();');
-          w.line(`uint256 cursor = cursorIdExclusive;`);
-          w.line(`uint256 nextId = nextId${C};`);
-          w.line('if (cursor == 0 || cursor > nextId) {');
-          w.line('  cursor = nextId;');
-          w.line('}');
-          w.line('uint256[] memory tmp = new uint256[](limit);');
-          w.line('uint256 found = 0;');
-          w.line('uint256 steps = 0;');
-          w.line('uint256 id = cursor;');
-          w.block('while (id > 1 && found < limit && steps < MAX_SCAN_STEPS)', () => {
-            w.line('id--;');
-            w.line('steps++;');
-            w.line(`${record} storage r = ${cVar}Records[id];`);
-            w.line('if (r.createdBy == address(0)) { continue; }');
-            w.line('if (!includeDeleted && r.isDeleted) { continue; }');
-            w.line('tmp[found] = id;');
-            w.line('found++;');
-          });
-          w.line('uint256[] memory out = new uint256[](found);');
-          w.block('for (uint256 i = 0; i < found; i++)', () => {
-            w.line('out[i] = tmp[i];');
-          });
-          w.line('return out;');
-        }
-      );
-      w.line();
-
-      // Reverse reference accessor(s)
-      if (onChainIndexing && c.relations) {
-        for (const rel of c.relations.filter((r) => r.reverseIndex)) {
-          w.block(
-            `function listByRef${C}_${rel.field}(uint256 refId, uint256 offset, uint256 limit) external view returns (uint256[] memory)`,
-            () => {
-              w.line('if (limit > MAX_LIST_LIMIT) revert InvalidLimit();');
-              w.line(`uint256[] storage bucket = refIndex_${C}_${rel.field}[refId];`);
-              w.line('if (offset >= bucket.length) {');
-              w.line('  return new uint256[](0);');
-              w.line('}');
-              w.line('uint256 end = offset + limit;');
-              w.line('if (end > bucket.length) end = bucket.length;');
-              w.line('uint256 outLen = end - offset;');
-              w.line('uint256[] memory out = new uint256[](outLen);');
-              w.block('for (uint256 i = 0; i < outLen; i++)', () => {
-                w.line('out[i] = bucket[offset + i];');
-              });
-              w.line('return out;');
-            }
-          );
-          w.line();
-        }
-      }
       if (onChainIndexing) {
         for (const idx of c.indexes.index) {
           w.line(`mapping(bytes32 => uint256[]) private index_${C}_${idx.field};`);
@@ -805,9 +725,7 @@ export function generateAppSolidity(schema: ThsSchema, options: GenerateAppSolid
           w.line('r.updatedAt = block.timestamp;');
           w.line('r.updatedBy = _msgSender();');
           w.line('r.version += 1;');
-          w.line(`${record} memory m = r;`);
-          w.line(`bytes32 changedFieldsHash = ${recordHashFnName(C)}(m);`);
-          w.line(`emit RecordUpdated(COLLECTION_ID_${C}, id, _msgSender(), block.timestamp, changedFieldsHash);`);
+          w.line(`emit RecordUpdated(COLLECTION_ID_${C}, id, _msgSender(), block.timestamp, _recordHash${C}(r));`);
         });
         w.line();
       }

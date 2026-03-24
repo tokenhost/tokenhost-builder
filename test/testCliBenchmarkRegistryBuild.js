@@ -26,6 +26,7 @@ describe('th build (benchmark registry schema)', function () {
     const appSol = fs.readFileSync(path.join(outDir, 'contracts', 'App.sol'), 'utf-8');
     expect(appSol).to.include('struct CreateBenchmarkRunInput');
     expect(appSol).to.include('function createBenchmarkRun(CreateBenchmarkRunInput calldata input)');
+    expect(appSol).to.include('function _recordHashBenchmarkRun');
 
     const compiled = JSON.parse(fs.readFileSync(path.join(outDir, 'compiled', 'App.json'), 'utf-8'));
     expect(String(compiled.compilerProfile || '')).to.match(/auto|large-app/);
