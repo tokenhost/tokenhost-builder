@@ -9,20 +9,26 @@ export type SubmitWriteTxResult = {
   receipt: any;
 };
 
+function waitMs(ms: number): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
 async function assertWalletRpcMatchesDeployment(args: {
   chain: any;
   publicClient: any;
   address: `0x${string}`;
 }): Promise<void> {
   const walletReadClient = makeInjectedPublicClient(args.chain);
-  const [expectedCode, walletCode] = await Promise.all([
-    args.publicClient.getCode({ address: args.address }),
-    walletReadClient.getCode({ address: args.address })
-  ]);
-
+  const expectedCode = await args.publicClient.getCode({ address: args.address });
   const expected = String(expectedCode ?? '0x').toLowerCase();
-  const wallet = String(walletCode ?? '0x').toLowerCase();
-  if (expected === wallet) return;
+  let wallet = '0x';
+
+  for (const delayMs of [0, 350, 1000, 2000]) {
+    if (delayMs > 0) await waitMs(delayMs);
+    const walletCode = await walletReadClient.getCode({ address: args.address });
+    wallet = String(walletCode ?? '0x').toLowerCase();
+    if (expected === wallet) return;
+  }
 
   const expectedRpc = resolveRpcUrl(args.chain);
   if (wallet === '0x') {

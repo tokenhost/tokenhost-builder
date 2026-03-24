@@ -91,7 +91,7 @@ export default function ConnectButton() {
   if (walletState === 'unknown') return null;
 
   if (walletState === 'missing') {
-    return <span className="badge controlNote">No wallet needed for reads</span>;
+    return null;
   }
 
   if (txMode === 'sponsored') return null;
@@ -102,9 +102,6 @@ export default function ConnectButton() {
         <button className="btn primary" onClick={() => void connect()}>
           Connect wallet
         </button>
-        <span className="badge controlNote">Reads use public RPC; wallet only needed for writes</span>
-        {targetChainId ? <span className="badge controlNote">target chain {targetChainId}</span> : null}
-        {targetRpcUrl ? <span className="badge controlNote">write RPC {targetRpcUrl}</span> : null}
         {status ? <span className="badge controlNote">{status}</span> : null}
       </div>
     );
@@ -115,9 +112,6 @@ export default function ConnectButton() {
       <button className="btn" onClick={() => disconnect()} title={account}>
         {shortAddress(account)}
       </button>
-      <span className="badge controlNote">Browsing still reads from public RPC</span>
-      {targetChainId ? <span className="badge controlNote">chain {targetChainId}</span> : null}
-      {targetRpcUrl ? <span className="badge controlNote">write RPC {targetRpcUrl}</span> : null}
     </div>
   );
 }
