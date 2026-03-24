@@ -1,8 +1,13 @@
 import Link from 'next/link';
 
+import GeneratedHomePageClient from '../src/components/GeneratedHomePageClient';
 import { displayField, hasCreatePayment, mutableFields, ths, transferEnabled } from '../src/lib/ths';
 
 export default function HomePage() {
+  if (Array.isArray(ths.app.ui?.generated?.homeSections) && ths.app.ui.generated.homeSections.length > 0) {
+    return <GeneratedHomePageClient />;
+  }
+
   const firstCollection = ths.collections[0] ?? null;
   const totalFields = ths.collections.reduce((sum, collection) => sum + collection.fields.length, 0);
   const editableCollections = ths.collections.filter((collection) => mutableFields(collection).length > 0).length;

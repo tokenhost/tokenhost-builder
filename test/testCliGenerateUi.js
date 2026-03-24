@@ -365,7 +365,7 @@ describe('th generate (UI template)', function () {
     expect(generatedThs).to.include('"directory": "ui-overrides"');
   });
 
-  it('builds the canonical microblog example UI with custom home/tag routes', function () {
+  it('builds the canonical microblog example UI from generated feed/token config', function () {
     this.timeout(180000);
 
     const schemaPath = path.join(process.cwd(), 'apps', 'example', 'microblog.schema.json');
@@ -378,10 +378,19 @@ describe('th generate (UI template)', function () {
     expect(fs.existsSync(path.join(uiDir, 'app', 'page.tsx'))).to.equal(true);
     expect(fs.existsSync(path.join(uiDir, 'app', 'tag', 'page.tsx'))).to.equal(true);
     expect(fs.existsSync(path.join(uiDir, 'app', 'Post', 'page.tsx'))).to.equal(true);
+    expect(fs.existsSync(path.join(uiDir, 'src', 'components', 'GeneratedHomePageClient.tsx'))).to.equal(true);
+    expect(fs.existsSync(path.join(uiDir, 'src', 'components', 'GeneratedTokenPageClient.tsx'))).to.equal(true);
+    expect(fs.existsSync(path.join(uiDir, 'src', 'components', 'GeneratedFeedStream.tsx'))).to.equal(true);
+    expect(fs.existsSync(path.join(uiDir, 'src', 'components', 'MicroblogHomeClient.tsx'))).to.equal(false);
+    expect(fs.existsSync(path.join(uiDir, 'src', 'components', 'MicroblogTagClient.tsx'))).to.equal(false);
     const generatedThs = fs.readFileSync(path.join(uiDir, 'src', 'generated', 'ths.ts'), 'utf-8');
     expect(generatedThs).to.include('"preset": "cyber-grid"');
     expect(generatedThs).to.include('"authorProfile"');
     expect(generatedThs).to.not.include('"authorHandle"');
+    expect(generatedThs).to.include('"homeSections"');
+    expect(generatedThs).to.include('"tokenPages"');
+    expect(generatedThs).to.include('"feeds"');
+    expect(generatedThs).to.not.include('"extensions": {');
 
     const install = runCmd('pnpm', ['install'], uiDir);
     expect(install.status, install.stderr || install.stdout).to.equal(0);

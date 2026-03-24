@@ -17,9 +17,74 @@ export interface ThsAppUiExtensions {
   directory?: string;
 }
 
+export interface ThsGeneratedAction {
+  label: string;
+  href: string;
+  variant?: 'default' | 'primary';
+}
+
+export interface ThsGeneratedFeedCard {
+  referenceField?: string;
+  textField?: string;
+  mediaField?: string;
+}
+
+export interface ThsGeneratedFeed {
+  id: string;
+  collection: string;
+  limit?: number;
+  card?: ThsGeneratedFeedCard;
+}
+
+export interface ThsGeneratedTokenPage {
+  id: string;
+  collection: string;
+  field: string;
+  tokenizer: 'hashtag';
+  feed?: string;
+  limit?: number;
+  title?: string;
+  emptyTitle?: string;
+  emptyBody?: string;
+}
+
+export interface ThsGeneratedHeroSection {
+  type: 'hero';
+  eyebrow?: string;
+  title: string;
+  accent?: string;
+  description?: string;
+  badges?: string[];
+  actions?: ThsGeneratedAction[];
+}
+
+export interface ThsGeneratedFeedSection {
+  type: 'feed';
+  feed: string;
+  title: string;
+  emptyTitle?: string;
+  emptyBody?: string;
+}
+
+export interface ThsGeneratedTokenListSection {
+  type: 'tokenList';
+  tokenPage: string;
+  title: string;
+  emptyBody?: string;
+}
+
+export type ThsGeneratedHomeSection = ThsGeneratedHeroSection | ThsGeneratedFeedSection | ThsGeneratedTokenListSection;
+
+export interface ThsAppUiGenerated {
+  feeds?: ThsGeneratedFeed[];
+  tokenPages?: ThsGeneratedTokenPage[];
+  homeSections?: ThsGeneratedHomeSection[];
+}
+
 export interface ThsAppUi {
   homePage?: ThsAppUiHomePage;
   extensions?: ThsAppUiExtensions;
+  generated?: ThsAppUiGenerated;
 }
 
 export type ThsThemePreset = 'cyber-grid';

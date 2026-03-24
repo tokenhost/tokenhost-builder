@@ -179,6 +179,10 @@ function normalizeStudioFormState(input: any): ThsSchema {
                 directory:
                   appIn.ui.extensions.directory == null ? undefined : String(appIn.ui.extensions.directory)
               }
+            : undefined,
+        generated:
+          appIn.ui?.generated && typeof appIn.ui.generated === 'object'
+            ? JSON.parse(JSON.stringify(appIn.ui.generated))
             : undefined
       }
     },

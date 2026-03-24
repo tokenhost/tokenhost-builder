@@ -71,6 +71,7 @@ function isSafeAutoExpr(expr: string): boolean {
 export function lintThs(schema: ThsSchema): Issue[] {
   const issues: Issue[] = [];
   const themePreset = String(schema.app.theme?.preset ?? '').trim();
+  const generatedUi = schema.app.ui?.generated;
 
   if (themePreset && themePreset !== 'cyber-grid') {
     issues.push(
@@ -86,6 +87,65 @@ export function lintThs(schema: ThsSchema): Issue[] {
         'app.ui.homePage.mode is "custom" but no app.ui.extensions.directory is configured.'
       )
     );
+  }
+
+  const generatedFeedIds = new Set<string>();
+  const generatedFeeds = Array.isArray(generatedUi?.feeds) ? generatedUi.feeds : [];
+  for (const [index, feed] of generatedFeeds.entries()) {
+    const feedPath = `/app/ui/generated/feeds/${index}`;
+    if (generatedFeedIds.has(feed.id)) {
+      issues.push(err(`${feedPath}/id`, 'lint.app.ui.generated.feed_duplicate', `Duplicate generated feed id "${feed.id}".`));
+    }
+    generatedFeedIds.add(feed.id);
+    const collection = schema.collections.find((candidate) => candidate.name === feed.collection);
+    if (!collection) {
+      issues.push(err(`${feedPath}/collection`, 'lint.app.ui.generated.feed_unknown_collection', `Generated feed references unknown collection "${feed.collection}".`));
+      continue;
+    }
+    const fields = fieldMap(collection);
+    for (const key of ['referenceField', 'textField', 'mediaField'] as const) {
+      const value = feed.card?.[key];
+      if (value && !fields.has(value)) {
+        issues.push(err(`${feedPath}/card/${key}`, 'lint.app.ui.generated.feed_unknown_field', `Generated feed card references unknown field "${value}".`));
+      }
+    }
+  }
+
+  const generatedTokenPageIds = new Set<string>();
+  const generatedTokenPages = Array.isArray(generatedUi?.tokenPages) ? generatedUi.tokenPages : [];
+  for (const [index, tokenPage] of generatedTokenPages.entries()) {
+    const tokenPath = `/app/ui/generated/tokenPages/${index}`;
+    if (generatedTokenPageIds.has(tokenPage.id)) {
+      issues.push(err(`${tokenPath}/id`, 'lint.app.ui.generated.token_duplicate', `Duplicate generated token page id "${tokenPage.id}".`));
+    }
+    generatedTokenPageIds.add(tokenPage.id);
+    const collection = schema.collections.find((candidate) => candidate.name === tokenPage.collection);
+    if (!collection) {
+      issues.push(err(`${tokenPath}/collection`, 'lint.app.ui.generated.token_unknown_collection', `Generated token page references unknown collection "${tokenPage.collection}".`));
+      continue;
+    }
+    const field = fieldMap(collection).get(tokenPage.field);
+    if (!field) {
+      issues.push(err(`${tokenPath}/field`, 'lint.app.ui.generated.token_unknown_field', `Generated token page references unknown field "${tokenPage.field}".`));
+      continue;
+    }
+    if (field.type !== 'string') {
+      issues.push(err(`${tokenPath}/field`, 'lint.app.ui.generated.token_field_type', `Generated token page field "${tokenPage.field}" must be type "string".`));
+    }
+    if (tokenPage.feed && !generatedFeedIds.has(tokenPage.feed)) {
+      issues.push(err(`${tokenPath}/feed`, 'lint.app.ui.generated.token_unknown_feed', `Generated token page references unknown generated feed "${tokenPage.feed}".`));
+    }
+  }
+
+  const homeSections = Array.isArray(generatedUi?.homeSections) ? generatedUi.homeSections : [];
+  for (const [index, section] of homeSections.entries()) {
+    const sectionPath = `/app/ui/generated/homeSections/${index}`;
+    if (section.type === 'feed' && !generatedFeedIds.has(section.feed)) {
+      issues.push(err(`${sectionPath}/feed`, 'lint.app.ui.generated.section_unknown_feed', `Generated home section references unknown feed "${section.feed}".`));
+    }
+    if (section.type === 'tokenList' && !generatedTokenPageIds.has(section.tokenPage)) {
+      issues.push(err(`${sectionPath}/tokenPage`, 'lint.app.ui.generated.section_unknown_token_page', `Generated home section references unknown token page "${section.tokenPage}".`));
+    }
   }
 
   const collectionNames = new Set<string>();

@@ -40,6 +40,50 @@
             }
           }
         },
+        "ui": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "homePage": {
+              "type": "object",
+              "additionalProperties": false,
+              "properties": {
+                "mode": {
+                  "type": "string",
+                  "enum": ["generated", "custom"]
+                }
+              }
+            },
+            "extensions": {
+              "type": "object",
+              "additionalProperties": false,
+              "properties": {
+                "directory": {
+                  "type": "string",
+                  "description": "Path to UI override files, resolved relative to the schema file."
+                }
+              }
+            },
+            "generated": {
+              "type": "object",
+              "additionalProperties": false,
+              "properties": {
+                "feeds": {
+                  "type": "array",
+                  "items": { "$ref": "#/$defs/generatedFeed" }
+                },
+                "tokenPages": {
+                  "type": "array",
+                  "items": { "$ref": "#/$defs/generatedTokenPage" }
+                },
+                "homeSections": {
+                  "type": "array",
+                  "items": { "$ref": "#/$defs/generatedHomeSection" }
+                }
+              }
+            }
+          }
+        },
         "features": {
           "type": "object",
           "additionalProperties": false,
@@ -130,7 +174,20 @@
         },
         "ui": {
           "type": "object",
-          "additionalProperties": true
+          "additionalProperties": true,
+          "properties": {
+            "component": {
+              "type": "string",
+              "enum": ["default", "externalLink"]
+            },
+            "label": {
+              "type": "string"
+            },
+            "target": {
+              "type": "string",
+              "enum": ["_blank", "_self"]
+            }
+          }
         }
       },
       "allOf": [
@@ -272,6 +329,96 @@
         "enforce": { "type": "boolean" },
         "reverseIndex": { "type": "boolean" }
       }
+    },
+    "generatedAction": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["label", "href"],
+      "properties": {
+        "label": { "type": "string", "minLength": 1 },
+        "href": { "type": "string", "minLength": 1 },
+        "variant": { "type": "string", "enum": ["default", "primary"] }
+      }
+    },
+    "generatedFeedCard": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "referenceField": { "type": "string" },
+        "textField": { "type": "string" },
+        "mediaField": { "type": "string" }
+      }
+    },
+    "generatedFeed": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "collection"],
+      "properties": {
+        "id": { "type": "string", "pattern": "^[a-z][a-zA-Z0-9_-]*$" },
+        "collection": { "type": "string" },
+        "limit": { "type": "integer", "minimum": 1, "maximum": 100 },
+        "card": { "$ref": "#/$defs/generatedFeedCard" }
+      }
+    },
+    "generatedTokenPage": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "collection", "field", "tokenizer"],
+      "properties": {
+        "id": { "type": "string", "pattern": "^[a-z][a-zA-Z0-9_-]*$" },
+        "collection": { "type": "string" },
+        "field": { "type": "string" },
+        "tokenizer": { "type": "string", "enum": ["hashtag"] },
+        "feed": { "type": "string" },
+        "limit": { "type": "integer", "minimum": 1, "maximum": 100 },
+        "title": { "type": "string" },
+        "emptyTitle": { "type": "string" },
+        "emptyBody": { "type": "string" }
+      }
+    },
+    "generatedHeroSection": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["type", "title"],
+      "properties": {
+        "type": { "const": "hero" },
+        "eyebrow": { "type": "string" },
+        "title": { "type": "string" },
+        "accent": { "type": "string" },
+        "description": { "type": "string" },
+        "badges": { "type": "array", "items": { "type": "string" } },
+        "actions": { "type": "array", "items": { "$ref": "#/$defs/generatedAction" } }
+      }
+    },
+    "generatedFeedSection": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["type", "feed", "title"],
+      "properties": {
+        "type": { "const": "feed" },
+        "feed": { "type": "string" },
+        "title": { "type": "string" },
+        "emptyTitle": { "type": "string" },
+        "emptyBody": { "type": "string" }
+      }
+    },
+    "generatedTokenListSection": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["type", "tokenPage", "title"],
+      "properties": {
+        "type": { "const": "tokenList" },
+        "tokenPage": { "type": "string" },
+        "title": { "type": "string" },
+        "emptyBody": { "type": "string" }
+      }
+    },
+    "generatedHomeSection": {
+      "oneOf": [
+        { "$ref": "#/$defs/generatedHeroSection" },
+        { "$ref": "#/$defs/generatedFeedSection" },
+        { "$ref": "#/$defs/generatedTokenListSection" }
+      ]
     }
   }
 }

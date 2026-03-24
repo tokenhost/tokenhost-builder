@@ -86,6 +86,53 @@ export interface ThsSchema {
       extensions?: {
         directory?: string;
       };
+      generated?: {
+        feeds?: Array<{
+          id: string;
+          collection: string;
+          limit?: number;
+          card?: {
+            referenceField?: string;
+            textField?: string;
+            mediaField?: string;
+          };
+        }>;
+        tokenPages?: Array<{
+          id: string;
+          collection: string;
+          field: string;
+          tokenizer: 'hashtag';
+          feed?: string;
+          limit?: number;
+          title?: string;
+          emptyTitle?: string;
+          emptyBody?: string;
+        }>;
+        homeSections?: Array<
+          | {
+              type: 'hero';
+              eyebrow?: string;
+              title: string;
+              accent?: string;
+              description?: string;
+              badges?: string[];
+              actions?: Array<{ label: string; href: string; variant?: 'default' | 'primary' }>;
+            }
+          | {
+              type: 'feed';
+              feed: string;
+              title: string;
+              emptyTitle?: string;
+              emptyBody?: string;
+            }
+          | {
+              type: 'tokenList';
+              tokenPage: string;
+              title: string;
+              emptyBody?: string;
+            }
+        >;
+      };
     };
   };
   collections: ThsCollection[];

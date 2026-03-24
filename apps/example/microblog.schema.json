@@ -12,8 +12,60 @@
       "onChainIndexing": true
     },
     "ui": {
-      "homePage": { "mode": "custom" },
-      "extensions": { "directory": "microblog-ui" }
+      "homePage": { "mode": "generated" },
+      "generated": {
+        "feeds": [
+          {
+            "id": "posts",
+            "collection": "Post",
+            "limit": 25,
+            "card": {
+              "referenceField": "authorProfile",
+              "textField": "body",
+              "mediaField": "image"
+            }
+          }
+        ],
+        "tokenPages": [
+          {
+            "id": "hashtags",
+            "collection": "Post",
+            "field": "body",
+            "tokenizer": "hashtag",
+            "feed": "posts",
+            "title": "Hashtag feed",
+            "emptyBody": "Create a post with that hashtag and reload the feed."
+          }
+        ],
+        "homeSections": [
+          {
+            "type": "hero",
+            "eyebrow": "/tokenhost/microblog",
+            "title": "Microblog posts",
+            "accent": "with on-chain discovery and first-class media.",
+            "description": "This example app uses Token Host's native hashtag index on Post.body and the native upload field flow for Post.image. Posts reference Profile records instead of copying handles into each post.",
+            "badges": ["native hashtags", "native image uploads", "filecoin-ready"],
+            "actions": [
+              { "label": "Compose post", "href": "/Post/?mode=new", "variant": "primary" },
+              { "label": "Create profile", "href": "/Profile/?mode=new" },
+              { "label": "Browse raw records", "href": "/Post/" }
+            ]
+          },
+          {
+            "type": "tokenList",
+            "tokenPage": "hashtags",
+            "title": "Trending hashtags",
+            "emptyBody": "Create a few posts with hashtags like #tokenhost, #foc, or #microblog to populate the index."
+          },
+          {
+            "type": "feed",
+            "feed": "posts",
+            "title": "Latest posts",
+            "emptyTitle": "No posts yet",
+            "emptyBody": "Compose the first post, add a hashtag, and optionally attach an image to see the native upload flow."
+          }
+        ]
+      }
     }
   },
   "collections": [
