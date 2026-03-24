@@ -105,18 +105,21 @@ export default function CreateRecordPage(props: { params: { collection: string }
     );
   }
 
-  const fields = createFields(collection);
-  const required = requiredFieldNames(collection);
+  const fields = useMemo(() => createFields(collection), [collection]);
+  const required = useMemo(() => requiredFieldNames(collection), [collection]);
+  const requiredReferenceFieldNames = useMemo(
+    () => fields.filter((field) => field.type === 'reference' && required.has(field.name)).map((field) => field.name),
+    [fields, required]
+  );
   const payment = hasCreatePayment(collection);
   const uploadBusy = Object.values(busyUploads).some(Boolean);
-  const requiredReferenceFields = fields.filter((field) => field.type === 'reference' && required.has(field.name));
   const referenceCreationGates = useRequiredReferenceCreationGates({
     manifest,
     publicClient,
     abi,
     address: appAddress,
     collection,
-    requiredFieldNames: required
+    requiredFieldNames: requiredReferenceFieldNames
   });
   const activeReferenceGate = referenceCreationGates.blockers[0] ?? null;
 
@@ -196,7 +199,7 @@ export default function CreateRecordPage(props: { params: { collection: string }
     );
   }
 
-  if (requiredReferenceFields.length > 0 && referenceCreationGates.loading) {
+  if (requiredReferenceFieldNames.length > 0 && referenceCreationGates.loading) {
     return (
       <div className="card">
         <h2>Create {collection.name}</h2>

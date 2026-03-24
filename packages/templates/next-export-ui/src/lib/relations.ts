@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 
 import { countRecords, readRecordsByIds } from './app';
 import { displayField, getCollection } from './ths';
@@ -156,6 +156,9 @@ export function useOwnedReferenceOptions(args: {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [options, setOptions] = useState<ReferenceOption[]>([]);
+  const onChangeRef = useRef(args.onChange);
+
+  onChangeRef.current = args.onChange;
 
   const collection = useMemo(() => getCollection(args.collectionName), [args.collectionName]);
   const relation = useMemo(
@@ -227,9 +230,9 @@ export function useOwnedReferenceOptions(args: {
             preferred = '';
           }
           if (preferred && nextOptions.some((option) => String(option.id) === preferred)) {
-            args.onChange(preferred);
+            onChangeRef.current(preferred);
           } else if (ownedOptions.length === 1) {
-            args.onChange(String(ownedOptions[0]?.id ?? ''));
+            onChangeRef.current(String(ownedOptions[0]?.id ?? ''));
           }
         }
       } catch (cause: any) {
@@ -246,7 +249,7 @@ export function useOwnedReferenceOptions(args: {
     return () => {
       cancelled = true;
     };
-  }, [account, args.abi, args.address, args.collectionName, args.fieldName, args.manifest, args.onChange, args.publicClient, args.value, relatedCollection]);
+  }, [account, args.abi, args.address, args.collectionName, args.fieldName, args.manifest, args.publicClient, args.value, relatedCollection]);
 
   useEffect(() => {
     if (!account || !args.value) return;
@@ -279,14 +282,14 @@ export function useRequiredReferenceCreationGates(args: {
   abi: any[] | null;
   address: `0x${string}` | undefined;
   collection: ReturnType<typeof getCollection> | null;
-  requiredFieldNames: Set<string>;
+  requiredFieldNames: string[];
 }) {
   const [gates, setGates] = useState<ReferenceCreationGate[]>([]);
 
   const requiredReferenceTargets = useMemo(() => {
     if (!args.collection) return [];
     return args.collection.fields
-      .filter((field) => field.type === 'reference' && args.requiredFieldNames.has(field.name))
+      .filter((field) => field.type === 'reference' && args.requiredFieldNames.includes(field.name))
       .map((field) => {
         const relation = (args.collection?.relations ?? []).find((entry) => entry.field === field.name) ?? null;
         const relatedCollection = relation?.to ? getCollection(relation.to) : null;
