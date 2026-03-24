@@ -27,6 +27,14 @@ export type ReferenceOption = {
   record: any;
 };
 
+export type ReferenceCreationGate = {
+  fieldName: string;
+  relatedCollection: ReturnType<typeof getCollection>;
+  count: number;
+  loading: boolean;
+  error: string | null;
+};
+
 export function getRecordId(value: unknown): bigint | null {
   if (typeof value === 'bigint') return value;
   if (typeof value === 'number' && Number.isInteger(value)) return BigInt(value);
@@ -262,5 +270,95 @@ export function useOwnedReferenceOptions(args: {
     relatedCollection,
     ownedOptions: options.filter((option) => option.owned),
     selectedOption
+  };
+}
+
+export function useRequiredReferenceCreationGates(args: {
+  manifest: any;
+  publicClient: any;
+  abi: any[] | null;
+  address: `0x${string}` | undefined;
+  collection: ReturnType<typeof getCollection> | null;
+  requiredFieldNames: Set<string>;
+}) {
+  const [gates, setGates] = useState<ReferenceCreationGate[]>([]);
+
+  const requiredReferenceTargets = useMemo(() => {
+    if (!args.collection) return [];
+    return args.collection.fields
+      .filter((field) => field.type === 'reference' && args.requiredFieldNames.has(field.name))
+      .map((field) => {
+        const relation = (args.collection?.relations ?? []).find((entry) => entry.field === field.name) ?? null;
+        const relatedCollection = relation?.to ? getCollection(relation.to) : null;
+        if (!relatedCollection) return null;
+        return {
+          fieldName: field.name,
+          relatedCollection
+        };
+      })
+      .filter(Boolean) as Array<{ fieldName: string; relatedCollection: NonNullable<ReturnType<typeof getCollection>> }>;
+  }, [args.collection, args.requiredFieldNames]);
+
+  useEffect(() => {
+    let cancelled = false;
+
+    async function load() {
+      if (!requiredReferenceTargets.length || !args.publicClient || !args.abi || !args.address) {
+        setGates([]);
+        return;
+      }
+
+      setGates(
+        requiredReferenceTargets.map((entry) => ({
+          fieldName: entry.fieldName,
+          relatedCollection: entry.relatedCollection,
+          count: 0,
+          loading: true,
+          error: null
+        }))
+      );
+
+      const next: ReferenceCreationGate[] = [];
+      for (const entry of requiredReferenceTargets) {
+        try {
+          const page = await listAllRecords({
+            manifest: args.manifest,
+            publicClient: args.publicClient,
+            abi: args.abi,
+            address: args.address,
+            collectionName: entry.relatedCollection.name
+          });
+          next.push({
+            fieldName: entry.fieldName,
+            relatedCollection: entry.relatedCollection,
+            count: page.ids.length,
+            loading: false,
+            error: null
+          });
+        } catch (cause: any) {
+          next.push({
+            fieldName: entry.fieldName,
+            relatedCollection: entry.relatedCollection,
+            count: 0,
+            loading: false,
+            error: String(cause?.message ?? cause)
+          });
+        }
+      }
+
+      if (!cancelled) setGates(next);
+    }
+
+    void load();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [args.abi, args.address, args.manifest, args.publicClient, requiredReferenceTargets]);
+
+  return {
+    gates,
+    loading: gates.some((gate) => gate.loading),
+    blockers: gates.filter((gate) => !gate.loading && !gate.error && gate.count === 0)
   };
 }

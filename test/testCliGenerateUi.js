@@ -294,11 +294,14 @@ describe('th generate (UI template)', function () {
     expect(generatedRelations).to.include('resolveReferenceRecords');
     expect(generatedRelations).to.include('listOwnedRecords');
     expect(generatedRelations).to.include('useOwnedReferenceOptions');
+    expect(generatedRelations).to.include('useRequiredReferenceCreationGates');
     expect(generatedRelations).to.include('TH_REFERENCE_SELECTION');
 
     const generatedNewPage = fs.readFileSync(path.join(outDir, 'ui', 'app', '[collection]', 'new', 'ClientPage.tsx'), 'utf-8');
     expect(generatedNewPage).to.include('ReferenceFieldInput');
     expect(generatedNewPage).to.include("f.type === 'reference'");
+    expect(generatedNewPage).to.include('You must create a');
+    expect(generatedNewPage).to.include('Checking required linked records before showing the form.');
     expect(generatedNewPage).to.include('Waiting for media upload…');
 
     const generatedEditPage = fs.readFileSync(path.join(outDir, 'ui', 'app', '[collection]', 'edit', 'ClientPage.tsx'), 'utf-8');

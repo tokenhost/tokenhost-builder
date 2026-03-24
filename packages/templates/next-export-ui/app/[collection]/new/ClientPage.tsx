@@ -14,6 +14,7 @@ import { submitWriteTx } from '../../../src/lib/tx';
 import TxStatus, { type TxPhase } from '../../../src/components/TxStatus';
 import ImageFieldInput from '../../../src/components/ImageFieldInput';
 import ReferenceFieldInput from '../../../src/components/ReferenceFieldInput';
+import { useRequiredReferenceCreationGates } from '../../../src/lib/relations';
 
 function inputType(field: ThsField): 'text' | 'number' {
   if (field.type === 'uint256' || field.type === 'int256' || field.type === 'decimal') return 'number';
@@ -108,6 +109,16 @@ export default function CreateRecordPage(props: { params: { collection: string }
   const required = requiredFieldNames(collection);
   const payment = hasCreatePayment(collection);
   const uploadBusy = Object.values(busyUploads).some(Boolean);
+  const requiredReferenceFields = fields.filter((field) => field.type === 'reference' && required.has(field.name));
+  const referenceCreationGates = useRequiredReferenceCreationGates({
+    manifest,
+    publicClient,
+    abi,
+    address: appAddress,
+    collection,
+    requiredFieldNames: required
+  });
+  const activeReferenceGate = referenceCreationGates.blockers[0] ?? null;
 
   async function submit() {
     if (!manifest || !deployment || !abi || !publicClient || !appAddress) return;
@@ -181,6 +192,39 @@ export default function CreateRecordPage(props: { params: { collection: string }
       <div className="card">
         <h2>Error</h2>
         <div className="pre">{error}</div>
+      </div>
+    );
+  }
+
+  if (requiredReferenceFields.length > 0 && referenceCreationGates.loading) {
+    return (
+      <div className="card">
+        <h2>Create {collection.name}</h2>
+        <div className="muted">Checking required linked records before showing the form.</div>
+      </div>
+    );
+  }
+
+  if (activeReferenceGate?.relatedCollection) {
+    return (
+      <div className="card">
+        <h2>Create {collection.name}</h2>
+        <div className="eyebrow">/create/gated</div>
+        <p className="lead" style={{ marginTop: 12 }}>
+          You must create a {activeReferenceGate.relatedCollection.name} before creating this {collection.name}.
+        </p>
+        <p className="muted">
+          This form requires a linked <span className="badge">{activeReferenceGate.relatedCollection.name}</span> via{' '}
+          <span className="badge">{activeReferenceGate.fieldName}</span>, and there are no {activeReferenceGate.relatedCollection.name} records yet.
+        </p>
+        <div className="actionGroup" style={{ marginTop: 16 }}>
+          <button className="btn primary" onClick={() => router.push(`/${activeReferenceGate.relatedCollection.name}/?mode=new`)}>
+            Create {activeReferenceGate.relatedCollection.name}
+          </button>
+          <button className="btn" onClick={() => router.push(`/${activeReferenceGate.relatedCollection.name}/`)}>
+            Browse {activeReferenceGate.relatedCollection.name}
+          </button>
+        </div>
       </div>
     );
   }
