@@ -182,6 +182,9 @@ describe('th generate (UI template)', function () {
     expect(generatedTx).to.include("if (relayReceipt) {");
     expect(generatedTx).to.include('assertWalletRpcMatchesDeployment');
     expect(generatedTx).to.include('Wallet RPC is not pointed at the same deployment as this app.');
+    expect(generatedTx).to.include('async function estimateWriteGas');
+    expect(generatedTx).to.include('const gas = await estimateWriteGas');
+    expect(generatedTx).to.include('gas,');
 
     const generatedCollectionPage = fs.readFileSync(path.join(outDir, 'ui', 'app', '[collection]', 'ClientPage.tsx'), 'utf-8');
     expect(generatedCollectionPage).to.include('getReadRpcUrl');

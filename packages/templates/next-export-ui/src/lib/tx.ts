@@ -9,6 +9,38 @@ export type SubmitWriteTxResult = {
   receipt: any;
 };
 
+async function estimateWriteGas(args: {
+  publicClient: any;
+  address: `0x${string}`;
+  abi: any[];
+  functionName: string;
+  contractArgs: any[];
+  account: `0x${string}`;
+  value?: bigint;
+}): Promise<bigint | undefined> {
+  try {
+    const estimated = (await args.publicClient.estimateContractGas({
+      address: args.address,
+      abi: args.abi,
+      functionName: args.functionName,
+      args: args.contractArgs,
+      account: args.account,
+      value: args.value
+    })) as bigint;
+
+    const latestBlock = await args.publicClient.getBlock({ blockTag: 'latest' });
+    const blockGasLimit = BigInt(latestBlock?.gasLimit ?? 0n);
+    if (blockGasLimit > 0n) {
+      const maxSafeGas = blockGasLimit > 1n ? blockGasLimit - 1n : blockGasLimit;
+      return estimated > maxSafeGas ? maxSafeGas : estimated;
+    }
+
+    return estimated;
+  } catch {
+    return undefined;
+  }
+}
+
 function waitMs(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
@@ -120,6 +152,16 @@ export async function submitWriteTx(args: {
     address: args.address
   });
   const walletClient = makeWalletClient(args.chain);
+  args.setStatus?.('Estimating gas…');
+  const gas = await estimateWriteGas({
+    publicClient: args.publicClient,
+    address: args.address,
+    abi: args.abi,
+    functionName: args.functionName,
+    contractArgs: args.contractArgs,
+    account,
+    value: args.value
+  });
   args.setStatus?.('Sending transaction…');
   const hash = (await walletClient.writeContract({
     address: args.address as Address,
@@ -127,6 +169,7 @@ export async function submitWriteTx(args: {
     functionName: args.functionName,
     args: args.contractArgs,
     account,
+    gas,
     value: args.value,
     chain: args.chain
   })) as `0x${string}`;
