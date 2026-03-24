@@ -97,8 +97,13 @@ export interface UniqueIndex {
   scope?: 'active' | 'allTime';
 }
 
+export type QueryIndexMode = 'equality' | 'tokenized';
+export type QueryIndexTokenizer = 'hashtag';
+
 export interface QueryIndex {
   field: string;
+  mode?: QueryIndexMode;
+  tokenizer?: QueryIndexTokenizer;
 }
 
 export interface Indexes {

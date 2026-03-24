@@ -150,4 +150,106 @@ describe('THS schema validation + lint', function () {
     const issues = lintThs(res.data);
     expect(issues.some((i) => i.code === 'lint.app.ui.custom_home_without_extensions')).to.equal(true);
   });
+
+  it('validateThsStructural accepts tokenized query index primitives', function () {
+    const input = minimalSchema({
+      collections: [
+        {
+          name: 'Post',
+          fields: [{ name: 'body', type: 'string', required: true }],
+          createRules: { required: ['body'], access: 'public' },
+          visibilityRules: { gets: ['body'], access: 'public' },
+          updateRules: { mutable: ['body'], access: 'owner' },
+          deleteRules: { softDelete: true, access: 'owner' },
+          indexes: {
+            unique: [],
+            index: [{ field: 'body', mode: 'tokenized', tokenizer: 'hashtag' }]
+          }
+        }
+      ]
+    });
+
+    const res = validateThsStructural(input);
+    expect(res.ok).to.equal(true);
+  });
+
+  it('lintThs rejects tokenized query indexes on unsupported field types', function () {
+    const input = minimalSchema({
+      collections: [
+        {
+          name: 'Post',
+          fields: [{ name: 'imageRef', type: 'image', required: true }],
+          createRules: { required: ['imageRef'], access: 'public' },
+          visibilityRules: { gets: ['imageRef'], access: 'public' },
+          updateRules: { mutable: ['imageRef'], access: 'owner' },
+          deleteRules: { softDelete: true, access: 'owner' },
+          indexes: {
+            unique: [],
+            index: [{ field: 'imageRef', mode: 'tokenized', tokenizer: 'hashtag' }]
+          }
+        }
+      ]
+    });
+
+    const res = validateThsStructural(input);
+    expect(res.ok).to.equal(true);
+    const issues = lintThs(res.data);
+    expect(issues.some((i) => i.code === 'lint.indexes.index_tokenized_unsupported_type')).to.equal(true);
+  });
+
+  it('lintThs rejects duplicate query indexes on the same field', function () {
+    const input = minimalSchema({
+      collections: [
+        {
+          name: 'Post',
+          fields: [{ name: 'body', type: 'string', required: true }],
+          createRules: { required: ['body'], access: 'public' },
+          visibilityRules: { gets: ['body'], access: 'public' },
+          updateRules: { mutable: ['body'], access: 'owner' },
+          deleteRules: { softDelete: true, access: 'owner' },
+          indexes: {
+            unique: [],
+            index: [
+              { field: 'body' },
+              { field: 'body', mode: 'tokenized', tokenizer: 'hashtag' }
+            ]
+          }
+        }
+      ]
+    });
+
+    const res = validateThsStructural(input);
+    expect(res.ok).to.equal(true);
+    const issues = lintThs(res.data);
+    expect(issues.some((i) => i.code === 'lint.indexes.index_duplicate_field')).to.equal(true);
+  });
+
+  it('lintThs warns when query indexes are declared but on-chain indexing is disabled', function () {
+    const input = minimalSchema({
+      app: {
+        name: 'Test App',
+        slug: 'test-app',
+        features: { uploads: false, onChainIndexing: false }
+      },
+      collections: [
+        {
+          name: 'Post',
+          fields: [{ name: 'body', type: 'string', required: true }],
+          createRules: { required: ['body'], access: 'public' },
+          visibilityRules: { gets: ['body'], access: 'public' },
+          updateRules: { mutable: ['body'], access: 'owner' },
+          deleteRules: { softDelete: true, access: 'owner' },
+          indexes: {
+            unique: [],
+            index: [{ field: 'body', mode: 'tokenized', tokenizer: 'hashtag' }]
+          }
+        }
+      ]
+    });
+
+    const res = validateThsStructural(input);
+    expect(res.ok).to.equal(true);
+    const issues = lintThs(res.data);
+    expect(issues.some((i) => i.code === 'lint.indexes.index_ignored_when_onchain_disabled')).to.equal(true);
+  });
 });

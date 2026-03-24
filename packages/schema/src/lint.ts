@@ -53,6 +53,10 @@ function fieldMap(collection: Collection): Map<string, ThsField> {
   return map;
 }
 
+function queryIndexMode(index: { mode?: string }): 'equality' | 'tokenized' {
+  return index.mode === 'tokenized' ? 'tokenized' : 'equality';
+}
+
 function isSafeAutoExpr(expr: string): boolean {
   if (expr === 'block.timestamp') return true;
   if (expr === '_msgSender()') return true;
@@ -151,10 +155,63 @@ export function lintThs(schema: ThsSchema): Issue[] {
         issues.push(err(`${cPath}/indexes/unique/${k}/field`, 'lint.indexes.unique_unknown', `Unique index references unknown field "${index.field}".`));
       }
     }
+    const seenQueryIndexFields = new Set<string>();
     for (const [k, index] of c.indexes.index.entries()) {
-      if (!fieldsByName.has(index.field)) {
+      const f = fieldsByName.get(index.field);
+      if (!f) {
         issues.push(err(`${cPath}/indexes/index/${k}/field`, 'lint.indexes.index_unknown', `Query index references unknown field "${index.field}".`));
+        continue;
       }
+      if (seenQueryIndexFields.has(index.field)) {
+        issues.push(
+          err(
+            `${cPath}/indexes/index/${k}/field`,
+            'lint.indexes.index_duplicate_field',
+            `Duplicate query index for field "${index.field}" is not supported.`
+          )
+        );
+      }
+      seenQueryIndexFields.add(index.field);
+
+      const mode = queryIndexMode(index);
+      if (mode === 'tokenized') {
+        if (f.type !== 'string') {
+          issues.push(
+            err(
+              `${cPath}/indexes/index/${k}/field`,
+              'lint.indexes.index_tokenized_unsupported_type',
+              `Tokenized query index on field "${index.field}" requires type "string"; got "${f.type}".`
+            )
+          );
+        }
+        if (index.tokenizer !== 'hashtag') {
+          issues.push(
+            err(
+              `${cPath}/indexes/index/${k}/tokenizer`,
+              'lint.indexes.index_tokenized_missing_tokenizer',
+              'Tokenized query indexes currently require tokenizer="hashtag".'
+            )
+          );
+        }
+      } else if (index.tokenizer !== undefined) {
+        issues.push(
+          err(
+            `${cPath}/indexes/index/${k}/tokenizer`,
+            'lint.indexes.index_tokenizer_without_tokenized_mode',
+            'query index tokenizer is only valid when mode="tokenized".'
+          )
+        );
+      }
+    }
+
+    if ((schema.app.features?.onChainIndexing ?? true) === false && c.indexes.index.length > 0) {
+      issues.push(
+        warn(
+          `${cPath}/indexes/index`,
+          'lint.indexes.index_ignored_when_onchain_disabled',
+          'app.features.onChainIndexing is false; query indexes will be omitted from generated contracts and on-chain browsing will require fallback behavior.'
+        )
+      );
     }
 
     // relations
