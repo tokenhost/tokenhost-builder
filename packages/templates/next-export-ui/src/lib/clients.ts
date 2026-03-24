@@ -101,15 +101,36 @@ function isUserRejected(e: any): boolean {
   return String(code) === '4001' || /user rejected|rejected the request/i.test(msg);
 }
 
+async function refreshWalletChainConfig(wallet: any, chain: Chain, currentChainId: number): Promise<void> {
+  const rpcUrl = resolveRpcUrl(chain);
+  if (!rpcUrl) return;
+
+  try {
+    await wallet.addChain({ chain });
+  } catch (e: any) {
+    if (isUserRejected(e)) {
+      throw new Error(
+        `Wallet network entry for chainId ${chain.id} may still point at a stale RPC URL. ` +
+          `Your wallet is currently using chainId ${currentChainId}. Please approve the network update or manually set the RPC URL to ${rpcUrl}.`
+      );
+    }
+    // Some wallets reject duplicate addChain requests or do not support in-place updates.
+    // In that case we keep going and rely on the current network config.
+  }
+}
+
 export async function ensureWalletChain(chain: Chain): Promise<void> {
   const wallet = makeWalletClient(chain);
   const currentChainId = await wallet.getChainId();
-  if (currentChainId === chain.id) return;
-
   const rpcUrl = resolveRpcUrl(chain);
   const manualHint = rpcUrl
     ? `In MetaMask, add/switch to "${chain.name}" (chainId ${chain.id}) with RPC URL ${rpcUrl}.`
     : `Switch networks in your wallet to chainId ${chain.id}.`;
+
+  if (currentChainId === chain.id) {
+    await refreshWalletChainConfig(wallet, chain, currentChainId);
+    return;
+  }
 
   try {
     await wallet.switchChain({ id: chain.id });
@@ -124,7 +145,7 @@ export async function ensureWalletChain(chain: Chain): Promise<void> {
     // Many wallets don't reliably surface the "unknown chain" code/message.
     // Try add+switch as a best-effort fallback.
     try {
-      await wallet.addChain({ chain });
+      await refreshWalletChainConfig(wallet, chain, currentChainId);
     } catch (eAdd: any) {
       if (isUserRejected(eAdd)) {
         throw new Error(

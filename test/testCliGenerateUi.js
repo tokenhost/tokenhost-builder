@@ -184,6 +184,10 @@ describe('th generate (UI template)', function () {
     const generatedCollectionPage = fs.readFileSync(path.join(outDir, 'ui', 'app', '[collection]', 'ClientPage.tsx'), 'utf-8');
     expect(generatedCollectionPage).to.include('getReadRpcUrl');
     expect(generatedCollectionPage).to.include('rpcOverride || getReadRpcUrl(m) || undefined');
+
+    const generatedClients = fs.readFileSync(path.join(outDir, 'ui', 'src', 'lib', 'clients.ts'), 'utf-8');
+    expect(generatedClients).to.include('async function refreshWalletChainConfig');
+    expect(generatedClients).to.include('wallet.addChain({ chain })');
   });
 
   it('materializes the explicit cyber-grid theme preset into generated UI output', function () {
