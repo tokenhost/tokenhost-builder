@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useState } from 'react';
 
-import { readRecordsByIds } from './app';
+import { countRecords, readRecordsByIds } from './app';
 import { displayField, getCollection } from './ths';
 import { formatFieldValue } from './format';
 import type { AppRuntime } from './runtime';
@@ -321,17 +321,17 @@ export function useRequiredReferenceCreationGates(args: {
       const next: ReferenceCreationGate[] = [];
       for (const entry of requiredReferenceTargets) {
         try {
-          const page = await listAllRecords({
-            manifest: args.manifest,
+          const count = await countRecords({
             publicClient: args.publicClient,
             abi: args.abi,
             address: args.address,
-            collectionName: entry.relatedCollection.name
+            collectionName: entry.relatedCollection.name,
+            includeDeleted: false
           });
           next.push({
             fieldName: entry.fieldName,
             relatedCollection: entry.relatedCollection,
-            count: page.ids.length,
+            count: Number(count),
             loading: false,
             error: null
           });

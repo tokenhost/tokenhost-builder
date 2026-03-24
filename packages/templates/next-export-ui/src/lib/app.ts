@@ -14,6 +14,10 @@ export function fnListIds(collectionName: string): string {
   return `listIds${collectionName}`;
 }
 
+export function fnGetCount(collectionName: string): string {
+  return `getCount${collectionName}`;
+}
+
 export function fnGet(collectionName: string): string {
   // viem expects the function name (not full signature) and resolves overloads from args.
   return `get${collectionName}`;
@@ -200,6 +204,23 @@ export async function listRecords(args: {
   });
 
   return { ids, records };
+}
+
+export async function countRecords(args: {
+  publicClient: any;
+  abi: any[];
+  address: `0x${string}`;
+  collectionName: string;
+  includeDeleted?: boolean;
+}): Promise<bigint> {
+  assertAbiFunction(args.abi, fnGetCount(args.collectionName), args.collectionName);
+
+  return (await args.publicClient.readContract({
+    address: args.address,
+    abi: args.abi,
+    functionName: fnGetCount(args.collectionName),
+    args: [Boolean(args.includeDeleted)]
+  })) as bigint;
 }
 
 export async function listRecordsByIndex(args: {
