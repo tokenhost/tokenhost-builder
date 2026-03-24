@@ -18,7 +18,7 @@ export default function ReferenceFieldInput(props: {
   onChange: (next: string) => void;
 }) {
   const { manifest, publicClient, abi, address, collection, field, value, disabled, onChange } = props;
-  const { account, loading, error, options, relatedCollection, ownedOptions, selectedOption } = useOwnedReferenceOptions({
+  const { account, loading, error, options, mustOwn, relatedCollection, ownedOptions, selectedOption } = useOwnedReferenceOptions({
     manifest,
     publicClient,
     abi,
@@ -87,27 +87,35 @@ export default function ReferenceFieldInput(props: {
           </div>
         </div>
       ) : null}
-      <input
-        className="input"
-        type="number"
-        value={value}
-        disabled={disabled}
-        onChange={(event) => onChange(event.target.value)}
-        placeholder={`${relatedCollection.name} record id`}
-      />
+      {!mustOwn ? (
+        <input
+          className="input"
+          type="number"
+          value={value}
+          disabled={disabled}
+          onChange={(event) => onChange(event.target.value)}
+          placeholder={`${relatedCollection.name} record id`}
+        />
+      ) : null}
       <div className="muted">
         {error
-          ? `Could not load ${relatedCollection.name} records automatically. You can still enter a record id manually. ${error}`
+          ? `Could not load ${relatedCollection.name} records automatically.${mustOwn ? '' : ' You can still enter a record id manually.'} ${error}`
           : options.length > 0
             ? ownedOptions.length > 0
-              ? `Showing ${relatedCollection.name} labels instead of a raw foreign-key entry. Owned records appear first and your last choice is remembered${account ? ` for ${account.slice(0, 6)}…` : ''}.`
+              ? mustOwn
+                ? `This relation requires a ${relatedCollection.name} owned by the connected wallet. Your owned records are shown here${account ? ` for ${account.slice(0, 6)}…` : ''}.`
+                : `Showing ${relatedCollection.name} labels instead of a raw foreign-key entry. Owned records appear first and your last choice is remembered${account ? ` for ${account.slice(0, 6)}…` : ''}.`
               : `Showing ${relatedCollection.name} labels instead of a raw foreign-key entry.`
-            : `Create a ${relatedCollection.name} record first, or enter a record id manually.`}
+            : mustOwn
+              ? account
+                ? `Create a ${relatedCollection.name} owned by the connected wallet before selecting it here.`
+                : `Connect a wallet to create or select an owned ${relatedCollection.name}.`
+              : `Create a ${relatedCollection.name} record first, or enter a record id manually.`}
       </div>
       {!loading && options.length === 0 ? (
         <div className="actionGroup">
           <Link className="btn" href={`/${relatedCollection.name}/?mode=new`}>Create {relatedCollection.name}</Link>
-          <Link className="btn" href={`/${relatedCollection.name}/`}>Browse {relatedCollection.name}</Link>
+          {!mustOwn ? <Link className="btn" href={`/${relatedCollection.name}/`}>Browse {relatedCollection.name}</Link> : null}
         </div>
       ) : null}
     </>

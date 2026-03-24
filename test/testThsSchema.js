@@ -199,6 +199,35 @@ describe('THS schema validation + lint', function () {
     expect(res.ok).to.equal(true);
   });
 
+  it('validateThsStructural accepts relation ownership requirements', function () {
+    const input = minimalSchema({
+      collections: [
+        {
+          name: 'Profile',
+          fields: [{ name: 'handle', type: 'string', required: true }],
+          createRules: { required: ['handle'], access: 'public' },
+          visibilityRules: { gets: ['handle'], access: 'public' },
+          updateRules: { mutable: ['handle'], access: 'owner' },
+          deleteRules: { softDelete: true, access: 'owner' },
+          indexes: { unique: [], index: [] }
+        },
+        {
+          name: 'Post',
+          fields: [{ name: 'authorProfile', type: 'reference', required: true }],
+          createRules: { required: ['authorProfile'], access: 'public' },
+          visibilityRules: { gets: ['authorProfile'], access: 'public' },
+          updateRules: { mutable: ['authorProfile'], access: 'owner' },
+          deleteRules: { softDelete: true, access: 'owner' },
+          indexes: { unique: [], index: [] },
+          relations: [{ field: 'authorProfile', to: 'Profile', enforce: true, mustOwn: true }]
+        }
+      ]
+    });
+
+    const res = validateThsStructural(input);
+    expect(res.ok).to.equal(true);
+  });
+
   it('validateThsStructural rejects unknown app.theme.preset values', function () {
     const input = minimalSchema({
       app: {

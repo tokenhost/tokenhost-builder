@@ -214,11 +214,16 @@ export default function CreateRecordPage(props: { params: { collection: string }
         <h2>Create {collection.name}</h2>
         <div className="eyebrow">/create/gated</div>
         <p className="lead" style={{ marginTop: 12 }}>
-          You must create a {activeReferenceGate.relatedCollection.name} before creating this {collection.name}.
+          {activeReferenceGate.mustOwn
+            ? `You must create a ${activeReferenceGate.relatedCollection.name} owned by your wallet before creating this ${collection.name}.`
+            : `You must create a ${activeReferenceGate.relatedCollection.name} before creating this ${collection.name}.`}
         </p>
         <p className="muted">
-          This form requires a linked <span className="badge">{activeReferenceGate.relatedCollection.name}</span> via{' '}
-          <span className="badge">{activeReferenceGate.fieldName}</span>, and there are no {activeReferenceGate.relatedCollection.name} records yet.
+          {activeReferenceGate.missingWallet
+            ? `This form requires a wallet-owned ${activeReferenceGate.relatedCollection.name} via ${activeReferenceGate.fieldName}. Connect a wallet, then create your ${activeReferenceGate.relatedCollection.name} first.`
+            : activeReferenceGate.mustOwn
+              ? `This form requires a wallet-owned ${activeReferenceGate.relatedCollection.name} via ${activeReferenceGate.fieldName}, and this wallet does not own one yet.`
+              : `This form requires a linked ${activeReferenceGate.relatedCollection.name} via ${activeReferenceGate.fieldName}, and there are no ${activeReferenceGate.relatedCollection.name} records yet.`}
         </p>
         <div className="actionGroup" style={{ marginTop: 16 }}>
           <button className="btn primary" onClick={() => router.push(`/${activeReferenceGate.relatedCollection.name}/?mode=new`)}>

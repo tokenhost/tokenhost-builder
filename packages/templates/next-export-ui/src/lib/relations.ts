@@ -5,8 +5,14 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import { countRecords, readRecordsByIds } from './app';
 import { displayField, getCollection } from './ths';
 import { formatFieldValue } from './format';
-import type { AppRuntime } from './runtime';
 import { listAllRecords } from './runtime';
+
+type RelationRuntime = {
+  manifest: any;
+  publicClient: any;
+  abi: any[];
+  appAddress: `0x${string}`;
+};
 
 export type OwnedRecord = {
   id: bigint;
@@ -33,6 +39,8 @@ export type ReferenceCreationGate = {
   count: number;
   loading: boolean;
   error: string | null;
+  mustOwn: boolean;
+  missingWallet: boolean;
 };
 
 export function getRecordId(value: unknown): bigint | null {
@@ -83,7 +91,7 @@ export function recordSummary(record: any): { title: string; subtitle: string | 
   return { title, subtitle, imageUrl, body };
 }
 
-export async function listOwnedRecords(runtime: AppRuntime, collectionName: string, ownerAddress: string): Promise<OwnedRecord[]> {
+export async function listOwnedRecords(runtime: RelationRuntime, collectionName: string, ownerAddress: string): Promise<OwnedRecord[]> {
   const normalizedOwner = ownerAddress.trim().toLowerCase();
   const page = await listAllRecords({
     manifest: runtime.manifest,
@@ -98,7 +106,7 @@ export async function listOwnedRecords(runtime: AppRuntime, collectionName: stri
     .filter((entry) => recordOwner(entry.record) === normalizedOwner);
 }
 
-export async function loadRecordsByIds(runtime: AppRuntime, collectionName: string, ids: bigint[]): Promise<Map<string, any>> {
+export async function loadRecordsByIds(runtime: RelationRuntime, collectionName: string, ids: bigint[]): Promise<Map<string, any>> {
   const uniqueIds = Array.from(new Set(ids.map((id) => String(id)))).map((id) => BigInt(id));
   if (!uniqueIds.length) return new Map();
 
@@ -118,7 +126,7 @@ export async function loadRecordsByIds(runtime: AppRuntime, collectionName: stri
 }
 
 export async function resolveReferenceRecords(
-  runtime: AppRuntime,
+  runtime: RelationRuntime,
   items: Array<{ id: bigint; record: any }>,
   options: { fieldName: string; targetCollectionName: string }
 ): Promise<ResolvedReferenceItem[]> {
@@ -166,6 +174,7 @@ export function useOwnedReferenceOptions(args: {
     [collection, args.fieldName]
   );
   const relatedCollection = useMemo(() => (relation?.to ? getCollection(relation.to) : null), [relation]);
+  const mustOwn = Boolean(relation?.mustOwn);
 
   useEffect(() => {
     try {
@@ -216,10 +225,12 @@ export function useOwnedReferenceOptions(args: {
           return left.id < right.id ? -1 : left.id > right.id ? 1 : 0;
         });
 
-        if (cancelled) return;
-        setOptions(nextOptions);
+        const visibleOptions = mustOwn ? nextOptions.filter((option) => option.owned) : nextOptions;
 
-        const ownedOptions = nextOptions.filter((option) => option.owned);
+        if (cancelled) return;
+        setOptions(visibleOptions);
+
+        const ownedOptions = visibleOptions.filter((option) => option.owned);
         if (!args.value && account) {
           let preferred = '';
           try {
@@ -229,7 +240,7 @@ export function useOwnedReferenceOptions(args: {
           } catch {
             preferred = '';
           }
-          if (preferred && nextOptions.some((option) => String(option.id) === preferred)) {
+          if (preferred && visibleOptions.some((option) => String(option.id) === preferred)) {
             onChangeRef.current(preferred);
           } else if (ownedOptions.length === 1) {
             onChangeRef.current(String(ownedOptions[0]?.id ?? ''));
@@ -249,7 +260,7 @@ export function useOwnedReferenceOptions(args: {
     return () => {
       cancelled = true;
     };
-  }, [account, args.abi, args.address, args.collectionName, args.fieldName, args.manifest, args.publicClient, args.value, relatedCollection]);
+  }, [account, args.abi, args.address, args.collectionName, args.fieldName, args.manifest, args.publicClient, args.value, relatedCollection, mustOwn]);
 
   useEffect(() => {
     if (!account || !args.value) return;
@@ -270,6 +281,7 @@ export function useOwnedReferenceOptions(args: {
     loading,
     error,
     options,
+    mustOwn,
     relatedCollection,
     ownedOptions: options.filter((option) => option.owned),
     selectedOption
@@ -285,6 +297,7 @@ export function useRequiredReferenceCreationGates(args: {
   requiredFieldNames: string[];
 }) {
   const [gates, setGates] = useState<ReferenceCreationGate[]>([]);
+  const [account, setAccount] = useState<string | null>(null);
 
   const requiredReferenceTargets = useMemo(() => {
     if (!args.collection) return [];
@@ -296,11 +309,20 @@ export function useRequiredReferenceCreationGates(args: {
         if (!relatedCollection) return null;
         return {
           fieldName: field.name,
-          relatedCollection
+          relatedCollection,
+          mustOwn: Boolean(relation?.mustOwn)
         };
       })
-      .filter(Boolean) as Array<{ fieldName: string; relatedCollection: NonNullable<ReturnType<typeof getCollection>> }>;
+      .filter(Boolean) as Array<{ fieldName: string; relatedCollection: NonNullable<ReturnType<typeof getCollection>>; mustOwn: boolean }>;
   }, [args.collection, args.requiredFieldNames]);
+
+  useEffect(() => {
+    try {
+      setAccount(window.localStorage.getItem('TH_ACCOUNT'));
+    } catch {
+      setAccount(null);
+    }
+  }, []);
 
   useEffect(() => {
     let cancelled = false;
@@ -317,13 +339,51 @@ export function useRequiredReferenceCreationGates(args: {
           relatedCollection: entry.relatedCollection,
           count: 0,
           loading: true,
-          error: null
+          error: null,
+          mustOwn: entry.mustOwn,
+          missingWallet: false
         }))
       );
 
       const next: ReferenceCreationGate[] = [];
       for (const entry of requiredReferenceTargets) {
         try {
+          if (entry.mustOwn) {
+            if (!account) {
+              next.push({
+                fieldName: entry.fieldName,
+                relatedCollection: entry.relatedCollection,
+                count: 0,
+                loading: false,
+                error: null,
+                mustOwn: true,
+                missingWallet: true
+              });
+              continue;
+            }
+
+            const owned = await listOwnedRecords(
+              {
+                manifest: args.manifest,
+                publicClient: args.publicClient,
+                abi: args.abi,
+                appAddress: args.address
+              },
+              entry.relatedCollection.name,
+              account
+            );
+            next.push({
+              fieldName: entry.fieldName,
+              relatedCollection: entry.relatedCollection,
+              count: owned.length,
+              loading: false,
+              error: null,
+              mustOwn: true,
+              missingWallet: false
+            });
+            continue;
+          }
+
           const count = await countRecords({
             publicClient: args.publicClient,
             abi: args.abi,
@@ -336,7 +396,9 @@ export function useRequiredReferenceCreationGates(args: {
             relatedCollection: entry.relatedCollection,
             count: Number(count),
             loading: false,
-            error: null
+            error: null,
+            mustOwn: false,
+            missingWallet: false
           });
         } catch (cause: any) {
           next.push({
@@ -344,7 +406,9 @@ export function useRequiredReferenceCreationGates(args: {
             relatedCollection: entry.relatedCollection,
             count: 0,
             loading: false,
-            error: String(cause?.message ?? cause)
+            error: String(cause?.message ?? cause),
+            mustOwn: entry.mustOwn,
+            missingWallet: false
           });
         }
       }
@@ -357,7 +421,7 @@ export function useRequiredReferenceCreationGates(args: {
     return () => {
       cancelled = true;
     };
-  }, [args.abi, args.address, args.manifest, args.publicClient, requiredReferenceTargets]);
+  }, [account, args.abi, args.address, args.manifest, args.publicClient, requiredReferenceTargets]);
 
   return {
     gates,

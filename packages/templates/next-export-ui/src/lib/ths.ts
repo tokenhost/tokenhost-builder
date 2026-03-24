@@ -43,6 +43,7 @@ export interface ThsRelation {
   field: string;
   to: string;
   enforce?: boolean;
+  mustOwn?: boolean;
   reverseIndex?: boolean;
 }
 

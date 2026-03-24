@@ -193,6 +193,7 @@ export function generateAppSolidity(schema: ThsSchema, options: GenerateAppSolid
     w.line('error VersionMismatch(uint256 expected, uint256 got);');
     w.line('error TooManyIndexTokens();');
     w.line('error IndexTokenTooLong();');
+    w.line('error RelatedRecordNotOwned();');
     w.line();
 
     // Events (SPEC 7.9)
@@ -453,6 +454,14 @@ export function generateAppSolidity(schema: ThsSchema, options: GenerateAppSolid
       });
       w.line();
 
+      w.block(`function _requireOwned${C}(uint256 id) internal view`, () => {
+        w.line(`${record} storage r = ${cVar}Records[id];`);
+        w.line('if (r.createdBy == address(0)) revert RecordNotFound();');
+        w.line('if (r.isDeleted) revert RecordIsDeleted();');
+        w.line('if (r.owner != _msgSender()) revert RelatedRecordNotOwned();');
+      });
+      w.line();
+
       w.block(`function getCount${C}(bool includeDeleted) external view returns (uint256)`, () => {
         w.line('if (includeDeleted) {');
         w.line(`  return nextId${C} - 1;`);
@@ -597,6 +606,9 @@ export function generateAppSolidity(schema: ThsSchema, options: GenerateAppSolid
           for (const rel of c.relations.filter((r) => r.enforce)) {
             w.line(`_requireExists${rel.to}(input.${rel.field});`);
           }
+          for (const rel of c.relations.filter((r) => r.mustOwn)) {
+            w.line(`_requireOwned${rel.to}(input.${rel.field});`);
+          }
         }
 
         // uniqueness enforcement
@@ -673,6 +685,15 @@ export function generateAppSolidity(schema: ThsSchema, options: GenerateAppSolid
 
           if (c.updateRules.optimisticConcurrency) {
             w.line('if (r.version != expectedVersion) revert VersionMismatch(expectedVersion, r.version);');
+          }
+
+          if (c.relations) {
+            for (const rel of c.relations.filter((r) => r.enforce && c.updateRules.mutable.includes(r.field))) {
+              w.line(`_requireExists${rel.to}(${rel.field});`);
+            }
+            for (const rel of c.relations.filter((r) => r.mustOwn && c.updateRules.mutable.includes(r.field))) {
+              w.line(`_requireOwned${rel.to}(${rel.field});`);
+            }
           }
 
           // uniqueness updates for mutable unique fields

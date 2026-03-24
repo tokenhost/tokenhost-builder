@@ -107,7 +107,7 @@
         ]
       },
       "relations": [
-        { "field": "authorProfile", "to": "Profile", "enforce": true, "reverseIndex": true }
+        { "field": "authorProfile", "to": "Profile", "enforce": true, "mustOwn": true, "reverseIndex": true }
       ]
     }
   ]

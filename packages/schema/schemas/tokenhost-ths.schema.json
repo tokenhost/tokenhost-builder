@@ -327,6 +327,7 @@
         "field": { "type": "string" },
         "to": { "type": "string" },
         "enforce": { "type": "boolean" },
+        "mustOwn": { "type": "boolean" },
         "reverseIndex": { "type": "boolean" }
       }
     },

@@ -187,6 +187,7 @@ export interface Relation {
   field: string;
   to: string;
   enforce?: boolean;
+  mustOwn?: boolean;
   reverseIndex?: boolean;
 }
 
