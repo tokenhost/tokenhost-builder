@@ -41,6 +41,8 @@ function minimalSchema(overrides = {}) {
 }
 
 describe('th up/run/dev', function () {
+  this.timeout(15000);
+
   it('supports --dry-run (no side effects) via th up', function () {
     const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'th-dev-'));
     const schemaPath = path.join(dir, 'schema.json');

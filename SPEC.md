@@ -3,7 +3,7 @@
 Status: Draft (spec-driven design)  
 Owner: Token Host  
 Domain: `tokenhost.com`  
-Last updated: 2026-02-05  
+Last updated: 2026-03-23  
 Scope: Production system. All existing repos are legacy prototypes and are not binding.
 
 This document defines the intended production design of the Token Host platform: a managed schema-to-dapp builder that generates and deploys smart contracts, generates a hosted UI, optionally provisions indexing, and publishes apps under a dedicated hosted-app origin (default `*.apps.tokenhost.com`, plus optional custom domains).
@@ -857,7 +857,7 @@ Implementation note: list methods MUST cap `limit` to a safe maximum (configurab
 
 Recommended defaults (non-normative):
 - If chain config provides `limits.lists.maxLimit` and/or `limits.lists.maxScanSteps`, the generator SHOULD use those values (or stricter).
-- Otherwise, a safe default is `maxLimit=50` and `maxScanSteps = min(1000, maxLimit * 20)`.
+- Otherwise, a safe default is `maxLimit=50` and `maxScanSteps=1000`.
 - The UI SHOULD handle “short pages” (fewer than `limit` results) gracefully and SHOULD allow loading more using the next cursor (the smallest returned ID).
 
 ### 7.6 Update semantics
@@ -931,6 +931,25 @@ For each indexed field `f`:
 - If a record’s field changes, the record ID MAY appear in multiple buckets historically; readers MUST validate current field value when interpreting results.
   - Index accessors MUST be paginated (offset + limit) and MUST cap `limit`.
 
+**Tokenized index (secondary index; when `onChainIndexing=true`)**  
+For each tokenized indexed field `f`:
+- `indexC_f: mapping(bytes32 => uint256[])` mapping of normalized token key to append-only list of candidate record IDs.
+- Tokenized indexes MUST apply deterministic extraction and normalization rules defined by the configured tokenizer.
+- In v1, the only supported tokenizer is `hashtag`:
+  - source field type MUST be `string`,
+  - tokens begin with `#`,
+  - the token body is limited to ASCII letters, digits, and underscore,
+  - normalized token content is lowercased ASCII without the leading `#`,
+  - empty markers (e.g. a bare `#`) MUST be ignored,
+  - duplicate tokens from the same write MUST be de-duplicated before bucket append.
+- If a record’s field changes, the record ID MAY appear in multiple token buckets historically; readers MUST validate current field value when interpreting results.
+- Token extraction during create/update MUST be bounded. In v1, a safe default is:
+  - maximum extracted tokens per indexed field: `8`
+  - maximum normalized token length: `32` bytes
+  - writes that exceed those bounds MUST revert.
+- If chain config provides stricter tokenized-index guidance (for example `limits.indexing.tokenized.maxTokens` and `limits.indexing.tokenized.maxTokenLength`), the generator SHOULD use those values or stricter values.
+- Index accessors MUST be paginated (offset + limit) and MUST cap `limit`.
+
 **Reference reverse index (when `onChainIndexing=true`)**  
 For reference fields `ref`:
 - `refIndexC_ref: mapping(uint256 => uint256[])` mapping of referenced ID to append-only list of record IDs.
@@ -939,6 +958,7 @@ For reference fields `ref`:
 **Index accessor semantics (normative)**
 - Index accessors MUST return **candidate IDs only**. Callers MUST validate record existence, deletion status, and current field values via `getC`/`existsC` when correctness matters.
 - For append-only equality/reference indexes, ordering MUST be insertion order (oldest to newest) within the bucket.
+- For append-only tokenized indexes, ordering MUST be insertion order (oldest to newest) within the bucket.
 - For swap-and-pop sets (e.g., owner index sets), ordering MUST NOT be relied upon.
 - Index accessors MUST be paginated and MUST cap `limit` to avoid RPC timeouts.
 
@@ -956,6 +976,14 @@ Token Host MUST derive index keys as follows:
 This produces a uniform `bytes32` key space.
 
 Normalization note: Token Host does not implicitly normalize string values on-chain. If an app requires case-insensitive uniqueness or trimmed matching, the schema/UI MUST enforce canonicalization by storing the canonical form as the field value.
+
+For tokenized hashtag indexes:
+- the lookup input is the normalized token body without the leading `#`,
+- normalization MUST lowercase ASCII `A-Z` to `a-z`,
+- only ASCII letters, digits, and underscore are preserved in the token body,
+- the key is `keccak256(bytes(normalizedToken))`.
+
+This allows generated UIs, self-hosted runtimes, and external indexers to derive the same lookup key without replaying contract internals.
 
 ### 7.9 Event model
 
