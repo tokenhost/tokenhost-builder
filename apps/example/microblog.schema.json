@@ -53,7 +53,7 @@
             "actions": [
               { "label": "Compose post", "href": "/Post/?mode=new", "variant": "primary" },
               { "label": "Create profile", "href": "/Profile/?mode=new" },
-              { "label": "Browse raw records", "href": "/Post/" }
+              { "label": "View Posts", "href": "/Post/" }
             ]
           },
           {
