@@ -152,9 +152,25 @@ describe('th build (artifacts)', function () {
     }
 
     const manifest = JSON.parse(fs.readFileSync(path.join(outDir, 'manifest.json'), 'utf-8'));
+    const netlifyToml = fs.readFileSync(path.join(outDir, 'netlify.toml'), 'utf-8');
+    const generatedPkg = JSON.parse(fs.readFileSync(path.join(outDir, 'package.json'), 'utf-8'));
+    const startFn = path.join(outDir, 'netlify', 'functions', 'tokenhost-upload-start.mjs');
+    const statusFn = path.join(outDir, 'netlify', 'functions', 'tokenhost-upload-status.mjs');
+    const workerFn = path.join(outDir, 'netlify', 'functions', 'tokenhost-upload-worker-background.mjs');
+
     expect(manifest?.extensions?.uploads?.endpointUrl).to.equal('/__tokenhost/upload');
     expect(manifest?.extensions?.uploads?.statusUrl).to.equal('/__tokenhost/upload-status');
     expect(manifest?.extensions?.uploads?.provider).to.equal('filecoin_onchain_cloud');
     expect(manifest?.extensions?.uploads?.runnerMode).to.equal('remote');
+    expect(netlifyToml).to.include('from = "/__tokenhost/upload"');
+    expect(netlifyToml).to.include('to = "/.netlify/functions/tokenhost-upload-start"');
+    expect(netlifyToml).to.include('from = "/__tokenhost/upload-status"');
+    expect(netlifyToml).to.include('external_node_modules = ["@netlify/blobs"]');
+    expect(generatedPkg?.dependencies?.['@netlify/blobs']).to.be.a('string');
+
+    for (const fnPath of [startFn, statusFn, workerFn]) {
+      const syntax = spawnSync(process.execPath, ['--check', fnPath], { encoding: 'utf-8' });
+      expect(syntax.status, `${fnPath}\n${syntax.stderr || syntax.stdout}`).to.equal(0);
+    }
   });
 });

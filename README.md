@@ -86,3 +86,18 @@ Local preview endpoints:
 
 - `GET/POST /__tokenhost/relay` for sponsored local writes (anvil).
 - `GET/POST /__tokenhost/faucet` remains available for non-sponsored local mode.
+
+## Netlify uploads
+
+Token Host can now emit Netlify upload scaffolding for Filecoin Onchain Cloud:
+
+- schema surface: `app.deploy.netlify.uploads`
+- build output includes:
+  - `netlify.toml`
+  - `netlify/functions/`
+  - `NETLIFY-UPLOADS.md`
+
+Runtime secrets for Netlify Functions must come from Netlify environment variables, not `netlify.toml`.
+
+See:
+- `docs/examples-microblog-netlify-upload.md`
