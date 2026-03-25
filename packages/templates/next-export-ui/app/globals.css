@@ -52,9 +52,9 @@
   --th-success: hsl(142 70% 35%);
   --th-danger: hsl(0 84% 60%);
   --th-grid: hsl(190 100% 50% / 0.05);
-  --th-grid-strong: hsl(190 100% 50% / 0.75);
-  --th-glow-left: hsl(190 100% 50% / 0.18);
-  --th-glow-right: hsl(300 100% 75% / 0.18);
+  --th-grid-strong: hsl(190 100% 50% / 0.34);
+  --th-glow-left: hsl(190 100% 50% / 0.1);
+  --th-glow-right: hsl(300 100% 75% / 0.08);
   --th-shadow: 4px 4px 0 rgba(0, 0, 0, 0.03);
   --th-shadow-soft: 4px 4px 0 rgba(0, 0, 0, 0.03);
   --th-badge-bg: hsl(0 0% 100%);
@@ -96,9 +96,9 @@ html[data-theme='dark'] {
   --th-success: hsl(142 70% 45%);
   --th-danger: hsl(0 100% 60%);
   --th-grid: hsl(300 100% 75% / 0.04);
-  --th-grid-strong: hsl(300 100% 75% / 0.75);
-  --th-glow-left: hsl(190 100% 50% / 0.14);
-  --th-glow-right: hsl(300 100% 60% / 0.12);
+  --th-grid-strong: hsl(300 100% 75% / 0.32);
+  --th-glow-left: hsl(190 100% 50% / 0.08);
+  --th-glow-right: hsl(300 100% 60% / 0.08);
   --th-shadow: none;
   --th-shadow-soft: none;
   --th-badge-bg: hsl(240 10% 8%);
@@ -166,10 +166,10 @@ svg {
   inset: 0;
   position: absolute;
   background-image:
-    linear-gradient(to right, color-mix(in srgb, var(--th-primary) 16%, transparent) 29px, transparent 29px),
-    linear-gradient(to bottom, color-mix(in srgb, var(--th-primary) 16%, transparent) 29px, transparent 29px),
-    linear-gradient(to right, color-mix(in srgb, var(--th-primary) 75%, transparent) 2px, transparent 2px),
-    linear-gradient(to bottom, color-mix(in srgb, var(--th-primary) 75%, transparent) 2px, transparent 2px);
+    linear-gradient(to right, color-mix(in srgb, var(--th-primary) 10%, transparent) 29px, transparent 29px),
+    linear-gradient(to bottom, color-mix(in srgb, var(--th-primary) 10%, transparent) 29px, transparent 29px),
+    linear-gradient(to right, color-mix(in srgb, var(--th-primary) 34%, transparent) 2px, transparent 2px),
+    linear-gradient(to bottom, color-mix(in srgb, var(--th-primary) 34%, transparent) 2px, transparent 2px);
   background-repeat: repeat;
   background-size: 30px 30px, 30px 30px, 30px 30px, 30px 30px;
   -webkit-mask-image:
@@ -184,6 +184,7 @@ svg {
   mask-composite: add;
   -webkit-mask-repeat: no-repeat;
   mask-repeat: no-repeat;
+  opacity: 0.52;
 }
 
 .siteLivingGridCanvas {
@@ -194,7 +195,11 @@ svg {
 }
 
 html[data-theme='dark'] .siteLivingGridCanvas {
-  opacity: 0.9;
+  opacity: 0.72;
+}
+
+html[data-theme='dark'] .siteGridLayer {
+  opacity: 0.66;
 }
 
 .container {
