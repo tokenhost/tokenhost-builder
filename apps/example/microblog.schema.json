@@ -48,7 +48,7 @@
             "eyebrow": "/tokenhost/microblog",
             "title": "Microblog posts",
             "accent": "with on-chain discovery and first-class media.",
-            "description": "This example app uses Token Host's native hashtag index on Post.body and the native upload field flow for Post.image. Posts reference Profile records instead of copying handles into each post.",
+            "description": "Live on Filecoin Calibration, this microblog combines native on-chain hashtag discovery with Filecoin Onchain Cloud image uploads. Posts stay tied to wallet-owned Profile identities instead of copying usernames into each record.",
             "badges": ["native hashtags", "native image uploads", "filecoin-ready"],
             "actions": [
               { "label": "Compose post", "href": "/Post/?mode=new", "variant": "primary" },
