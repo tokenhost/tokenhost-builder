@@ -1,5 +1,6 @@
 import { expect } from 'chai';
 import fs from 'fs';
+import net from 'net';
 import os from 'os';
 import path from 'path';
 import { spawn, spawnSync } from 'child_process';
@@ -58,6 +59,23 @@ function waitForOutput(proc, pattern, timeoutMs) {
   });
 }
 
+function getAvailablePort(host) {
+  return new Promise((resolve, reject) => {
+    const server = net.createServer();
+    server.unref();
+    server.on('error', reject);
+    server.listen(0, host, () => {
+      const address = server.address();
+      const port = typeof address === 'object' && address ? address.port : null;
+      server.close((err) => {
+        if (err) reject(err);
+        else if (!port) reject(new Error('Unable to determine an available port.'));
+        else resolve(port);
+      });
+    });
+  });
+}
+
 describe('Generated app UI tests', function () {
   it('emits schema-aware UI smoke tests that pass against canonical job-board preview', async function () {
     this.timeout(240000);
@@ -79,7 +97,7 @@ describe('Generated app UI tests', function () {
     expect(buildRes.status, buildRes.stderr || buildRes.stdout).to.equal(0);
 
     const host = '127.0.0.1';
-    const port = 46000 + Math.floor(Math.random() * 1000);
+    const port = await getAvailablePort(host);
     const baseUrl = `http://${host}:${port}`;
     const preview = spawn(
       'node',

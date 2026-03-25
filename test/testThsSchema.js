@@ -149,6 +149,50 @@ describe('THS schema validation + lint', function () {
     expect(res.ok).to.equal(true);
   });
 
+  it('validateThsStructural accepts Netlify background upload deployment config', function () {
+    const input = minimalSchema({
+      app: {
+        name: 'Test App',
+        slug: 'test-app',
+        features: { uploads: true, onChainIndexing: true },
+        deploy: {
+          netlify: {
+            uploads: {
+              provider: 'filecoin_onchain_cloud',
+              runner: 'background-function'
+            }
+          }
+        }
+      }
+    });
+
+    const res = validateThsStructural(input);
+    expect(res.ok).to.equal(true);
+  });
+
+  it('lintThs requires uploads feature when Netlify upload deploy config is used', function () {
+    const input = minimalSchema({
+      app: {
+        name: 'Test App',
+        slug: 'test-app',
+        features: { uploads: false, onChainIndexing: true },
+        deploy: {
+          netlify: {
+            uploads: {
+              provider: 'filecoin_onchain_cloud',
+              runner: 'background-function'
+            }
+          }
+        }
+      }
+    });
+
+    const res = validateThsStructural(input);
+    expect(res.ok).to.equal(true);
+    const issues = lintThs(res.data);
+    expect(issues.some((i) => i.code === 'lint.app.deploy.netlify.uploads_requires_feature')).to.equal(true);
+  });
+
   it('lintThs rejects unknown app.primaryCollection values', function () {
     const input = minimalSchema({
       app: {

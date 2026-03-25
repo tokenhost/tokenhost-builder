@@ -92,6 +92,22 @@ export interface ThsAppBrand {
   accentText?: string;
 }
 
+export interface ThsNetlifyUploadDeploy {
+  provider: 'filecoin_onchain_cloud';
+  runner: 'background-function';
+  privateKeyEnv?: string;
+  blobsStore?: string;
+  functionsDirectory?: string;
+}
+
+export interface ThsAppDeployNetlify {
+  uploads?: ThsNetlifyUploadDeploy;
+}
+
+export interface ThsAppDeploy {
+  netlify?: ThsAppDeployNetlify;
+}
+
 export type ThsThemePreset = 'cyber-grid';
 
 export interface ThsAppTheme {
@@ -105,6 +121,7 @@ export interface ThsApp {
   description?: string;
   brand?: ThsAppBrand;
   primaryCollection?: string;
+  deploy?: ThsAppDeploy;
   theme?: ThsAppTheme;
   features?: ThsAppFeatures;
   ui?: ThsAppUi;

@@ -4,7 +4,6 @@ This document shows how to run the canonical microblog example against a standal
 
 Relevant files:
 - schema: `apps/example/microblog.schema.json`
-- UI overrides: `apps/example/microblog-ui/`
 - standalone adapter: `examples/upload-adapters/foc-remote-adapter.mjs`
 
 ## 1. Start a remote upload adapter
