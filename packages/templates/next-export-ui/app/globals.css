@@ -737,6 +737,10 @@ html[data-theme='dark'] .themeToggle::after {
   color: var(--th-primary);
 }
 
+.displayTitleHero {
+  max-width: none;
+}
+
 .displayTitleCompact {
   font-size: clamp(2.05rem, 4vw, 3.05rem);
   line-height: 0.98;

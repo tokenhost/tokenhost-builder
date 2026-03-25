@@ -70,7 +70,7 @@ export default function GeneratedHomePageClient() {
                       ))}
                     </div>
                   </div>
-                  <h2 className="displayTitle">
+                  <h2 className="displayTitle displayTitleHero">
                     {section.title}
                     {section.accent ? (
                       <>
