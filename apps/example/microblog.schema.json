@@ -48,7 +48,7 @@
             "eyebrow": "/tokenhost/microblog",
             "title": "Microblog posts",
             "accent": "with on-chain discovery and first-class media.",
-            "description": "Live on Filecoin Calibration, this microblog combines native on-chain hashtag discovery with Filecoin Onchain Cloud image uploads. Posts stay tied to wallet-owned Profile identities instead of copying usernames into each record.",
+            "description": "Live on Filecoin Calibration, this microblog combines native on-chain hashtag discovery with Filecoin Onchain Cloud image uploads.",
             "badges": ["native hashtags", "native image uploads", "filecoin-ready"],
             "actions": [
               { "label": "Compose post", "href": "/Post/?mode=new", "variant": "primary" },
