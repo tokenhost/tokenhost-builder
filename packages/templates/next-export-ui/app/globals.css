@@ -672,6 +672,7 @@ html[data-theme='dark'] .themeToggle::after {
   display: grid;
   gap: 18px;
   grid-template-columns: repeat(12, minmax(0, 1fr));
+  margin-bottom: 18px;
 }
 
 .card {
