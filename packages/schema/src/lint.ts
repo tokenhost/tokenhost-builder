@@ -72,6 +72,7 @@ export function lintThs(schema: ThsSchema): Issue[] {
   const issues: Issue[] = [];
   const themePreset = String(schema.app.theme?.preset ?? '').trim();
   const generatedUi = schema.app.ui?.generated;
+  const netlifyUploadDeploy = schema.app.deploy?.netlify?.uploads;
 
   if (themePreset && themePreset !== 'cyber-grid') {
     issues.push(
@@ -96,6 +97,16 @@ export function lintThs(schema: ThsSchema): Issue[] {
         '/app/primaryCollection',
         'lint.app.primary_collection_unknown',
         `app.primaryCollection references unknown collection "${primaryCollection}".`
+      )
+    );
+  }
+
+  if (netlifyUploadDeploy && schema.app.features?.uploads !== true) {
+    issues.push(
+      err(
+        '/app/deploy/netlify/uploads',
+        'lint.app.deploy.netlify.uploads_requires_feature',
+        'app.deploy.netlify.uploads requires app.features.uploads=true.'
       )
     );
   }

@@ -110,4 +110,51 @@ describe('th build (artifacts)', function () {
     expect(fs.existsSync(path.join(outDir, 'ui-bundle', 'index.html'))).to.equal(true);
     expect(fs.existsSync(path.join(outDir, 'ui-site', 'index.html'))).to.equal(true);
   });
+
+  it('emits Netlify upload scaffolding when schema opts into Netlify background uploads', function () {
+    this.timeout(180000);
+
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'th-build-netlify-uploads-'));
+    const schemaPath = path.join(dir, 'schema.json');
+    const outDir = path.join(dir, 'out');
+    writeJson(
+      schemaPath,
+      minimalSchema({
+        app: {
+          name: 'Netlify Upload Test',
+          slug: 'netlify-upload-test',
+          features: { uploads: true, onChainIndexing: true },
+          deploy: {
+            netlify: {
+              uploads: {
+                provider: 'filecoin_onchain_cloud',
+                runner: 'background-function'
+              }
+            }
+          }
+        }
+      })
+    );
+
+    const res = runTh(['build', schemaPath, '--out', outDir], process.cwd());
+    expect(res.status, res.stderr || res.stdout).to.equal(0);
+
+    for (const p of [
+      'netlify.toml',
+      'package.json',
+      'NETLIFY-UPLOADS.md',
+      'netlify/functions/_tokenhost-upload-shared.mjs',
+      'netlify/functions/tokenhost-upload-start.mjs',
+      'netlify/functions/tokenhost-upload-status.mjs',
+      'netlify/functions/tokenhost-upload-worker-background.mjs'
+    ]) {
+      expect(fs.existsSync(path.join(outDir, p)), `missing ${p}`).to.equal(true);
+    }
+
+    const manifest = JSON.parse(fs.readFileSync(path.join(outDir, 'manifest.json'), 'utf-8'));
+    expect(manifest?.extensions?.uploads?.endpointUrl).to.equal('/__tokenhost/upload');
+    expect(manifest?.extensions?.uploads?.statusUrl).to.equal('/__tokenhost/upload-status');
+    expect(manifest?.extensions?.uploads?.provider).to.equal('filecoin_onchain_cloud');
+    expect(manifest?.extensions?.uploads?.runnerMode).to.equal('remote');
+  });
 });

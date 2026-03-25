@@ -38,6 +38,45 @@
           }
         },
         "primaryCollection": { "type": "string", "minLength": 1 },
+        "deploy": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "netlify": {
+              "type": "object",
+              "additionalProperties": false,
+              "properties": {
+                "uploads": {
+                  "type": "object",
+                  "additionalProperties": false,
+                  "required": ["provider", "runner"],
+                  "properties": {
+                    "provider": {
+                      "type": "string",
+                      "enum": ["filecoin_onchain_cloud"]
+                    },
+                    "runner": {
+                      "type": "string",
+                      "enum": ["background-function"]
+                    },
+                    "privateKeyEnv": {
+                      "type": "string",
+                      "minLength": 1
+                    },
+                    "blobsStore": {
+                      "type": "string",
+                      "minLength": 1
+                    },
+                    "functionsDirectory": {
+                      "type": "string",
+                      "minLength": 1
+                    }
+                  }
+                }
+              }
+            }
+          }
+        },
         "theme": {
           "type": "object",
           "description": "Theme preset selection and future theme options.",

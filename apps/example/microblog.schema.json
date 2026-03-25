@@ -9,6 +9,14 @@
       "accentText": "blog"
     },
     "primaryCollection": "Post",
+    "deploy": {
+      "netlify": {
+        "uploads": {
+          "provider": "filecoin_onchain_cloud",
+          "runner": "background-function"
+        }
+      }
+    },
     "theme": {
       "preset": "cyber-grid"
     },
