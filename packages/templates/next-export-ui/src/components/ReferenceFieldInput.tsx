@@ -55,11 +55,13 @@ export default function ReferenceFieldInput(props: {
       {compactLockedSelection ? (
         <div className="referenceIdentityShell">
           <div className="referenceIdentityMeta">
-            <span className="badge">{relatedCollection.name} #{String(selectedOption?.id ?? '')}</span>
+            <span className="referenceIdentityLabel">Posting as</span>
             <span className="badge">wallet-owned</span>
           </div>
-          <div className="referenceIdentityTitle">{selectedSummary?.title ?? `${relatedCollection.name} #${String(selectedOption?.id ?? '')}`}</div>
-          {selectedSummary?.subtitle ? <div className="referenceIdentitySubtitle">{selectedSummary.subtitle}</div> : null}
+          <div className="referenceIdentityRow">
+            <strong className="referenceIdentityTitle">{selectedSummary?.title ?? `${relatedCollection.name} #${String(selectedOption?.id ?? '')}`}</strong>
+            {selectedSummary?.subtitle ? <span className="referenceIdentitySubtitle">{selectedSummary.subtitle}</span> : null}
+          </div>
         </div>
       ) : (
         <select
@@ -78,7 +80,7 @@ export default function ReferenceFieldInput(props: {
           ))}
         </select>
       )}
-      {selectedSummary ? (
+      {selectedSummary && !compactLockedSelection ? (
         <div className={`recordPreviewCell ${mustOwn ? 'recordPreviewCellCompact' : ''}`} style={{ minHeight: mustOwn ? 0 : 110 }}>
           <div style={{ display: 'grid', gap: 10 }}>
             <div className="chipRow">

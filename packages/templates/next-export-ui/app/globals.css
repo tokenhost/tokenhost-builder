@@ -1100,7 +1100,8 @@ html[data-theme='dark'] .btn.primary {
   border: 1px solid var(--th-border);
   display: grid;
   gap: 8px;
-  padding: 14px 16px;
+  max-width: 420px;
+  padding: 12px 14px;
 }
 
 .referenceIdentityMeta {
@@ -1110,13 +1111,30 @@ html[data-theme='dark'] .btn.primary {
   gap: 8px;
 }
 
+.referenceIdentityLabel {
+  color: var(--th-muted);
+  font-family: var(--th-font-mono);
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+}
+
+.referenceIdentityRow {
+  align-items: baseline;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
 .referenceIdentityTitle {
-  font-size: 1.02rem;
+  font-size: 1rem;
   font-weight: 700;
 }
 
 .referenceIdentitySubtitle {
   color: var(--th-muted);
+  font-size: 0.95rem;
 }
 
 .recordHeroBody {
