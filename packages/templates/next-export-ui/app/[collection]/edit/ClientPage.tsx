@@ -20,6 +20,25 @@ function inputType(field: ThsField): 'text' | 'number' {
   return 'text';
 }
 
+function isLongTextField(field: ThsField): boolean {
+  if (field.type !== 'string') return false;
+  return ['body', 'description', 'content', 'bio', 'summary'].includes(field.name);
+}
+
+function fieldGroupClass(field: ThsField): string {
+  if (field.type === 'reference') return 'fieldGroup fieldGroupMinor';
+  if (field.type === 'image') return 'fieldGroup fieldGroupMinor';
+  if (isLongTextField(field)) return 'fieldGroup fieldGroupFeature';
+  return 'fieldGroup';
+}
+
+function fieldPlaceholder(field: ThsField): string {
+  if (field.type !== 'string') return field.type;
+  if (field.name === 'body') return 'Update the post…';
+  if (field.name === 'bio') return 'Tell people about this profile…';
+  return fieldDisplayName(field);
+}
+
 function getValue(record: any, key: string, fallbackIndex?: number): any {
   if (record && typeof record === 'object' && key in record) {
     return (record as any)[key];
@@ -304,7 +323,7 @@ export default function EditRecordPage(props: { params: { collection: string } }
 
       <div className="formGrid">
         {fields.map((f) => (
-          <div key={f.name} className="fieldGroup">
+          <div key={f.name} className={fieldGroupClass(f)}>
             <label className="label">{fieldDisplayName(f)}</label>
             {f.type === 'bool' ? (
               <select
@@ -335,13 +354,20 @@ export default function EditRecordPage(props: { params: { collection: string } }
                 disabled={txPhase === 'submitting' || txPhase === 'submitted' || txPhase === 'confirming'}
                 onChange={(next) => setForm((prev) => ({ ...prev, [f.name]: next }))}
               />
+            ) : isLongTextField(f) ? (
+              <textarea
+                className="input textarea textareaFeature"
+                value={form[f.name] ?? ''}
+                onChange={(e) => setForm((prev) => ({ ...prev, [f.name]: e.target.value }))}
+                placeholder={fieldPlaceholder(f)}
+              />
             ) : (
               <input
                 className="input"
                 type={inputType(f)}
                 value={form[f.name] ?? ''}
                 onChange={(e) => setForm((prev) => ({ ...prev, [f.name]: e.target.value }))}
-                placeholder={f.type}
+                placeholder={fieldPlaceholder(f)}
               />
             )}
           </div>

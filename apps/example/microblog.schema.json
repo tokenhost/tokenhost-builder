@@ -4,6 +4,11 @@
   "app": {
     "name": "Microblog",
     "slug": "microblog",
+    "brand": {
+      "primaryText": "micro",
+      "accentText": "blog"
+    },
+    "primaryCollection": "Post",
     "theme": {
       "preset": "cyber-grid"
     },

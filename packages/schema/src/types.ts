@@ -87,6 +87,11 @@ export interface ThsAppUi {
   generated?: ThsAppUiGenerated;
 }
 
+export interface ThsAppBrand {
+  primaryText?: string;
+  accentText?: string;
+}
+
 export type ThsThemePreset = 'cyber-grid';
 
 export interface ThsAppTheme {
@@ -98,6 +103,8 @@ export interface ThsApp {
   name: string;
   slug: string;
   description?: string;
+  brand?: ThsAppBrand;
+  primaryCollection?: string;
   theme?: ThsAppTheme;
   features?: ThsAppFeatures;
   ui?: ThsAppUi;

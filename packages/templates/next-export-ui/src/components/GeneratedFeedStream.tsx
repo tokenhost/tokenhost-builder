@@ -34,6 +34,7 @@ export default function GeneratedFeedStream(props: {
         const summary = feedCardSummary(item, props.feed);
         const tags = extractHashtagTokens(summary.body);
         const timestamp = item.record?.updatedAt ?? item.record?.createdAt ?? null;
+        const viewHref = `/${props.feed.collection}/?mode=view&id=${String(item.id)}`;
         return (
           <article key={String(item.id)} className="card half" style={{ display: 'grid', gap: 14 }}>
             <div className="collectionCardHeader" style={{ alignItems: 'flex-start' }}>
@@ -49,7 +50,11 @@ export default function GeneratedFeedStream(props: {
                     />
                   ) : null}
                   <div>
-                    <h3 style={{ margin: 0 }}>{summary.title}</h3>
+                    <h3 style={{ margin: 0 }}>
+                      <Link href={viewHref} className="cardTitleLink">
+                        {summary.title}
+                      </Link>
+                    </h3>
                     {summary.subtitle ? <p className="muted" style={{ margin: 0 }}>{summary.subtitle}</p> : null}
                   </div>
                 </div>
@@ -66,7 +71,9 @@ export default function GeneratedFeedStream(props: {
 
             {summary.mediaUrl ? (
               <div style={{ overflow: 'hidden', borderRadius: 18, border: '1px solid rgba(255,255,255,0.08)', background: 'rgba(255,255,255,0.03)' }}>
-                <img src={summary.mediaUrl} alt={`${props.feed.collection} ${String(item.id)}`} style={{ display: 'block', width: '100%', maxHeight: 460, objectFit: 'cover' }} />
+                <Link href={viewHref}>
+                  <img src={summary.mediaUrl} alt={`${props.feed.collection} ${String(item.id)}`} style={{ display: 'block', width: '100%', maxHeight: 460, objectFit: 'cover' }} />
+                </Link>
               </div>
             ) : null}
 

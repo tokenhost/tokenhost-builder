@@ -22,12 +22,6 @@ export default function CollectionLayout(props: { children: ReactNode; collectio
       <section className="card collectionHero">
         <div className="heroTopline">
           <span className="eyebrow">/collection/{collection.name}</span>
-          <div className="chipRow">
-            <span className="badge">{collection.fields.length} fields</span>
-            <span className="badge">create {collection.createRules.access}</span>
-            <span className="badge">update {collection.updateRules.access}</span>
-            <span className="badge">delete {collection.deleteRules.access}</span>
-          </div>
         </div>
 
         <div className="heroSplit">
@@ -38,7 +32,7 @@ export default function CollectionLayout(props: { children: ReactNode; collectio
             </p>
             <div className="actionGroup">
               <Link className="btn" href={`/${collection.name}/`}>List records</Link>
-              <Link className="btn primary" href={`/${collection.name}/?mode=new`}>Create record</Link>
+              <Link className="btn primary" href={`/${collection.name}/?mode=new`}>Create {collection.name}</Link>
             </div>
             <div className="fieldPillRow">
               {collection.fields.slice(0, 6).map((field) => (

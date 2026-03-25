@@ -9,7 +9,7 @@ import { chainFromId } from '../../../src/lib/chains';
 import { chainWithRpcOverride, makePublicClient } from '../../../src/lib/clients';
 import { formatDateTime, formatFieldValue, shortAddress } from '../../../src/lib/format';
 import { fetchManifest, getPrimaryDeployment, getReadRpcUrl } from '../../../src/lib/manifest';
-import { fieldDisplayName, fieldLinkUi, getCollection, transferEnabled, type ThsCollection, type ThsField } from '../../../src/lib/ths';
+import { displayField, fieldDisplayName, fieldLinkUi, getCollection, transferEnabled, type ThsCollection, type ThsField } from '../../../src/lib/ths';
 import { submitWriteTx } from '../../../src/lib/tx';
 import TxStatus, { type TxPhase } from '../../../src/components/TxStatus';
 import ResolvedReferenceValue from '../../../src/components/ResolvedReferenceValue';
@@ -27,6 +27,14 @@ function getValue(record: any, key: string, fallbackIndex?: number): any {
 function fieldIndex(collection: ThsCollection, field: ThsField): number {
   const idx = (collection.fields as any[]).findIndex((f) => f && f.name === field.name);
   return 9 + Math.max(0, idx);
+}
+
+function prefersLongText(field: ThsField): boolean {
+  return field.type === 'string' && ['body', 'description', 'content', 'bio', 'summary'].includes(field.name);
+}
+
+function findMediaField(collection: ThsCollection): ThsField | null {
+  return collection.fields.find((field) => field.type === 'image') ?? null;
 }
 
 function renderFieldValue(args: {
@@ -313,27 +321,62 @@ export default function ViewRecordPage(props: { params: { collection: string } }
   const owner = getValue(record, 'owner', 3);
   const createdBy = getValue(record, 'createdBy', 2);
   const createdAt = getValue(record, 'createdAt', 1);
+  const updatedAt = getValue(record, 'updatedAt', 4);
   const version = getValue(record, 'version', 8);
   const canEdit = Array.isArray((collection as any).updateRules?.mutable) && (collection as any).updateRules.mutable.length > 0;
   const canDelete = Boolean((collection as any).deleteRules?.softDelete);
+  const display = displayField(collection);
+  const titleField =
+    collection.fields.find((field) => field.type === 'string' && ['displayName', 'title', 'name', 'handle'].includes(field.name)) ??
+    (display?.type === 'string' ? display : null);
+  const titleRaw = titleField ? getValue(record, titleField.name, fieldIndex(collection, titleField)) : null;
+  const title = titleField ? formatFieldValue(titleRaw, titleField.type, (titleField as any).decimals, titleField.name) : `${collection.name} #${String(id)}`;
+  const longTextField = collection.fields.find(prefersLongText) ?? null;
+  const longTextRaw = longTextField ? getValue(record, longTextField.name, fieldIndex(collection, longTextField)) : null;
+  const longText = longTextField ? formatFieldValue(longTextRaw, longTextField.type, (longTextField as any).decimals, longTextField.name) : '';
+  const mediaField = findMediaField(collection);
+  const mediaRaw = mediaField ? getValue(record, mediaField.name, fieldIndex(collection, mediaField)) : null;
+  const mediaUrl = mediaField ? formatFieldValue(mediaRaw, mediaField.type, (mediaField as any).decimals, mediaField.name) : '';
+  const detailFields = collection.fields.filter((field) => ![titleField?.name, longTextField?.name, mediaField?.name].includes(field.name));
 
   return (
     <>
-      <div className="card">
-        <div className="row">
-          <h2>
-            {collection.name} <span className="badge">#{String(getValue(record, 'id', 0))}</span>
-          </h2>
-          <div style={{ display: 'flex', gap: 10 }}>
-            <button className="btn" onClick={() => void fetchRecord()}>Refresh</button>
-            {canEdit ? (
-              <button className="btn" onClick={() => router.push(`/${collectionName}/?mode=edit&id=${String(id)}`)}>Edit</button>
-            ) : null}
-            {canDelete ? (
-              <button className="btn danger" onClick={() => router.push(`/${collectionName}/?mode=delete&id=${String(id)}`)}>Delete</button>
-            ) : null}
+      <section className="card heroPanel">
+        <div className="collectionCardHeader" style={{ alignItems: 'flex-start' }}>
+          <div style={{ display: 'grid', gap: 10 }}>
+            <div className="eyebrow">/{collection.name.toLowerCase()}/{String(getValue(record, 'id', 0))}</div>
+            <h2 className="displayTitle displayTitleCompact">{title || `${collection.name} #${String(id)}`}</h2>
+            <div className="muted">
+              {titleField && titleField.name !== longTextField?.name ? fieldDisplayName(titleField) : 'On-chain record'}
+            </div>
+          </div>
+          <div className="chipRow">
+            <span className="badge">id {String(getValue(record, 'id', 0))}</span>
+            {transferEnabled(collection) ? <span className="badge">transferable</span> : null}
+            {canEdit ? <button className="btn" onClick={() => router.push(`/${collectionName}/?mode=edit&id=${String(id)}`)}>Edit</button> : null}
+            {canDelete ? <button className="btn danger" onClick={() => router.push(`/${collectionName}/?mode=delete&id=${String(id)}`)}>Delete</button> : null}
           </div>
         </div>
+
+        {longText ? <p className="recordHeroBody">{longText}</p> : null}
+
+        {mediaUrl ? (
+          <div className="recordHeroMedia">
+            <img src={mediaUrl} alt={`${collection.name} ${String(id)}`} style={{ display: 'block', width: '100%', maxHeight: 540, objectFit: 'contain' }} />
+          </div>
+        ) : null}
+
+        <div className="chipRow">
+          <span className="badge">owner {owner ? shortAddress(String(owner)) : '—'}</span>
+          <span className="badge">created {createdAt ? formatDateTime(createdAt, 'compact') : '—'}</span>
+          {updatedAt ? <span className="badge">updated {formatDateTime(updatedAt, 'compact')}</span> : null}
+          <span className="badge">version {version ? String(version) : '0'}</span>
+          <button className="btn" onClick={() => void fetchRecord()}>Refresh</button>
+        </div>
+      </section>
+
+      <section className="card">
+        <h2>Details</h2>
         <div className="kv">
           <div>owner</div>
           <div>{owner ? shortAddress(String(owner)) : '—'}</div>
@@ -341,15 +384,9 @@ export default function ViewRecordPage(props: { params: { collection: string } }
           <div>{createdBy ? shortAddress(String(createdBy)) : '—'}</div>
           <div>createdAt</div>
           <div>{createdAt ? formatDateTime(createdAt) : '—'}</div>
-          <div>version</div>
-          <div>{version ? String(version) : '—'}</div>
-        </div>
-      </div>
-
-      <div className="card">
-        <h2>Fields</h2>
-        <div className="kv">
-          {collection.fields.map((f) => {
+          <div>updatedAt</div>
+          <div>{updatedAt ? formatDateTime(updatedAt) : '—'}</div>
+          {detailFields.map((f) => {
             const v = getValue(record, f.name, fieldIndex(collection, f));
             const rendered = formatFieldValue(v, f.type, (f as any).decimals, f.name);
             return (
@@ -360,7 +397,7 @@ export default function ViewRecordPage(props: { params: { collection: string } }
             );
           })}
         </div>
-      </div>
+      </section>
 
       {transferEnabled(collection) ? (
         <div className="card">

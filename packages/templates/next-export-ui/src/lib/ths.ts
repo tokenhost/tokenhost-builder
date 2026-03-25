@@ -79,6 +79,11 @@ export interface ThsSchema {
   app: {
     name: string;
     slug: string;
+    brand?: {
+      primaryText?: string;
+      accentText?: string;
+    };
+    primaryCollection?: string;
     features?: Record<string, unknown>;
     ui?: {
       homePage?: {
@@ -144,6 +149,12 @@ export const ths = thsConst as unknown as ThsSchema;
 
 export function getCollection(name: string): ThsCollection | null {
   return (ths.collections as any[]).find((c) => c && c.name === name) ?? null;
+}
+
+export function primaryCollection(): ThsCollection | null {
+  const configured = typeof ths.app.primaryCollection === 'string' ? ths.app.primaryCollection.trim() : '';
+  if (configured) return getCollection(configured);
+  return (ths.collections as any[])[0] ?? null;
 }
 
 export function getField(collection: ThsCollection, fieldName: string): ThsField | null {

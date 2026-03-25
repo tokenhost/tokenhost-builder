@@ -89,6 +89,17 @@ export function lintThs(schema: ThsSchema): Issue[] {
     );
   }
 
+  const primaryCollection = String(schema.app.primaryCollection ?? '').trim();
+  if (primaryCollection && !schema.collections.some((collection) => collection.name === primaryCollection)) {
+    issues.push(
+      err(
+        '/app/primaryCollection',
+        'lint.app.primary_collection_unknown',
+        `app.primaryCollection references unknown collection "${primaryCollection}".`
+      )
+    );
+  }
+
   const generatedFeedIds = new Set<string>();
   const generatedFeeds = Array.isArray(generatedUi?.feeds) ? generatedUi.feeds : [];
   for (const [index, feed] of generatedFeeds.entries()) {

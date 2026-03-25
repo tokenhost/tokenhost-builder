@@ -64,14 +64,14 @@ export default function ReferenceFieldInput(props: {
         ))}
       </select>
       {selectedSummary ? (
-        <div className="recordPreviewCell" style={{ minHeight: 110 }}>
+        <div className={`recordPreviewCell ${mustOwn ? 'recordPreviewCellCompact' : ''}`} style={{ minHeight: mustOwn ? 0 : 110 }}>
           <div style={{ display: 'grid', gap: 10 }}>
             <div className="chipRow">
               <span className="badge">{relatedCollection.name} #{String(selectedOption?.id ?? '')}</span>
               {selectedSummary.subtitle ? <span className="badge">{selectedSummary.subtitle}</span> : null}
             </div>
             <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
-              {selectedSummary.imageUrl ? (
+              {selectedSummary.imageUrl && !mustOwn ? (
                 // eslint-disable-next-line @next/next/no-img-element
                 <img
                   src={selectedSummary.imageUrl}
@@ -81,7 +81,7 @@ export default function ReferenceFieldInput(props: {
               ) : null}
               <div style={{ display: 'grid', gap: 6 }}>
                 <strong>{selectedSummary.title}</strong>
-                {selectedSummary.body ? <span className="muted">{selectedSummary.body}</span> : null}
+                {!mustOwn && selectedSummary.body ? <span className="muted">{selectedSummary.body}</span> : null}
               </div>
             </div>
           </div>
@@ -103,7 +103,7 @@ export default function ReferenceFieldInput(props: {
           : options.length > 0
             ? ownedOptions.length > 0
               ? mustOwn
-                ? `This relation requires a ${relatedCollection.name} owned by the connected wallet. Your owned records are shown here${account ? ` for ${account.slice(0, 6)}…` : ''}.`
+                ? `This relation requires a ${relatedCollection.name} owned by the connected wallet.${account ? ` Showing records for ${account.slice(0, 6)}…` : ''}.`
                 : `Showing ${relatedCollection.name} labels instead of a raw foreign-key entry. Owned records appear first and your last choice is remembered${account ? ` for ${account.slice(0, 6)}…` : ''}.`
               : `Showing ${relatedCollection.name} labels instead of a raw foreign-key entry.`
             : mustOwn

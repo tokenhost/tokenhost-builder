@@ -456,10 +456,10 @@ html[data-theme='dark'] .themeToggle::after {
 
 .brandWordText {
   display: inline-flex;
-  font-size: 16px;
+  font-size: 20px;
   font-weight: 800;
   gap: 6px;
-  letter-spacing: 0.18em;
+  letter-spacing: 0.16em;
   line-height: 1.08;
   text-transform: uppercase;
 }
@@ -708,6 +708,15 @@ html[data-theme='dark'] .themeToggle::after {
   justify-content: space-between;
 }
 
+.actionGroup {
+  gap: 12px;
+  margin-top: 16px;
+}
+
+.fieldPillRow {
+  margin-top: 14px;
+}
+
 .displayTitle {
   font-family: var(--th-font-display);
   font-size: clamp(2.4rem, 6vw, 4.7rem);
@@ -720,6 +729,12 @@ html[data-theme='dark'] .themeToggle::after {
 
 .displayTitle span {
   color: var(--th-primary);
+}
+
+.displayTitleCompact {
+  font-size: clamp(2.05rem, 4vw, 3.05rem);
+  line-height: 0.98;
+  max-width: none;
 }
 
 .lead {
@@ -878,6 +893,10 @@ html[data-theme='dark'] .themeToggle::after {
   padding: 14px;
 }
 
+.recordPreviewCellCompact {
+  padding: 12px;
+}
+
 .recordPreviewLabel {
   color: var(--th-muted);
   font-family: var(--th-font-mono);
@@ -995,6 +1014,16 @@ html[data-theme='dark'] .btn.primary {
   transform: none;
 }
 
+.cardTitleLink {
+  transition: color var(--th-motion-fast) ease;
+}
+
+.cardTitleLink:hover,
+.cardTitleLink:focus-visible {
+  color: var(--th-primary);
+  outline: none;
+}
+
 .input,
 .select {
   background: var(--th-input-bg);
@@ -1033,11 +1062,40 @@ html[data-theme='dark'] .btn.primary {
 .formGrid {
   display: grid;
   gap: 16px;
+  grid-template-columns: minmax(260px, 0.86fr) minmax(340px, 1.14fr);
   margin-top: 16px;
 }
 
 .fieldGroup {
   min-width: 0;
+}
+
+.fieldGroupMinor {
+  align-self: start;
+}
+
+.textarea {
+  min-height: 140px;
+  resize: vertical;
+}
+
+.textareaFeature {
+  min-height: 220px;
+}
+
+.recordHeroBody {
+  font-size: 1.18rem;
+  line-height: 1.7;
+  margin: 0;
+  max-width: 70ch;
+  white-space: pre-wrap;
+}
+
+.recordHeroMedia {
+  background: color-mix(in srgb, var(--th-panel-muted) 92%, transparent);
+  border: 1px solid var(--th-border);
+  overflow: hidden;
+  padding: 14px;
 }
 
 .kv {
@@ -1317,6 +1375,10 @@ html[data-theme='dark'] .btn.primary {
 
   .kv {
     grid-template-columns: 1fr;
+  }
+
+  .formGrid {
+    grid-template-columns: minmax(0, 1fr);
   }
 
   .kv > div:nth-child(odd) {

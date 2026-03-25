@@ -102,6 +102,8 @@ function minimalSchema() {
 function minimalSchemaWithThemePreset() {
   const schema = minimalSchema();
   schema.app.theme = { preset: 'cyber-grid' };
+  schema.app.brand = { primaryText: 'micro', accentText: 'blog' };
+  schema.app.primaryCollection = 'Item';
   return schema;
 }
 
@@ -210,6 +212,9 @@ describe('th generate (UI template)', function () {
     expect(layoutSource).to.include('NetworkStatus');
     expect(layoutSource).to.include('themeBootScript');
     expect(layoutSource).to.not.include('/tokenhost/ops');
+    expect(layoutSource).to.not.include('href=\"/\">Overview</Link>');
+    expect(layoutSource).to.include('Create {primaryModel.name}');
+    expect(layoutSource).to.include('brandPrimary');
 
     const generatedTokens = fs.readFileSync(path.join(outDir, 'ui', 'src', 'theme', 'tokens.json'), 'utf-8');
     expect(generatedTokens).to.equal(readTemplateThemeTokens());
@@ -262,6 +267,8 @@ describe('th generate (UI template)', function () {
 
     const generatedThs = fs.readFileSync(path.join(outDir, 'ui', 'src', 'generated', 'ths.ts'), 'utf-8');
     expect(generatedThs).to.include('"preset": "cyber-grid"');
+    expect(generatedThs).to.include('"primaryText": "micro"');
+    expect(generatedThs).to.include('"primaryCollection": "Item"');
 
     const generatedTokens = fs.readFileSync(path.join(outDir, 'ui', 'src', 'theme', 'tokens.json'), 'utf-8');
     expect(generatedTokens).to.equal(readTemplateThemeTokens());
@@ -309,10 +316,12 @@ describe('th generate (UI template)', function () {
     expect(generatedNewPage).to.include('You must create a');
     expect(generatedNewPage).to.include('Checking required linked records before showing the form.');
     expect(generatedNewPage).to.include('Waiting for media upload…');
+    expect(generatedNewPage).to.include('textareaFeature');
 
     const generatedEditPage = fs.readFileSync(path.join(outDir, 'ui', 'app', '[collection]', 'edit', 'ClientPage.tsx'), 'utf-8');
     expect(generatedEditPage).to.include('ReferenceFieldInput');
     expect(generatedEditPage).to.include('Waiting for media upload…');
+    expect(generatedEditPage).to.include('textareaFeature');
 
     const generatedViewPage = fs.readFileSync(path.join(outDir, 'ui', 'app', '[collection]', 'view', 'ClientPage.tsx'), 'utf-8');
     expect(generatedViewPage).to.include('ResolvedReferenceValue');

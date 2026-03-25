@@ -138,6 +138,8 @@ describe('THS schema validation + lint', function () {
       app: {
         name: 'Test App',
         slug: 'test-app',
+        brand: { primaryText: 'test', accentText: 'app' },
+        primaryCollection: 'Item',
         theme: { preset: 'cyber-grid' },
         features: { uploads: false, onChainIndexing: true }
       }
@@ -145,6 +147,22 @@ describe('THS schema validation + lint', function () {
 
     const res = validateThsStructural(input);
     expect(res.ok).to.equal(true);
+  });
+
+  it('lintThs rejects unknown app.primaryCollection values', function () {
+    const input = minimalSchema({
+      app: {
+        name: 'Test App',
+        slug: 'test-app',
+        primaryCollection: 'Missing',
+        features: { uploads: false, onChainIndexing: true }
+      }
+    });
+
+    const res = validateThsStructural(input);
+    expect(res.ok).to.equal(true);
+    const issues = lintThs(res.data);
+    expect(issues.some((i) => i.code === 'lint.app.primary_collection_unknown')).to.equal(true);
   });
 
   it('validateThsStructural accepts generated feed/token/home UI primitives', function () {

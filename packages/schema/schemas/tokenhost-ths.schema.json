@@ -29,6 +29,15 @@
           "pattern": "^[a-z0-9]+(?:-[a-z0-9]+)*$"
         },
         "description": { "type": "string" },
+        "brand": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "primaryText": { "type": "string", "minLength": 1 },
+            "accentText": { "type": "string", "minLength": 1 }
+          }
+        },
+        "primaryCollection": { "type": "string", "minLength": 1 },
         "theme": {
           "type": "object",
           "description": "Theme preset selection and future theme options.",
