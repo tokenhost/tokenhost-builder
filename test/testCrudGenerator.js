@@ -102,6 +102,8 @@ describe('Spec-aligned CRUD generator', function () {
 
     const appSol = generateAppSolidity(schema);
     expect(appSol.contents).to.include('error RelatedRecordNotOwned();');
+    expect(appSol.contents).to.include('mapping(address => uint256[]) private ownerIndex_Profile;');
+    expect(appSol.contents).to.include('function listOwnedIdsProfile(address owner, uint256 offset, uint256 limit, bool includeDeleted) external view returns (uint256[] memory)');
     expect(appSol.contents).to.include('function _requireOwnedProfile(uint256 id) internal view');
     expect(appSol.contents).to.include('_requireOwnedProfile(input.authorProfile);');
     expect(appSol.contents).to.include('_requireOwnedProfile(authorProfile);');

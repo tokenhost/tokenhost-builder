@@ -2,10 +2,11 @@
 
 import { useEffect, useMemo, useRef, useState } from 'react';
 
+import { getStoredAccount, subscribeStoredAccount } from './account';
 import { countRecords, readRecordsByIds } from './app';
 import { displayField, getCollection } from './ths';
 import { formatFieldValue } from './format';
-import { listAllRecords } from './runtime';
+import { listAllRecords, listOwnedRecords as listOwnedRuntimeRecords } from './runtime';
 
 type RelationRuntime = {
   manifest: any;
@@ -92,18 +93,18 @@ export function recordSummary(record: any): { title: string; subtitle: string | 
 }
 
 export async function listOwnedRecords(runtime: RelationRuntime, collectionName: string, ownerAddress: string): Promise<OwnedRecord[]> {
-  const normalizedOwner = ownerAddress.trim().toLowerCase();
-  const page = await listAllRecords({
+  const page = await listOwnedRuntimeRecords({
     manifest: runtime.manifest,
     publicClient: runtime.publicClient,
     abi: runtime.abi,
     address: runtime.appAddress,
-    collectionName
+    collectionName,
+    owner: ownerAddress as `0x${string}`
   });
 
   return page.ids
     .map((id, index) => ({ id, record: page.records[index] }))
-    .filter((entry) => recordOwner(entry.record) === normalizedOwner);
+    .filter((entry) => Boolean(entry.record));
 }
 
 export async function loadRecordsByIds(runtime: RelationRuntime, collectionName: string, ids: bigint[]): Promise<Map<string, any>> {
@@ -177,11 +178,8 @@ export function useOwnedReferenceOptions(args: {
   const mustOwn = Boolean(relation?.mustOwn);
 
   useEffect(() => {
-    try {
-      setAccount(window.localStorage.getItem('TH_ACCOUNT'));
-    } catch {
-      setAccount(null);
-    }
+    setAccount(getStoredAccount());
+    return subscribeStoredAccount(setAccount);
   }, []);
 
   useEffect(() => {
@@ -197,18 +195,31 @@ export function useOwnedReferenceOptions(args: {
       setLoading(true);
       setError(null);
       try {
-        const page = await listAllRecords({
-          manifest: args.manifest,
-          publicClient: args.publicClient,
-          abi: args.abi,
-          address: args.address,
-          collectionName: relatedCollection.name
-        });
-
         const normalizedAccount = account?.trim().toLowerCase() ?? '';
-        const nextOptions = page.ids
-          .map((id, index) => {
-            const record = page.records[index];
+        const page = mustOwn && normalizedAccount
+          ? await listOwnedRecords(
+              {
+                manifest: args.manifest,
+                publicClient: args.publicClient,
+                abi: args.abi,
+                appAddress: args.address
+              },
+              relatedCollection.name,
+              normalizedAccount
+            )
+          : await listAllRecords({
+              manifest: args.manifest,
+              publicClient: args.publicClient,
+              abi: args.abi,
+              address: args.address,
+              collectionName: relatedCollection.name
+            });
+        const pageItems = Array.isArray(page)
+          ? page
+          : page.ids.map((id, index) => ({ id, record: page.records[index] }));
+
+        const nextOptions = pageItems
+          .map(({ id, record }) => {
             if (!record) return null;
             return {
               id,
@@ -317,11 +328,8 @@ export function useRequiredReferenceCreationGates(args: {
   }, [args.collection, args.requiredFieldNames]);
 
   useEffect(() => {
-    try {
-      setAccount(window.localStorage.getItem('TH_ACCOUNT'));
-    } catch {
-      setAccount(null);
-    }
+    setAccount(getStoredAccount());
+    return subscribeStoredAccount(setAccount);
   }, []);
 
   useEffect(() => {
@@ -362,20 +370,19 @@ export function useRequiredReferenceCreationGates(args: {
               continue;
             }
 
-            const owned = await listOwnedRecords(
-              {
-                manifest: args.manifest,
-                publicClient: args.publicClient,
-                abi: args.abi,
-                appAddress: args.address
-              },
-              entry.relatedCollection.name,
-              account
-            );
+            const owned = await listOwnedRuntimeRecords({
+              manifest: args.manifest,
+              publicClient: args.publicClient,
+              abi: args.abi,
+              address: args.address,
+              collectionName: entry.relatedCollection.name,
+              owner: account as `0x${string}`,
+              maxRecords: 1
+            });
             next.push({
               fieldName: entry.fieldName,
               relatedCollection: entry.relatedCollection,
-              count: owned.length,
+              count: owned.ids.length,
               loading: false,
               error: null,
               mustOwn: true,

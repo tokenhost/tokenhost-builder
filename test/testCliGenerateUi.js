@@ -286,6 +286,10 @@ describe('th generate (UI template)', function () {
     expect(generatedReferenceField).to.include('Owned records appear first');
     expect(generatedReferenceField).to.include("href={`/${relatedCollection.name}/?mode=new`}");
 
+    const generatedAccount = fs.readFileSync(path.join(outDir, 'ui', 'src', 'lib', 'account.ts'), 'utf-8');
+    expect(generatedAccount).to.include("const ACCOUNT_EVENT_NAME = 'tokenhost:account-changed'");
+    expect(generatedAccount).to.include('export function subscribeStoredAccount');
+
     const generatedResolvedReference = fs.readFileSync(path.join(outDir, 'ui', 'src', 'components', 'ResolvedReferenceValue.tsx'), 'utf-8');
     expect(generatedResolvedReference).to.include('getRelatedCollection');
     expect(generatedResolvedReference).to.include("href={`/${relatedCollection.name}/?mode=view&id=${String(id)}`}");
@@ -296,6 +300,8 @@ describe('th generate (UI template)', function () {
     expect(generatedRelations).to.include('useOwnedReferenceOptions');
     expect(generatedRelations).to.include('useRequiredReferenceCreationGates');
     expect(generatedRelations).to.include('TH_REFERENCE_SELECTION');
+    expect(generatedRelations).to.include('subscribeStoredAccount');
+    expect(generatedRelations).to.include('maxRecords: 1');
 
     const generatedNewPage = fs.readFileSync(path.join(outDir, 'ui', 'app', '[collection]', 'new', 'ClientPage.tsx'), 'utf-8');
     expect(generatedNewPage).to.include('ReferenceFieldInput');
@@ -313,6 +319,10 @@ describe('th generate (UI template)', function () {
 
     const generatedRecordCard = fs.readFileSync(path.join(outDir, 'ui', 'src', 'components', 'RecordCard.tsx'), 'utf-8');
     expect(generatedRecordCard).to.include('ResolvedReferenceValue');
+
+    const generatedApp = fs.readFileSync(path.join(outDir, 'ui', 'src', 'lib', 'app.ts'), 'utf-8');
+    expect(generatedApp).to.include('function fnListOwnedIds');
+    expect(generatedApp).to.include('function listOwnedRecordsPage');
   });
 
   it('generated UI builds (next export)', function () {

@@ -2,6 +2,7 @@
 
 import React, { useEffect, useState } from 'react';
 
+import { getStoredAccount, setStoredAccount, subscribeStoredAccount } from '../lib/account';
 import { chainFromId } from '../lib/chains';
 import { chainWithRpcOverride, requestWalletAddress } from '../lib/clients';
 import { shortAddress } from '../lib/format';
@@ -24,13 +25,8 @@ export default function ConnectButton() {
   }, []);
 
   useEffect(() => {
-    // Best-effort: hydrate from localStorage.
-    try {
-      const cached = localStorage.getItem('TH_ACCOUNT');
-      if (cached) setAccount(cached);
-    } catch {
-      // ignore
-    }
+    setAccount(getStoredAccount());
+    return subscribeStoredAccount(setAccount);
   }, []);
 
   useEffect(() => {
@@ -68,11 +64,7 @@ export default function ConnectButton() {
       const accountAddr = a ?? null;
       setAccount(accountAddr);
       setStatus(null);
-      try {
-        if (accountAddr) localStorage.setItem('TH_ACCOUNT', accountAddr);
-      } catch {
-        // ignore
-      }
+      setStoredAccount(accountAddr);
     } catch (e: any) {
       setStatus(String(e?.message ?? e));
     }
@@ -81,11 +73,7 @@ export default function ConnectButton() {
   function disconnect() {
     // Wallets don't support programmatic disconnect reliably; clear local state only.
     setAccount(null);
-    try {
-      localStorage.removeItem('TH_ACCOUNT');
-    } catch {
-      // ignore
-    }
+    setStoredAccount(null);
   }
 
   if (walletState === 'unknown') return null;

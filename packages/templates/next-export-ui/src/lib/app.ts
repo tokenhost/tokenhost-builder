@@ -27,6 +27,10 @@ export function fnListByIndex(collectionName: string, fieldName: string): string
   return `listByIndex${collectionName}_${fieldName}`;
 }
 
+export function fnListOwnedIds(collectionName: string): string {
+  return `listOwnedIds${collectionName}`;
+}
+
 export function fnCreate(collectionName: string): string {
   return `create${collectionName}`;
 }
@@ -242,6 +246,40 @@ export async function listRecordsByIndex(args: {
     abi: args.abi,
     functionName: fnListByIndex(args.collectionName, args.fieldName),
     args: [args.key, args.offset, BigInt(args.limit)]
+  })) as bigint[];
+
+  if (!ids || ids.length === 0) return { ids: [], records: [] };
+
+  const records = await readRecordsByIds({
+    publicClient: args.publicClient,
+    abi: args.abi,
+    address: args.address,
+    collectionName: args.collectionName,
+    ids,
+    includeDeleted: args.includeDeleted
+  });
+
+  return { ids, records };
+}
+
+export async function listOwnedRecordsPage(args: {
+  publicClient: any;
+  abi: any[];
+  address: `0x${string}`;
+  collectionName: string;
+  owner: `0x${string}`;
+  offset: bigint;
+  limit: number;
+  includeDeleted?: boolean;
+}): Promise<{ ids: bigint[]; records: any[] }> {
+  assertAbiFunction(args.abi, fnListOwnedIds(args.collectionName), args.collectionName);
+  assertAbiFunction(args.abi, fnGet(args.collectionName), args.collectionName);
+
+  const ids = (await args.publicClient.readContract({
+    address: args.address,
+    abi: args.abi,
+    functionName: fnListOwnedIds(args.collectionName),
+    args: [args.owner, args.offset, BigInt(args.limit), Boolean(args.includeDeleted)]
   })) as bigint[];
 
   if (!ids || ids.length === 0) return { ids: [], records: [] };
