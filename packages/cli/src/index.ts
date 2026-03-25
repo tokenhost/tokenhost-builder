@@ -2324,6 +2324,19 @@ function resolveUploadManifestConfig(featuresUploads: boolean): UploadManifestCo
   };
 }
 
+function hasExplicitUploadManifestOverrideEnv(): boolean {
+  return [
+    'TH_UPLOAD_REMOTE_BASE_URL',
+    'TH_UPLOAD_REMOTE_ENDPOINT_URL',
+    'TH_UPLOAD_REMOTE_STATUS_URL',
+    'TH_UPLOAD_RUNNER',
+    'TH_UPLOAD_PROVIDER',
+    'TH_UPLOAD_BASE_URL',
+    'TH_UPLOAD_ACCEPT',
+    'TH_UPLOAD_MAX_BYTES'
+  ].some((key) => String(process.env[key] ?? '').trim() !== '');
+}
+
 function normalizeFunctionsDirectory(value: string | undefined): string {
   const trimmed = String(value ?? '').trim().replace(/^\/+|\/+$/g, '');
   if (!trimmed) return 'netlify/functions';
@@ -3862,19 +3875,22 @@ function buildFromSchema(
   const zeroAddress = '0x0000000000000000000000000000000000000000';
   const txMode = resolveTxMode(opts.txMode, Number(opts.targetChainId ?? anvil.id));
   const relayBaseUrl = String(opts.relayBaseUrl ?? process.env.TH_RELAY_BASE_URL ?? '/__tokenhost/relay').trim() || '/__tokenhost/relay';
+  const explicitUploadManifestConfig = hasExplicitUploadManifestOverrideEnv() ? resolveUploadManifestConfig(features.uploads) : null;
   const netlifyUploadBuild = resolveNetlifyUploadBuildConfig(schema);
-  const uploadConfig = netlifyUploadBuild
-    ? {
-        enabled: true,
-        baseUrl: netlifyUploadBuild.endpointUrl,
-        endpointUrl: netlifyUploadBuild.endpointUrl,
-        statusUrl: netlifyUploadBuild.statusUrl,
-        provider: netlifyUploadBuild.provider,
-        runnerMode: 'remote' as const,
-        accept: netlifyUploadBuild.accept,
-        maxBytes: netlifyUploadBuild.maxBytes
-      }
-    : resolveUploadManifestConfig(features.uploads);
+  const uploadConfig =
+    explicitUploadManifestConfig ??
+    (netlifyUploadBuild
+      ? {
+          enabled: true,
+          baseUrl: netlifyUploadBuild.endpointUrl,
+          endpointUrl: netlifyUploadBuild.endpointUrl,
+          statusUrl: netlifyUploadBuild.statusUrl,
+          provider: netlifyUploadBuild.provider,
+          runnerMode: 'remote' as const,
+          accept: netlifyUploadBuild.accept,
+          maxBytes: netlifyUploadBuild.maxBytes
+        }
+      : resolveUploadManifestConfig(features.uploads));
 
   const manifest = {
     manifestVersion: '0.1.0',

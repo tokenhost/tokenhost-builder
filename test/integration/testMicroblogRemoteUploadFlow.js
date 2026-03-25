@@ -1,5 +1,6 @@
 import { expect } from 'chai';
 import fs from 'fs';
+import net from 'net';
 import os from 'os';
 import path from 'path';
 import { spawn, spawnSync } from 'child_process';
@@ -57,6 +58,23 @@ async function request(url, init) {
   return { status: res.status, json, buffer, headers: res.headers };
 }
 
+function getAvailablePort(host) {
+  return new Promise((resolve, reject) => {
+    const server = net.createServer();
+    server.unref();
+    server.on('error', reject);
+    server.listen(0, host, () => {
+      const address = server.address();
+      const port = typeof address === 'object' && address ? address.port : null;
+      server.close((err) => {
+        if (err) reject(err);
+        else if (!port) reject(new Error('Unable to determine an available port.'));
+        else resolve(port);
+      });
+    });
+  });
+}
+
 describe('Microblog example remote upload adapter flow', function () {
   it('builds the canonical microblog app against a standalone remote upload adapter', async function () {
     this.timeout(180000);
@@ -65,7 +83,7 @@ describe('Microblog example remote upload adapter flow', function () {
     const outDir = path.join(fs.mkdtempSync(path.join(os.tmpdir(), 'th-microblog-remote-')), 'out');
 
     const adapterHost = '127.0.0.1';
-    const adapterPort = 48000 + Math.floor(Math.random() * 1000);
+    const adapterPort = await getAvailablePort(adapterHost);
     const adapterBaseUrl = `http://${adapterHost}:${adapterPort}`;
     const adapterEndpointPath = '/api/upload';
     const adapterStatusPath = '/api/upload/status';
@@ -87,7 +105,7 @@ describe('Microblog example remote upload adapter flow', function () {
     });
 
     const previewHost = '127.0.0.1';
-    const previewPort = 49000 + Math.floor(Math.random() * 1000);
+    const previewPort = await getAvailablePort(previewHost);
     const previewBaseUrl = `http://${previewHost}:${previewPort}`;
 
     let preview = null;
