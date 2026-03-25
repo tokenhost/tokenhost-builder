@@ -2507,24 +2507,42 @@ export async function runFocUploadFromJob(job) {
 
   const tmpDir = await fs.mkdtemp(path.join(os.tmpdir(), 'tokenhost-netlify-upload-'));
   const tmpFile = path.join(tmpDir, job.fileName || 'upload.bin');
+  const runtimeHome = path.join(os.tmpdir(), 'tokenhost-netlify-home');
+  const xdgConfigHome = path.join(runtimeHome, '.config');
+  const npmCacheDir = path.join(runtimeHome, '.npm');
+  const normalizedPrivateKey = privateKey.startsWith('0x') ? privateKey : \`0x\${privateKey}\`;
 
   try {
+    await fs.mkdir(runtimeHome, { recursive: true });
+    await fs.mkdir(xdgConfigHome, { recursive: true });
+    await fs.mkdir(npmCacheDir, { recursive: true });
     await fs.writeFile(tmpFile, Buffer.from(String(job.bodyBase64 || ''), 'base64'));
     const command = String(process.env.TH_UPLOAD_FOC_COMMAND ?? DEFAULT_FOC_COMMAND).trim() || DEFAULT_FOC_COMMAND;
     const chainId = parsePositiveInt(process.env.TH_UPLOAD_FOC_CHAIN, DEFAULT_CHAIN_ID);
     const copies = parsePositiveInt(process.env.TH_UPLOAD_FOC_COPIES, DEFAULT_COPIES);
     const withCDN = String(process.env.TH_UPLOAD_FOC_WITH_CDN ?? '').trim().toLowerCase();
     const debug = String(process.env.TH_UPLOAD_FOC_DEBUG ?? '').trim().toLowerCase();
+    const sharedEnv = {
+      ...process.env,
+      HOME: runtimeHome,
+      XDG_CONFIG_HOME: xdgConfigHome,
+      NPM_CONFIG_CACHE: npmCacheDir,
+      npm_config_cache: npmCacheDir,
+      NPM_CONFIG_UPDATE_NOTIFIER: 'false',
+      PRIVATE_KEY: privateKey,
+      TH_UPLOAD_FOC_PRIVATE_KEY: privateKey
+    };
+    const focConfigDir = path.join(xdgConfigHome, 'foc-cli-nodejs');
+    const focConfigPath = path.join(focConfigDir, 'config.json');
+    await fs.mkdir(focConfigDir, { recursive: true });
+    await fs.writeFile(focConfigPath, JSON.stringify({ privateKey: normalizedPrivateKey }) + '\\n', 'utf8');
+
     const shellCommand =
       \`\${command} upload \${shellQuote(tmpFile)} --format json --chain \${chainId} --copies \${copies}\` +
       ((withCDN === '1' || withCDN === 'true' || withCDN === 'yes' || withCDN === 'on') ? ' --withCDN true' : '') +
       ((debug === '1' || debug === 'true' || debug === 'yes' || debug === 'on') ? ' --debug true --verbose' : '');
 
-    const result = await runShellCommand(shellCommand, {
-      ...process.env,
-      PRIVATE_KEY: privateKey,
-      TH_UPLOAD_FOC_PRIVATE_KEY: privateKey
-    });
+    const result = await runShellCommand(shellCommand, sharedEnv);
 
     if (result.code !== 0) {
       throw new Error(String(result.stderr || result.stdout || \`foc-cli failed with status \${result.code}\`).trim());
