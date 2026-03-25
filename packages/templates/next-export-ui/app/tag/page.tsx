@@ -1,11 +1,11 @@
 import { Suspense } from 'react';
 
-import MicroblogTagClient from '../../src/components/MicroblogTagClient';
+import GeneratedTokenPageClient from '../../src/components/GeneratedTokenPageClient';
 
 export default function TagPage() {
   return (
     <Suspense fallback={null}>
-      <MicroblogTagClient />
+      <GeneratedTokenPageClient />
     </Suspense>
   );
 }

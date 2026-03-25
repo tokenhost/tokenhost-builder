@@ -102,6 +102,8 @@ function minimalSchema() {
 function minimalSchemaWithThemePreset() {
   const schema = minimalSchema();
   schema.app.theme = { preset: 'cyber-grid' };
+  schema.app.brand = { primaryText: 'micro', accentText: 'blog' };
+  schema.app.primaryCollection = 'Item';
   return schema;
 }
 
@@ -143,6 +145,44 @@ function schemaWithUiOverrides() {
   };
 }
 
+function schemaWithReferenceRelation() {
+  return {
+    thsVersion: '2025-12',
+    schemaVersion: '0.0.1',
+    app: {
+      name: 'Reference App',
+      slug: 'reference-app',
+      features: { uploads: false, onChainIndexing: true }
+    },
+    collections: [
+      {
+        name: 'Profile',
+        fields: [{ name: 'handle', type: 'string', required: true }],
+        createRules: { required: ['handle'], access: 'public' },
+        visibilityRules: { gets: ['handle'], access: 'public' },
+        updateRules: { mutable: ['handle'], access: 'owner' },
+        deleteRules: { softDelete: true, access: 'owner' },
+        transferRules: { access: 'owner' },
+        indexes: { unique: [{ field: 'handle', scope: 'allTime' }], index: [] }
+      },
+      {
+        name: 'Post',
+        fields: [
+          { name: 'authorProfile', type: 'reference', required: true },
+          { name: 'body', type: 'string', required: true }
+        ],
+        createRules: { required: ['authorProfile', 'body'], access: 'public' },
+        visibilityRules: { gets: ['authorProfile', 'body'], access: 'public' },
+        updateRules: { mutable: ['body'], access: 'owner' },
+        deleteRules: { softDelete: true, access: 'owner' },
+        transferRules: { access: 'owner' },
+        indexes: { unique: [], index: [{ field: 'authorProfile' }] },
+        relations: [{ field: 'authorProfile', to: 'Profile', enforce: true, reverseIndex: true }]
+      }
+    ]
+  };
+}
+
 describe('th generate (UI template)', function () {
   this.timeout(180000);
 
@@ -172,6 +212,9 @@ describe('th generate (UI template)', function () {
     expect(layoutSource).to.include('NetworkStatus');
     expect(layoutSource).to.include('themeBootScript');
     expect(layoutSource).to.not.include('/tokenhost/ops');
+    expect(layoutSource).to.not.include('href=\"/\">Overview</Link>');
+    expect(layoutSource).to.include('Create {primaryModel.name}');
+    expect(layoutSource).to.include('brandPrimary');
 
     const generatedTokens = fs.readFileSync(path.join(outDir, 'ui', 'src', 'theme', 'tokens.json'), 'utf-8');
     expect(generatedTokens).to.equal(readTemplateThemeTokens());
@@ -196,10 +239,14 @@ describe('th generate (UI template)', function () {
 
     const generatedImageField = fs.readFileSync(path.join(outDir, 'ui', 'src', 'components', 'ImageFieldInput.tsx'), 'utf-8');
     expect(generatedImageField).to.include('onBusyChange');
+    expect(generatedImageField).to.include('Long-running upload');
+    expect(generatedImageField).to.include('Retry');
 
     const generatedUpload = fs.readFileSync(path.join(outDir, 'ui', 'src', 'lib', 'upload.ts'), 'utf-8');
     expect(generatedUpload).to.include('buildUploadNetworkError');
     expect(generatedUpload).to.include('xhr.timeout = 5 * 60 * 1000;');
+    expect(generatedUpload).to.include("phase: 'accepted'");
+    expect(generatedUpload).to.include('Token Host accepted the upload');
 
     const generatedClients = fs.readFileSync(path.join(outDir, 'ui', 'src', 'lib', 'clients.ts'), 'utf-8');
     expect(generatedClients).to.include('async function refreshWalletChainConfig');
@@ -220,9 +267,78 @@ describe('th generate (UI template)', function () {
 
     const generatedThs = fs.readFileSync(path.join(outDir, 'ui', 'src', 'generated', 'ths.ts'), 'utf-8');
     expect(generatedThs).to.include('"preset": "cyber-grid"');
+    expect(generatedThs).to.include('"primaryText": "micro"');
+    expect(generatedThs).to.include('"primaryCollection": "Item"');
 
     const generatedTokens = fs.readFileSync(path.join(outDir, 'ui', 'src', 'theme', 'tokens.json'), 'utf-8');
     expect(generatedTokens).to.equal(readTemplateThemeTokens());
+
+    const generatedThsLib = fs.readFileSync(path.join(outDir, 'ui', 'src', 'lib', 'ths.ts'), 'utf-8');
+    expect(generatedThsLib).to.include('export function collectionNavLabel');
+
+    const generatedLayout = fs.readFileSync(path.join(outDir, 'ui', 'app', 'layout.tsx'), 'utf-8');
+    expect(generatedLayout).to.include('collectionNavLabel(collection)');
+    expect(generatedLayout).to.not.include('<a className="navRailLink" href="/.well-known/tokenhost/manifest.json">Manifest</a>');
+  });
+
+  it('upstreams relation metadata into reference-aware generated CRUD UI', function () {
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'th-ui-reference-'));
+    const schemaPath = path.join(dir, 'schema.json');
+    const outDir = path.join(dir, 'out');
+    writeJson(schemaPath, schemaWithReferenceRelation());
+
+    const res = runTh(['generate', schemaPath, '--out', outDir], process.cwd());
+    expect(res.status, res.stderr || res.stdout).to.equal(0);
+
+    const generatedThs = fs.readFileSync(path.join(outDir, 'ui', 'src', 'generated', 'ths.ts'), 'utf-8');
+    expect(generatedThs).to.include('"relations"');
+    expect(generatedThs).to.include('"authorProfile"');
+    expect(generatedThs).to.include('"to": "Profile"');
+
+    const generatedReferenceField = fs.readFileSync(path.join(outDir, 'ui', 'src', 'components', 'ReferenceFieldInput.tsx'), 'utf-8');
+    expect(generatedReferenceField).to.include('useOwnedReferenceOptions');
+    expect(generatedReferenceField).to.include('Owned records appear first');
+    expect(generatedReferenceField).to.include("href={`/${relatedCollection.name}/?mode=new`}");
+
+    const generatedAccount = fs.readFileSync(path.join(outDir, 'ui', 'src', 'lib', 'account.ts'), 'utf-8');
+    expect(generatedAccount).to.include("const ACCOUNT_EVENT_NAME = 'tokenhost:account-changed'");
+    expect(generatedAccount).to.include('export function subscribeStoredAccount');
+
+    const generatedResolvedReference = fs.readFileSync(path.join(outDir, 'ui', 'src', 'components', 'ResolvedReferenceValue.tsx'), 'utf-8');
+    expect(generatedResolvedReference).to.include('getRelatedCollection');
+    expect(generatedResolvedReference).to.include("href={`/${relatedCollection.name}/?mode=view&id=${String(id)}`}");
+
+    const generatedRelations = fs.readFileSync(path.join(outDir, 'ui', 'src', 'lib', 'relations.ts'), 'utf-8');
+    expect(generatedRelations).to.include('resolveReferenceRecords');
+    expect(generatedRelations).to.include('listOwnedRecords');
+    expect(generatedRelations).to.include('useOwnedReferenceOptions');
+    expect(generatedRelations).to.include('useRequiredReferenceCreationGates');
+    expect(generatedRelations).to.include('TH_REFERENCE_SELECTION');
+    expect(generatedRelations).to.include('subscribeStoredAccount');
+    expect(generatedRelations).to.include('maxRecords: 1');
+
+    const generatedNewPage = fs.readFileSync(path.join(outDir, 'ui', 'app', '[collection]', 'new', 'ClientPage.tsx'), 'utf-8');
+    expect(generatedNewPage).to.include('ReferenceFieldInput');
+    expect(generatedNewPage).to.include("f.type === 'reference'");
+    expect(generatedNewPage).to.include('You must create a');
+    expect(generatedNewPage).to.include('Checking required linked records before showing the form.');
+    expect(generatedNewPage).to.include('Waiting for media upload…');
+    expect(generatedNewPage).to.include('textareaFeature');
+
+    const generatedEditPage = fs.readFileSync(path.join(outDir, 'ui', 'app', '[collection]', 'edit', 'ClientPage.tsx'), 'utf-8');
+    expect(generatedEditPage).to.include('ReferenceFieldInput');
+    expect(generatedEditPage).to.include('Waiting for media upload…');
+    expect(generatedEditPage).to.include('textareaFeature');
+
+    const generatedViewPage = fs.readFileSync(path.join(outDir, 'ui', 'app', '[collection]', 'view', 'ClientPage.tsx'), 'utf-8');
+    expect(generatedViewPage).to.include('ResolvedReferenceValue');
+
+    const generatedRecordCard = fs.readFileSync(path.join(outDir, 'ui', 'src', 'components', 'RecordCard.tsx'), 'utf-8');
+    expect(generatedRecordCard).to.include('ResolvedReferenceValue');
+
+    const generatedApp = fs.readFileSync(path.join(outDir, 'ui', 'src', 'lib', 'app.ts'), 'utf-8');
+    expect(generatedApp).to.include('function fnListOwnedIds');
+    expect(generatedApp).to.include('function listOwnedRecordsPage');
   });
 
   it('generated UI builds (next export)', function () {
@@ -278,7 +394,7 @@ describe('th generate (UI template)', function () {
     expect(generatedThs).to.include('"directory": "ui-overrides"');
   });
 
-  it('builds the canonical microblog example UI with custom home/tag routes', function () {
+  it('builds the canonical microblog example UI from generated feed/token config', function () {
     this.timeout(180000);
 
     const schemaPath = path.join(process.cwd(), 'apps', 'example', 'microblog.schema.json');
@@ -291,10 +407,19 @@ describe('th generate (UI template)', function () {
     expect(fs.existsSync(path.join(uiDir, 'app', 'page.tsx'))).to.equal(true);
     expect(fs.existsSync(path.join(uiDir, 'app', 'tag', 'page.tsx'))).to.equal(true);
     expect(fs.existsSync(path.join(uiDir, 'app', 'Post', 'page.tsx'))).to.equal(true);
+    expect(fs.existsSync(path.join(uiDir, 'src', 'components', 'GeneratedHomePageClient.tsx'))).to.equal(true);
+    expect(fs.existsSync(path.join(uiDir, 'src', 'components', 'GeneratedTokenPageClient.tsx'))).to.equal(true);
+    expect(fs.existsSync(path.join(uiDir, 'src', 'components', 'GeneratedFeedStream.tsx'))).to.equal(true);
+    expect(fs.existsSync(path.join(uiDir, 'src', 'components', 'MicroblogHomeClient.tsx'))).to.equal(false);
+    expect(fs.existsSync(path.join(uiDir, 'src', 'components', 'MicroblogTagClient.tsx'))).to.equal(false);
     const generatedThs = fs.readFileSync(path.join(uiDir, 'src', 'generated', 'ths.ts'), 'utf-8');
     expect(generatedThs).to.include('"preset": "cyber-grid"');
     expect(generatedThs).to.include('"authorProfile"');
     expect(generatedThs).to.not.include('"authorHandle"');
+    expect(generatedThs).to.include('"homeSections"');
+    expect(generatedThs).to.include('"tokenPages"');
+    expect(generatedThs).to.include('"feeds"');
+    expect(generatedThs).to.not.include('"extensions": {');
 
     const install = runCmd('pnpm', ['install'], uiDir);
     expect(install.status, install.stderr || install.stdout).to.equal(0);

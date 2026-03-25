@@ -1,5 +1,5 @@
 import { fetchAppAbi } from './abi';
-import { listRecords, listRecordsByIndex } from './app';
+import { listOwnedRecordsPage, listRecords, listRecordsByIndex } from './app';
 import { extractHashtagTokens, hashtagIndexKey, normalizeHashtagToken } from './indexing';
 import { chainFromId } from './chains';
 import { chainWithRpcOverride, makePublicClient } from './clients';
@@ -82,6 +82,49 @@ export async function listAllRecords(args: {
     const nextCursor = page.ids[page.ids.length - 1];
     if (nextCursor === undefined || page.ids.length < pageSize) break;
     cursor = nextCursor;
+  }
+
+  return { ids, records };
+}
+
+export async function listOwnedRecords(args: {
+  publicClient: any;
+  abi: any[];
+  address: `0x${string}`;
+  collectionName: string;
+  owner: `0x${string}`;
+  manifest?: any;
+  pageSize?: number;
+  maxRecords?: number;
+  includeDeleted?: boolean;
+}): Promise<{ ids: bigint[]; records: any[] }> {
+  const pageSize = clampListPageSize(args.manifest, args.pageSize);
+  const ids: bigint[] = [];
+  const records: any[] = [];
+  let offset = 0n;
+
+  for (;;) {
+    const remaining = typeof args.maxRecords === 'number' ? Math.max(0, args.maxRecords - ids.length) : pageSize;
+    if (remaining === 0) break;
+    const page = await listOwnedRecordsPage({
+      publicClient: args.publicClient,
+      abi: args.abi,
+      address: args.address,
+      collectionName: args.collectionName,
+      owner: args.owner,
+      offset,
+      limit: Math.min(pageSize, remaining),
+      includeDeleted: args.includeDeleted
+    });
+
+    if (!page.ids.length) break;
+
+    ids.push(...page.ids);
+    records.push(...page.records);
+
+    if (typeof args.maxRecords === 'number' && ids.length >= args.maxRecords) break;
+    if (page.ids.length < pageSize) break;
+    offset += BigInt(page.ids.length);
   }
 
   return { ids, records };

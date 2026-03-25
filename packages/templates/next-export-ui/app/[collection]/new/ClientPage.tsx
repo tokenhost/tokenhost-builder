@@ -9,14 +9,39 @@ import { chainFromId } from '../../../src/lib/chains';
 import { chainWithRpcOverride, makePublicClient } from '../../../src/lib/clients';
 import { formatWei, parseFieldValue } from '../../../src/lib/format';
 import { fetchManifest, getPrimaryDeployment, getReadRpcUrl } from '../../../src/lib/manifest';
-import { createFields, getCollection, hasCreatePayment, requiredFieldNames, type ThsField } from '../../../src/lib/ths';
+import { createFields, fieldDisplayName, getCollection, hasCreatePayment, requiredFieldNames, type ThsField } from '../../../src/lib/ths';
 import { submitWriteTx } from '../../../src/lib/tx';
 import TxStatus, { type TxPhase } from '../../../src/components/TxStatus';
 import ImageFieldInput from '../../../src/components/ImageFieldInput';
+import ReferenceFieldInput from '../../../src/components/ReferenceFieldInput';
+import { useRequiredReferenceCreationGates } from '../../../src/lib/relations';
 
 function inputType(field: ThsField): 'text' | 'number' {
-  if (field.type === 'uint256' || field.type === 'int256' || field.type === 'decimal' || field.type === 'reference') return 'number';
+  if (field.type === 'uint256' || field.type === 'int256' || field.type === 'decimal') return 'number';
   return 'text';
+}
+
+function isLongTextField(field: ThsField): boolean {
+  if (field.type !== 'string') return false;
+  return ['body', 'description', 'content', 'bio', 'summary'].includes(field.name);
+}
+
+function fieldGroupClass(field: ThsField): string {
+  if (field.type === 'reference') return 'fieldGroup fieldGroupMinor';
+  if (field.type === 'image') return 'fieldGroup fieldGroupMinor';
+  if (isLongTextField(field)) return 'fieldGroup fieldGroupFeature';
+  return 'fieldGroup';
+}
+
+function isMinorField(field: ThsField): boolean {
+  return field.type === 'reference' || field.type === 'image';
+}
+
+function fieldPlaceholder(field: ThsField): string {
+  if (field.type !== 'string') return field.type;
+  if (field.name === 'body') return 'Write your post…';
+  if (field.name === 'bio') return 'Tell people about this profile…';
+  return fieldDisplayName(field);
 }
 
 export default function CreateRecordPage(props: { params: { collection: string } }) {
@@ -39,6 +64,7 @@ export default function CreateRecordPage(props: { params: { collection: string }
   const [publicClient, setPublicClient] = useState<any | null>(null);
 
   const [form, setForm] = useState<Record<string, string>>({});
+  const [busyUploads, setBusyUploads] = useState<Record<string, boolean>>({});
 
   useEffect(() => {
     async function boot() {
@@ -102,14 +128,36 @@ export default function CreateRecordPage(props: { params: { collection: string }
     );
   }
 
-  const fields = createFields(collection);
-  const required = requiredFieldNames(collection);
+  const fields = useMemo(() => createFields(collection), [collection]);
+  const orderedFields = useMemo(
+    () => [...fields.filter((field) => !isMinorField(field)), ...fields.filter((field) => isMinorField(field))],
+    [fields]
+  );
+  const required = useMemo(() => requiredFieldNames(collection), [collection]);
+  const requiredReferenceFieldNames = useMemo(
+    () => fields.filter((field) => field.type === 'reference' && required.has(field.name)).map((field) => field.name),
+    [fields, required]
+  );
   const payment = hasCreatePayment(collection);
+  const uploadBusy = Object.values(busyUploads).some(Boolean);
+  const referenceCreationGates = useRequiredReferenceCreationGates({
+    manifest,
+    publicClient,
+    abi,
+    address: appAddress,
+    collection,
+    requiredFieldNames: requiredReferenceFieldNames
+  });
+  const activeReferenceGate = referenceCreationGates.blockers[0] ?? null;
 
   async function submit() {
     if (!manifest || !deployment || !abi || !publicClient || !appAddress) return;
     if (appAddress.toLowerCase() === '0x0000000000000000000000000000000000000000') {
       setError('App is not deployed yet (manifest has 0x0 address).');
+      return;
+    }
+    if (uploadBusy) {
+      setError('Wait for media uploads to finish before submitting this record.');
       return;
     }
 
@@ -122,7 +170,7 @@ export default function CreateRecordPage(props: { params: { collection: string }
       if (!required.has(f.name)) continue;
       const v = (form[f.name] ?? '').trim();
       if (!v) {
-        setError(`Missing required field: ${f.name}`);
+        setError(`Missing required field: ${fieldDisplayName(f)}`);
         return;
       }
     }
@@ -178,6 +226,41 @@ export default function CreateRecordPage(props: { params: { collection: string }
     );
   }
 
+  if (requiredReferenceFieldNames.length > 0 && referenceCreationGates.loading) {
+    return (
+      <div className="card">
+        <h2>Create {collection.name}</h2>
+        <div className="muted">Checking required linked records before showing the form.</div>
+      </div>
+    );
+  }
+
+  if (activeReferenceGate?.relatedCollection) {
+    return (
+      <div className="card">
+        <h2>Create {collection.name}</h2>
+        <div className="eyebrow">/create/gated</div>
+        <p className="lead" style={{ marginTop: 12 }}>
+          {activeReferenceGate.mustOwn
+            ? `You must create a ${activeReferenceGate.relatedCollection.name} owned by your wallet before creating this ${collection.name}.`
+            : `You must create a ${activeReferenceGate.relatedCollection.name} before creating this ${collection.name}.`}
+        </p>
+        <p className="muted">
+          {activeReferenceGate.missingWallet
+            ? `This form requires a wallet-owned ${activeReferenceGate.relatedCollection.name} via ${activeReferenceGate.fieldName}. Connect a wallet, then create your ${activeReferenceGate.relatedCollection.name} first.`
+            : activeReferenceGate.mustOwn
+              ? `This form requires a wallet-owned ${activeReferenceGate.relatedCollection.name} via ${activeReferenceGate.fieldName}, and this wallet does not own one yet.`
+              : `This form requires a linked ${activeReferenceGate.relatedCollection.name} via ${activeReferenceGate.fieldName}, and there are no ${activeReferenceGate.relatedCollection.name} records yet.`}
+        </p>
+        <div className="actionGroup" style={{ marginTop: 16 }}>
+          <button className="btn primary" onClick={() => router.push(`/${activeReferenceGate.relatedCollection.name}/?mode=new`)}>
+            Create {activeReferenceGate.relatedCollection.name}
+          </button>
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div className="card">
       <h2>Create {collection.name}</h2>
@@ -190,10 +273,10 @@ export default function CreateRecordPage(props: { params: { collection: string }
       )}
 
       <div className="formGrid">
-        {fields.map((f) => (
-          <div key={f.name} className="fieldGroup">
+          {orderedFields.map((f) => (
+            <div key={f.name} className={fieldGroupClass(f)}>
             <label className="label">
-              {f.name} {required.has(f.name) ? <span className="badge">required</span> : null}
+              {fieldDisplayName(f)} {required.has(f.name) ? <span className="badge">required</span> : null}
             </label>
             {f.type === 'bool' ? (
               <select
@@ -209,6 +292,26 @@ export default function CreateRecordPage(props: { params: { collection: string }
                 manifest={manifest}
                 value={form[f.name] ?? ''}
                 onChange={(next) => setForm((prev) => ({ ...prev, [f.name]: next }))}
+                onBusyChange={(busy) => setBusyUploads((prev) => ({ ...prev, [f.name]: busy }))}
+              />
+            ) : f.type === 'reference' ? (
+              <ReferenceFieldInput
+                manifest={manifest}
+                publicClient={publicClient}
+                abi={abi}
+                address={appAddress}
+                collection={collection}
+                field={f}
+                value={form[f.name] ?? ''}
+                disabled={txPhase === 'submitting' || txPhase === 'submitted' || txPhase === 'confirming'}
+                onChange={(next) => setForm((prev) => ({ ...prev, [f.name]: next }))}
+              />
+            ) : isLongTextField(f) ? (
+              <textarea
+                className="input textarea textareaFeature"
+                value={form[f.name] ?? ''}
+                onChange={(e) => setForm((prev) => ({ ...prev, [f.name]: e.target.value }))}
+                placeholder={fieldPlaceholder(f)}
               />
             ) : (
               <input
@@ -216,7 +319,7 @@ export default function CreateRecordPage(props: { params: { collection: string }
                 type={inputType(f)}
                 value={form[f.name] ?? ''}
                 onChange={(e) => setForm((prev) => ({ ...prev, [f.name]: e.target.value }))}
-                placeholder={f.type === 'reference' ? 'record id (uint256)' : f.type}
+                placeholder={fieldPlaceholder(f)}
               />
             )}
           </div>
@@ -227,9 +330,9 @@ export default function CreateRecordPage(props: { params: { collection: string }
         <button
           className="btn primary"
           onClick={() => void submit()}
-          disabled={!abi || !publicClient || !appAddress || txPhase === 'submitting' || txPhase === 'submitted' || txPhase === 'confirming'}
+          disabled={!abi || !publicClient || !appAddress || uploadBusy || txPhase === 'submitting' || txPhase === 'submitted' || txPhase === 'confirming'}
         >
-          Create
+          {uploadBusy ? 'Waiting for media upload…' : 'Create'}
         </button>
         <button className="btn" onClick={() => router.push(`/${collectionName}/`)}>Cancel</button>
       </div>

@@ -6,10 +6,10 @@ import Link from 'next/link';
 import ConnectButton from '../src/components/ConnectButton';
 import FaucetButton from '../src/components/FaucetButton';
 import FooterDeploymentMeta from '../src/components/FooterDeploymentMeta';
-import LivingGrid from '../src/components/LivingGrid';
+import HomeOnlyLivingGrid from '../src/components/HomeOnlyLivingGrid';
 import NetworkStatus from '../src/components/NetworkStatus';
 import ThemeToggle from '../src/components/ThemeToggle';
-import { ths } from '../src/lib/ths';
+import { collectionNavLabel, primaryCollection, ths } from '../src/lib/ths';
 
 export const metadata = {
   title: `${ths.app.name} - Token Host`,
@@ -34,7 +34,9 @@ const themeBootScript = `
 `;
 
 export default function RootLayout(props: { children: React.ReactNode }) {
-  const primaryCollection = ths.collections[0] ?? null;
+  const brandPrimary = String(ths.app.brand?.primaryText ?? 'token').trim() || 'token';
+  const brandAccent = String(ths.app.brand?.accentText ?? 'host').trim() || 'host';
+  const primaryModel = primaryCollection();
   const navCollections = ths.collections.slice(0, 2);
 
   return (
@@ -43,7 +45,7 @@ export default function RootLayout(props: { children: React.ReactNode }) {
         <script dangerouslySetInnerHTML={{ __html: themeBootScript }} />
         <div className="siteBackground" aria-hidden="true">
           <div className="siteGridLayer" />
-          <LivingGrid />
+          <HomeOnlyLivingGrid />
         </div>
         <div className="container">
           <header className="navShell">
@@ -52,26 +54,24 @@ export default function RootLayout(props: { children: React.ReactNode }) {
                 <div className="brandCopy">
                   <div className="brandIdentity">
                     <span className="brandWordText">
-                      <span className="brandWordBase">token</span>
-                      <span className="brandWordAccent">host</span>
+                      <span className="brandWordBase">{brandPrimary}</span>
+                      <span className="brandWordAccent">{brandAccent}</span>
                     </span>
                   </div>
                 </div>
               </Link>
               <nav className="navRail" aria-label="Primary">
-                <Link className="navRailLink" href="/">Overview</Link>
                 {navCollections.map((collection) => (
                   <Link key={collection.name} className="navRailLink" href={`/${collection.name}/`}>
-                    {collection.name}
+                    {collectionNavLabel(collection)}
                   </Link>
                 ))}
-                <a className="navRailLink" href="/.well-known/tokenhost/manifest.json">Manifest</a>
               </nav>
               <div className="controlCluster">
                 <ThemeToggle />
                 <FaucetButton />
                 <ConnectButton />
-                {primaryCollection ? <Link className="btn primary navCta" href={`/${primaryCollection.name}/?mode=new`}>Create record</Link> : null}
+                {primaryModel ? <Link className="btn primary navCta" href={`/${primaryModel.name}/?mode=new`}>Create {primaryModel.name}</Link> : null}
               </div>
             </div>
           </header>
@@ -97,10 +97,9 @@ export default function RootLayout(props: { children: React.ReactNode }) {
                 <div className="footerSection">
                   <h4 className="footerLabel">/runtime</h4>
                   <div className="footerList">
-                    <Link className="footerLinkText" href="/">Overview</Link>
                     <a className="footerLinkText" href="/.well-known/tokenhost/manifest.json">Manifest</a>
                     <a className="footerLinkText" href="/compiled/App.json">Compiled ABI</a>
-                    {primaryCollection ? <Link className="footerLinkText" href={`/${primaryCollection.name}/?mode=new`}>Create record</Link> : null}
+                    {primaryModel ? <Link className="footerLinkText" href={`/${primaryModel.name}/?mode=new`}>Create {primaryModel.name}</Link> : null}
                   </div>
                 </div>
               </div>

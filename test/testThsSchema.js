@@ -138,9 +138,108 @@ describe('THS schema validation + lint', function () {
       app: {
         name: 'Test App',
         slug: 'test-app',
+        brand: { primaryText: 'test', accentText: 'app' },
+        primaryCollection: 'Item',
         theme: { preset: 'cyber-grid' },
         features: { uploads: false, onChainIndexing: true }
       }
+    });
+
+    const res = validateThsStructural(input);
+    expect(res.ok).to.equal(true);
+  });
+
+  it('lintThs rejects unknown app.primaryCollection values', function () {
+    const input = minimalSchema({
+      app: {
+        name: 'Test App',
+        slug: 'test-app',
+        primaryCollection: 'Missing',
+        features: { uploads: false, onChainIndexing: true }
+      }
+    });
+
+    const res = validateThsStructural(input);
+    expect(res.ok).to.equal(true);
+    const issues = lintThs(res.data);
+    expect(issues.some((i) => i.code === 'lint.app.primary_collection_unknown')).to.equal(true);
+  });
+
+  it('validateThsStructural accepts generated feed/token/home UI primitives', function () {
+    const input = minimalSchema({
+      app: {
+        name: 'Test App',
+        slug: 'test-app',
+        features: { uploads: true, onChainIndexing: true },
+        ui: {
+          homePage: { mode: 'generated' },
+          generated: {
+            feeds: [
+              {
+                id: 'items',
+                collection: 'Item',
+                card: {
+                  textField: 'title'
+                }
+              }
+            ],
+            tokenPages: [
+              {
+                id: 'itemTokens',
+                collection: 'Item',
+                field: 'title',
+                tokenizer: 'hashtag',
+                feed: 'items'
+              }
+            ],
+            homeSections: [
+              {
+                type: 'hero',
+                title: 'Test app'
+              },
+              {
+                type: 'tokenList',
+                tokenPage: 'itemTokens',
+                title: 'Trending tags'
+              },
+              {
+                type: 'feed',
+                feed: 'items',
+                title: 'Latest items'
+              }
+            ]
+          }
+        }
+      }
+    });
+
+    const res = validateThsStructural(input);
+    expect(res.ok).to.equal(true);
+  });
+
+  it('validateThsStructural accepts relation ownership requirements', function () {
+    const input = minimalSchema({
+      collections: [
+        {
+          name: 'Profile',
+          fields: [{ name: 'handle', type: 'string', required: true }],
+          createRules: { required: ['handle'], access: 'public' },
+          visibilityRules: { gets: ['handle'], access: 'public' },
+          updateRules: { mutable: ['handle'], access: 'owner' },
+          deleteRules: { softDelete: true, access: 'owner' },
+          indexes: { unique: [], index: [] }
+        },
+        {
+          name: 'Post',
+          fields: [{ name: 'authorProfile', type: 'reference', required: true }],
+          createRules: { required: ['authorProfile'], access: 'public' },
+          visibilityRules: { gets: ['authorProfile'], access: 'public' },
+          updateRules: { mutable: ['authorProfile'], access: 'owner' },
+          deleteRules: { softDelete: true, access: 'owner' },
+          indexes: { unique: [], index: [] },
+          relations: [{ field: 'authorProfile', to: 'Profile', enforce: true, mustOwn: true }]
+        }
+      ]
     });
 
     const res = validateThsStructural(input);
@@ -178,6 +277,59 @@ describe('THS schema validation + lint', function () {
     expect(res.ok).to.equal(true);
     const issues = lintThs(res.data);
     expect(issues.some((i) => i.code === 'lint.app.ui.custom_home_without_extensions')).to.equal(true);
+  });
+
+  it('lintThs rejects generated UI references to unknown feeds and token pages', function () {
+    const input = minimalSchema({
+      app: {
+        name: 'Test App',
+        slug: 'test-app',
+        features: { uploads: false, onChainIndexing: true },
+        ui: {
+          homePage: { mode: 'generated' },
+          generated: {
+            feeds: [
+              {
+                id: 'items',
+                collection: 'Item',
+                card: {
+                  textField: 'missingField'
+                }
+              }
+            ],
+            tokenPages: [
+              {
+                id: 'itemTokens',
+                collection: 'Item',
+                field: 'missingField',
+                tokenizer: 'hashtag',
+                feed: 'missingFeed'
+              }
+            ],
+            homeSections: [
+              {
+                type: 'tokenList',
+                tokenPage: 'missingTokenPage',
+                title: 'Broken token page'
+              },
+              {
+                type: 'feed',
+                feed: 'missingFeed',
+                title: 'Broken feed'
+              }
+            ]
+          }
+        }
+      }
+    });
+
+    const res = validateThsStructural(input);
+    expect(res.ok).to.equal(true);
+    const issues = lintThs(res.data);
+    expect(issues.some((i) => i.code === 'lint.app.ui.generated.feed_unknown_field')).to.equal(true);
+    expect(issues.some((i) => i.code === 'lint.app.ui.generated.token_unknown_field')).to.equal(true);
+    expect(issues.some((i) => i.code === 'lint.app.ui.generated.section_unknown_token_page')).to.equal(true);
+    expect(issues.some((i) => i.code === 'lint.app.ui.generated.section_unknown_feed')).to.equal(true);
   });
 
   it('validateThsStructural accepts tokenized query index primitives', function () {

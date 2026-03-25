@@ -193,6 +193,7 @@ export function generateAppSolidity(schema: ThsSchema, options: GenerateAppSolid
     w.line('error VersionMismatch(uint256 expected, uint256 got);');
     w.line('error TooManyIndexTokens();');
     w.line('error IndexTokenTooLong();');
+    w.line('error RelatedRecordNotOwned();');
     w.line();
 
     // Events (SPEC 7.9)
@@ -418,6 +419,7 @@ export function generateAppSolidity(schema: ThsSchema, options: GenerateAppSolid
       w.line();
 
       w.line(`mapping(uint256 => ${record}) private ${cVar}Records;`);
+      w.line(`mapping(address => uint256[]) private ownerIndex_${C};`);
       w.line(`uint256 public nextId${C} = 1;`);
       w.line(`uint256 public activeCount${C} = 0;`);
       w.line();
@@ -453,12 +455,68 @@ export function generateAppSolidity(schema: ThsSchema, options: GenerateAppSolid
       });
       w.line();
 
+      w.block(`function _requireOwned${C}(uint256 id) internal view`, () => {
+        w.line(`${record} storage r = ${cVar}Records[id];`);
+        w.line('if (r.createdBy == address(0)) revert RecordNotFound();');
+        w.line('if (r.isDeleted) revert RecordIsDeleted();');
+        w.line('if (r.owner != _msgSender()) revert RelatedRecordNotOwned();');
+      });
+      w.line();
+
       w.block(`function getCount${C}(bool includeDeleted) external view returns (uint256)`, () => {
         w.line('if (includeDeleted) {');
         w.line(`  return nextId${C} - 1;`);
         w.line('}');
         w.line(`return activeCount${C};`);
       });
+      w.line();
+
+      w.block(
+        `function listOwnedIds${C}(address owner, uint256 offset, uint256 limit, bool includeDeleted) external view returns (uint256[] memory)`,
+        () => {
+          w.line('if (limit > MAX_LIST_LIMIT) revert InvalidLimit();');
+          w.line(`uint256[] storage bucket = ownerIndex_${C}[owner];`);
+          w.line('if (bucket.length == 0) {');
+          w.line('  return new uint256[](0);');
+          w.line('}');
+          w.line('uint256[] memory tmp = new uint256[](limit);');
+          w.line('uint256[] memory seen = new uint256[](MAX_SCAN_STEPS);');
+          w.line('uint256 found = 0;');
+          w.line('uint256 matched = 0;');
+          w.line('uint256 steps = 0;');
+          w.line('uint256 bucketIndex = bucket.length;');
+          w.block('while (bucketIndex > 0 && found < limit && steps < MAX_SCAN_STEPS)', () => {
+            w.line('bucketIndex--;');
+            w.line('steps++;');
+            w.line('uint256 id = bucket[bucketIndex];');
+            w.line('bool duplicate = false;');
+            w.block('for (uint256 i = 0; i < matched; i++)', () => {
+              w.line('if (seen[i] == id) {');
+              w.line('  duplicate = true;');
+              w.line('  break;');
+              w.line('}');
+            });
+            w.line('if (duplicate) { continue; }');
+            w.line('seen[matched] = id;');
+            w.line('matched++;');
+            w.line(`${record} storage r = ${cVar}Records[id];`);
+            w.line('if (r.createdBy == address(0)) { continue; }');
+            w.line('if (r.owner != owner) { continue; }');
+            w.line('if (!includeDeleted && r.isDeleted) { continue; }');
+            w.line('if (offset > 0) {');
+            w.line('  offset--;');
+            w.line('  continue;');
+            w.line('}');
+            w.line('tmp[found] = id;');
+            w.line('found++;');
+          });
+          w.line('uint256[] memory out = new uint256[](found);');
+          w.block('for (uint256 i = 0; i < found; i++)', () => {
+            w.line('out[i] = tmp[i];');
+          });
+          w.line('return out;');
+        }
+      );
       w.line();
 
       // get
@@ -597,6 +655,9 @@ export function generateAppSolidity(schema: ThsSchema, options: GenerateAppSolid
           for (const rel of c.relations.filter((r) => r.enforce)) {
             w.line(`_requireExists${rel.to}(input.${rel.field});`);
           }
+          for (const rel of c.relations.filter((r) => r.mustOwn)) {
+            w.line(`_requireOwned${rel.to}(input.${rel.field});`);
+          }
         }
 
         // uniqueness enforcement
@@ -619,6 +680,7 @@ export function generateAppSolidity(schema: ThsSchema, options: GenerateAppSolid
         w.line(`${record} storage r = ${cVar}Records[id];`);
         w.line(`_init${record}(r, id);`);
         w.line(`_applyCreate${C}Fields(r, input);`);
+        w.line(`ownerIndex_${C}[r.owner].push(id);`);
 
         // update unique maps after storage write
         for (const u of c.indexes.unique) {
@@ -673,6 +735,15 @@ export function generateAppSolidity(schema: ThsSchema, options: GenerateAppSolid
 
           if (c.updateRules.optimisticConcurrency) {
             w.line('if (r.version != expectedVersion) revert VersionMismatch(expectedVersion, r.version);');
+          }
+
+          if (c.relations) {
+            for (const rel of c.relations.filter((r) => r.enforce && c.updateRules.mutable.includes(r.field))) {
+              w.line(`_requireExists${rel.to}(${rel.field});`);
+            }
+            for (const rel of c.relations.filter((r) => r.mustOwn && c.updateRules.mutable.includes(r.field))) {
+              w.line(`_requireOwned${rel.to}(${rel.field});`);
+            }
           }
 
           // uniqueness updates for mutable unique fields
@@ -776,6 +847,7 @@ export function generateAppSolidity(schema: ThsSchema, options: GenerateAppSolid
           }
           w.line('address fromOwner = r.owner;');
           w.line('r.owner = to;');
+          w.line(`ownerIndex_${C}[to].push(id);`);
           w.line('r.updatedAt = block.timestamp;');
           w.line('r.updatedBy = _msgSender();');
           w.line('r.version += 1;');

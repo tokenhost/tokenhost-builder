@@ -9,14 +9,38 @@ import { chainFromId } from '../../../src/lib/chains';
 import { chainWithRpcOverride, makePublicClient } from '../../../src/lib/clients';
 import { formatNumeric, parseFieldValue } from '../../../src/lib/format';
 import { fetchManifest, getPrimaryDeployment, getReadRpcUrl } from '../../../src/lib/manifest';
-import { getCollection, mutableFields, type ThsCollection, type ThsField } from '../../../src/lib/ths';
+import { fieldDisplayName, getCollection, mutableFields, type ThsCollection, type ThsField } from '../../../src/lib/ths';
 import { submitWriteTx } from '../../../src/lib/tx';
 import TxStatus, { type TxPhase } from '../../../src/components/TxStatus';
 import ImageFieldInput from '../../../src/components/ImageFieldInput';
+import ReferenceFieldInput from '../../../src/components/ReferenceFieldInput';
 
 function inputType(field: ThsField): 'text' | 'number' {
-  if (field.type === 'uint256' || field.type === 'int256' || field.type === 'decimal' || field.type === 'reference') return 'number';
+  if (field.type === 'uint256' || field.type === 'int256' || field.type === 'decimal') return 'number';
   return 'text';
+}
+
+function isLongTextField(field: ThsField): boolean {
+  if (field.type !== 'string') return false;
+  return ['body', 'description', 'content', 'bio', 'summary'].includes(field.name);
+}
+
+function fieldGroupClass(field: ThsField): string {
+  if (field.type === 'reference') return 'fieldGroup fieldGroupMinor';
+  if (field.type === 'image') return 'fieldGroup fieldGroupMinor';
+  if (isLongTextField(field)) return 'fieldGroup fieldGroupFeature';
+  return 'fieldGroup';
+}
+
+function isMinorField(field: ThsField): boolean {
+  return field.type === 'reference' || field.type === 'image';
+}
+
+function fieldPlaceholder(field: ThsField): string {
+  if (field.type !== 'string') return field.type;
+  if (field.name === 'body') return 'Update the post…';
+  if (field.name === 'bio') return 'Tell people about this profile…';
+  return fieldDisplayName(field);
 }
 
 function getValue(record: any, key: string, fallbackIndex?: number): any {
@@ -58,6 +82,7 @@ export default function EditRecordPage(props: { params: { collection: string } }
   const [record, setRecord] = useState<any | null>(null);
 
   const [form, setForm] = useState<Record<string, string>>({});
+  const [busyUploads, setBusyUploads] = useState<Record<string, boolean>>({});
 
   const id = useMemo(() => {
     if (!idParam) return null;
@@ -102,7 +127,12 @@ export default function EditRecordPage(props: { params: { collection: string } }
   const appAddress = deployment?.deploymentEntrypointAddress as `0x${string}` | undefined;
 
   const fields = collection ? mutableFields(collection) : [];
+  const orderedFields = useMemo(
+    () => [...fields.filter((field) => !isMinorField(field)), ...fields.filter((field) => isMinorField(field))],
+    [fields]
+  );
   const optimistic = Boolean((collection as any)?.updateRules?.optimisticConcurrency);
+  const uploadBusy = Object.values(busyUploads).some(Boolean);
 
   async function fetchRecord(options?: { initial?: boolean }) {
     if (!publicClient || !abi || !appAddress || id === null) return;
@@ -152,6 +182,10 @@ export default function EditRecordPage(props: { params: { collection: string } }
   async function submit() {
     if (!manifest || !deployment || !abi || !publicClient || !appAddress || id === null) return;
     if (!record) return;
+    if (uploadBusy) {
+      setError('Wait for media uploads to finish before saving this record.');
+      return;
+    }
 
     setError(null);
     setStatus(null);
@@ -296,9 +330,9 @@ export default function EditRecordPage(props: { params: { collection: string } }
       </div>
 
       <div className="formGrid">
-        {fields.map((f) => (
-          <div key={f.name} className="fieldGroup">
-            <label className="label">{f.name}</label>
+          {orderedFields.map((f) => (
+            <div key={f.name} className={fieldGroupClass(f)}>
+            <label className="label">{fieldDisplayName(f)}</label>
             {f.type === 'bool' ? (
               <select
                 className="select"
@@ -314,6 +348,26 @@ export default function EditRecordPage(props: { params: { collection: string } }
                 value={form[f.name] ?? ''}
                 disabled={txPhase === 'submitting' || txPhase === 'submitted' || txPhase === 'confirming'}
                 onChange={(next) => setForm((prev) => ({ ...prev, [f.name]: next }))}
+                onBusyChange={(busy) => setBusyUploads((prev) => ({ ...prev, [f.name]: busy }))}
+              />
+            ) : f.type === 'reference' ? (
+              <ReferenceFieldInput
+                manifest={manifest}
+                publicClient={publicClient}
+                abi={abi}
+                address={appAddress}
+                collection={collection}
+                field={f}
+                value={form[f.name] ?? ''}
+                disabled={txPhase === 'submitting' || txPhase === 'submitted' || txPhase === 'confirming'}
+                onChange={(next) => setForm((prev) => ({ ...prev, [f.name]: next }))}
+              />
+            ) : isLongTextField(f) ? (
+              <textarea
+                className="input textarea textareaFeature"
+                value={form[f.name] ?? ''}
+                onChange={(e) => setForm((prev) => ({ ...prev, [f.name]: e.target.value }))}
+                placeholder={fieldPlaceholder(f)}
               />
             ) : (
               <input
@@ -321,7 +375,7 @@ export default function EditRecordPage(props: { params: { collection: string } }
                 type={inputType(f)}
                 value={form[f.name] ?? ''}
                 onChange={(e) => setForm((prev) => ({ ...prev, [f.name]: e.target.value }))}
-                placeholder={f.type === 'reference' ? 'record id (uint256)' : f.type}
+                placeholder={fieldPlaceholder(f)}
               />
             )}
           </div>
@@ -332,9 +386,9 @@ export default function EditRecordPage(props: { params: { collection: string } }
         <button
           className="btn primary"
           onClick={() => void submit()}
-          disabled={!abi || !publicClient || !appAddress || txPhase === 'submitting' || txPhase === 'submitted' || txPhase === 'confirming'}
+          disabled={!abi || !publicClient || !appAddress || uploadBusy || txPhase === 'submitting' || txPhase === 'submitted' || txPhase === 'confirming'}
         >
-          Save
+          {uploadBusy ? 'Waiting for media upload…' : 'Save'}
         </button>
         <button className="btn" onClick={() => router.push(`/${collectionName}/?mode=view&id=${String(id)}`)}>Cancel</button>
       </div>

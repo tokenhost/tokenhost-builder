@@ -1,7 +1,7 @@
 import type { ReactNode } from 'react';
 import Link from 'next/link';
 
-import { displayField, hasCreatePayment, mutableFields, ths, transferEnabled } from '../lib/ths';
+import { displayField, fieldDisplayName, hasCreatePayment, mutableFields, ths, transferEnabled } from '../lib/ths';
 
 export default function CollectionLayout(props: { children: ReactNode; collectionName: string }) {
   const collection = ths.collections.find((c) => c.name === props.collectionName);
@@ -22,12 +22,6 @@ export default function CollectionLayout(props: { children: ReactNode; collectio
       <section className="card collectionHero">
         <div className="heroTopline">
           <span className="eyebrow">/collection/{collection.name}</span>
-          <div className="chipRow">
-            <span className="badge">{collection.fields.length} fields</span>
-            <span className="badge">create {collection.createRules.access}</span>
-            <span className="badge">update {collection.updateRules.access}</span>
-            <span className="badge">delete {collection.deleteRules.access}</span>
-          </div>
         </div>
 
         <div className="heroSplit">
@@ -38,12 +32,12 @@ export default function CollectionLayout(props: { children: ReactNode; collectio
             </p>
             <div className="actionGroup">
               <Link className="btn" href={`/${collection.name}/`}>List records</Link>
-              <Link className="btn primary" href={`/${collection.name}/?mode=new`}>Create record</Link>
+              <Link className="btn primary" href={`/${collection.name}/?mode=new`}>Create {collection.name}</Link>
             </div>
             <div className="fieldPillRow">
               {collection.fields.slice(0, 6).map((field) => (
                 <span key={field.name} className="fieldPill">
-                  {field.name}
+                  {fieldDisplayName(field)}
                 </span>
               ))}
             </div>
@@ -63,7 +57,7 @@ export default function CollectionLayout(props: { children: ReactNode; collectio
             </div>
             <div className="heroMeta">
               <span className="badge">
-                display {displayField(collection)?.name ?? 'auto'}
+                display {displayField(collection) ? fieldDisplayName(displayField(collection)!) : 'auto'}
               </span>
               {hasCreatePayment(collection) ? <span className="badge">paid create</span> : <span className="badge">free create</span>}
             </div>

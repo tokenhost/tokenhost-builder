@@ -60,4 +60,55 @@ describe('Spec-aligned CRUD generator', function () {
     const { errors } = compileSolidity(appSol.path, appSol.contents, 'App');
     expect(errors.map((e) => e.formattedMessage || e.message).join('\n')).to.equal('');
   });
+
+  it('emits relation ownership enforcement for mustOwn references', function () {
+    const raw = {
+      thsVersion: '2025-12',
+      schemaVersion: '0.0.1',
+      app: {
+        name: 'Reference Auth',
+        slug: 'reference-auth',
+        features: { uploads: false, onChainIndexing: true }
+      },
+      collections: [
+        {
+          name: 'Profile',
+          fields: [{ name: 'handle', type: 'string', required: true }],
+          createRules: { required: ['handle'], access: 'public' },
+          visibilityRules: { gets: ['handle'], access: 'public' },
+          updateRules: { mutable: ['handle'], access: 'owner' },
+          deleteRules: { softDelete: true, access: 'owner' },
+          indexes: { unique: [], index: [] }
+        },
+        {
+          name: 'Post',
+          fields: [{ name: 'authorProfile', type: 'reference', required: true }],
+          createRules: { required: ['authorProfile'], access: 'public' },
+          visibilityRules: { gets: ['authorProfile'], access: 'public' },
+          updateRules: { mutable: ['authorProfile'], access: 'owner' },
+          deleteRules: { softDelete: true, access: 'owner' },
+          indexes: { unique: [], index: [] },
+          relations: [{ field: 'authorProfile', to: 'Profile', enforce: true, mustOwn: true }]
+        }
+      ]
+    };
+
+    const structural = validateThsStructural(raw);
+    expect(structural.ok).to.equal(true);
+    const schema = structural.data;
+    const lintIssues = lintThs(schema);
+    const lintErrors = lintIssues.filter((i) => i.severity === 'error');
+    expect(lintErrors).to.have.length(0);
+
+    const appSol = generateAppSolidity(schema);
+    expect(appSol.contents).to.include('error RelatedRecordNotOwned();');
+    expect(appSol.contents).to.include('mapping(address => uint256[]) private ownerIndex_Profile;');
+    expect(appSol.contents).to.include('function listOwnedIdsProfile(address owner, uint256 offset, uint256 limit, bool includeDeleted) external view returns (uint256[] memory)');
+    expect(appSol.contents).to.include('function _requireOwnedProfile(uint256 id) internal view');
+    expect(appSol.contents).to.include('_requireOwnedProfile(input.authorProfile);');
+    expect(appSol.contents).to.include('_requireOwnedProfile(authorProfile);');
+
+    const { errors } = compileSolidity(appSol.path, appSol.contents, 'App');
+    expect(errors.map((e) => e.formattedMessage || e.message).join('\n')).to.equal('');
+  });
 });
