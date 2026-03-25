@@ -272,6 +272,13 @@ describe('th generate (UI template)', function () {
 
     const generatedTokens = fs.readFileSync(path.join(outDir, 'ui', 'src', 'theme', 'tokens.json'), 'utf-8');
     expect(generatedTokens).to.equal(readTemplateThemeTokens());
+
+    const generatedThsLib = fs.readFileSync(path.join(outDir, 'ui', 'src', 'lib', 'ths.ts'), 'utf-8');
+    expect(generatedThsLib).to.include('export function collectionNavLabel');
+
+    const generatedLayout = fs.readFileSync(path.join(outDir, 'ui', 'app', 'layout.tsx'), 'utf-8');
+    expect(generatedLayout).to.include('collectionNavLabel(collection)');
+    expect(generatedLayout).to.not.include('<a className="navRailLink" href="/.well-known/tokenhost/manifest.json">Manifest</a>');
   });
 
   it('upstreams relation metadata into reference-aware generated CRUD UI', function () {

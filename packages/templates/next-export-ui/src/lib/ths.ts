@@ -220,3 +220,14 @@ export function fieldDisplayName(field: ThsField): string {
   if (typeof field.ui?.label === 'string' && field.ui.label.trim()) return field.ui.label.trim();
   return field.name;
 }
+
+export function collectionNavLabel(collection: ThsCollection): string {
+  const explicitPlural = typeof collection.plural === 'string' ? collection.plural.trim() : '';
+  if (explicitPlural) return explicitPlural;
+
+  const name = String(collection.name ?? '').trim();
+  if (!name) return 'Records';
+  if (/(s|x|z|sh|ch)$/i.test(name)) return `${name}es`;
+  if (/[^aeiou]y$/i.test(name)) return `${name.slice(0, -1)}ies`;
+  return `${name}s`;
+}

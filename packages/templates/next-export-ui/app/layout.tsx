@@ -9,7 +9,7 @@ import FooterDeploymentMeta from '../src/components/FooterDeploymentMeta';
 import HomeOnlyLivingGrid from '../src/components/HomeOnlyLivingGrid';
 import NetworkStatus from '../src/components/NetworkStatus';
 import ThemeToggle from '../src/components/ThemeToggle';
-import { primaryCollection, ths } from '../src/lib/ths';
+import { collectionNavLabel, primaryCollection, ths } from '../src/lib/ths';
 
 export const metadata = {
   title: `${ths.app.name} - Token Host`,
@@ -63,10 +63,9 @@ export default function RootLayout(props: { children: React.ReactNode }) {
               <nav className="navRail" aria-label="Primary">
                 {navCollections.map((collection) => (
                   <Link key={collection.name} className="navRailLink" href={`/${collection.name}/`}>
-                    {collection.name}
+                    {collectionNavLabel(collection)}
                   </Link>
                 ))}
-                <a className="navRailLink" href="/.well-known/tokenhost/manifest.json">Manifest</a>
               </nav>
               <div className="controlCluster">
                 <ThemeToggle />
