@@ -33,6 +33,10 @@ function fieldGroupClass(field: ThsField): string {
   return 'fieldGroup';
 }
 
+function isMinorField(field: ThsField): boolean {
+  return field.type === 'reference' || field.type === 'image';
+}
+
 function fieldPlaceholder(field: ThsField): string {
   if (field.type !== 'string') return field.type;
   if (field.name === 'body') return 'Write your post…';
@@ -125,6 +129,10 @@ export default function CreateRecordPage(props: { params: { collection: string }
   }
 
   const fields = useMemo(() => createFields(collection), [collection]);
+  const orderedFields = useMemo(
+    () => [...fields.filter((field) => !isMinorField(field)), ...fields.filter((field) => isMinorField(field))],
+    [fields]
+  );
   const required = useMemo(() => requiredFieldNames(collection), [collection]);
   const requiredReferenceFieldNames = useMemo(
     () => fields.filter((field) => field.type === 'reference' && required.has(field.name)).map((field) => field.name),
@@ -265,8 +273,8 @@ export default function CreateRecordPage(props: { params: { collection: string }
       )}
 
       <div className="formGrid">
-        {fields.map((f) => (
-          <div key={f.name} className={fieldGroupClass(f)}>
+          {orderedFields.map((f) => (
+            <div key={f.name} className={fieldGroupClass(f)}>
             <label className="label">
               {fieldDisplayName(f)} {required.has(f.name) ? <span className="badge">required</span> : null}
             </label>

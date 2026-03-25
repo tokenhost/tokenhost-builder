@@ -32,6 +32,10 @@ function fieldGroupClass(field: ThsField): string {
   return 'fieldGroup';
 }
 
+function isMinorField(field: ThsField): boolean {
+  return field.type === 'reference' || field.type === 'image';
+}
+
 function fieldPlaceholder(field: ThsField): string {
   if (field.type !== 'string') return field.type;
   if (field.name === 'body') return 'Update the post…';
@@ -123,6 +127,10 @@ export default function EditRecordPage(props: { params: { collection: string } }
   const appAddress = deployment?.deploymentEntrypointAddress as `0x${string}` | undefined;
 
   const fields = collection ? mutableFields(collection) : [];
+  const orderedFields = useMemo(
+    () => [...fields.filter((field) => !isMinorField(field)), ...fields.filter((field) => isMinorField(field))],
+    [fields]
+  );
   const optimistic = Boolean((collection as any)?.updateRules?.optimisticConcurrency);
   const uploadBusy = Object.values(busyUploads).some(Boolean);
 
@@ -322,8 +330,8 @@ export default function EditRecordPage(props: { params: { collection: string } }
       </div>
 
       <div className="formGrid">
-        {fields.map((f) => (
-          <div key={f.name} className={fieldGroupClass(f)}>
+          {orderedFields.map((f) => (
+            <div key={f.name} className={fieldGroupClass(f)}>
             <label className="label">{fieldDisplayName(f)}</label>
             {f.type === 'bool' ? (
               <select

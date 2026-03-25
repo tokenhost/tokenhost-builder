@@ -32,6 +32,10 @@ export default function ReferenceFieldInput(props: {
   const resolvedValue = value.trim();
   const hasResolvedValue = resolvedValue !== '' && options.some((option) => String(option.id) === resolvedValue);
   const selectedSummary = selectedOption ? recordSummary(selectedOption.record) : null;
+  const singleOwnedOption = mustOwn && ownedOptions.length === 1 ? ownedOptions[0] : null;
+  const compactLockedSelection = Boolean(
+    singleOwnedOption && selectedOption && String(selectedOption.id) === String(singleOwnedOption.id)
+  );
 
   if (!relatedCollection) {
     return (
@@ -48,21 +52,32 @@ export default function ReferenceFieldInput(props: {
 
   return (
     <>
-      <select
-        className="select"
-        value={hasResolvedValue ? resolvedValue : ''}
-        disabled={disabled || loading || options.length === 0}
-        onChange={(event) => onChange(event.target.value)}
-      >
-        <option value="">
-          {loading ? `Loading ${relatedCollection.name}…` : options.length > 0 ? `Select ${relatedCollection.name}` : `No ${relatedCollection.name} records found`}
-        </option>
-        {options.map((option) => (
-          <option key={String(option.id)} value={String(option.id)}>
-            {option.label}{option.owned ? ' · owned by connected wallet' : ''}
+      {compactLockedSelection ? (
+        <div className="referenceIdentityShell">
+          <div className="referenceIdentityMeta">
+            <span className="badge">{relatedCollection.name} #{String(selectedOption?.id ?? '')}</span>
+            <span className="badge">wallet-owned</span>
+          </div>
+          <div className="referenceIdentityTitle">{selectedSummary?.title ?? `${relatedCollection.name} #${String(selectedOption?.id ?? '')}`}</div>
+          {selectedSummary?.subtitle ? <div className="referenceIdentitySubtitle">{selectedSummary.subtitle}</div> : null}
+        </div>
+      ) : (
+        <select
+          className={`select ${mustOwn ? 'selectMinor' : ''}`}
+          value={hasResolvedValue ? resolvedValue : ''}
+          disabled={disabled || loading || options.length === 0}
+          onChange={(event) => onChange(event.target.value)}
+        >
+          <option value="">
+            {loading ? `Loading ${relatedCollection.name}…` : options.length > 0 ? `Select ${relatedCollection.name}` : `No ${relatedCollection.name} records found`}
           </option>
-        ))}
-      </select>
+          {options.map((option) => (
+            <option key={String(option.id)} value={String(option.id)}>
+              {option.label}{option.owned ? ' · owned by connected wallet' : ''}
+            </option>
+          ))}
+        </select>
+      )}
       {selectedSummary ? (
         <div className={`recordPreviewCell ${mustOwn ? 'recordPreviewCellCompact' : ''}`} style={{ minHeight: mustOwn ? 0 : 110 }}>
           <div style={{ display: 'grid', gap: 10 }}>
@@ -103,7 +118,9 @@ export default function ReferenceFieldInput(props: {
           : options.length > 0
             ? ownedOptions.length > 0
               ? mustOwn
-                ? `This relation requires a ${relatedCollection.name} owned by the connected wallet.${account ? ` Showing records for ${account.slice(0, 6)}…` : ''}.`
+                ? compactLockedSelection
+                  ? `Using your wallet-owned ${relatedCollection.name} for this record.`
+                  : `Choose a ${relatedCollection.name} owned by the connected wallet.`
                 : `Showing ${relatedCollection.name} labels instead of a raw foreign-key entry. Owned records appear first and your last choice is remembered${account ? ` for ${account.slice(0, 6)}…` : ''}.`
               : `Showing ${relatedCollection.name} labels instead of a raw foreign-key entry.`
             : mustOwn
